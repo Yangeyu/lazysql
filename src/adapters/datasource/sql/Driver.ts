@@ -13,10 +13,22 @@ export interface RawResult {
   readonly affected?: number;
 }
 
+/** Runs a statement on a specific connection (used inside a transaction). */
+export type RunFn = (
+  text: string,
+  params: ReadonlyArray<unknown>,
+) => Promise<RawResult>;
+
 export interface SqlDriver {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   ping(): Promise<boolean>;
   /** Execute SQL with positional params and return raw columns + rows. */
   run(text: string, params: ReadonlyArray<unknown>): Promise<RawResult>;
+  /**
+   * Run `fn` inside a transaction on a single dedicated connection. Commits if
+   * it resolves, rolls back if it throws. The `run` passed to `fn` executes on
+   * that same connection — essential for pooled drivers (pg/mysql).
+   */
+  transaction<T>(fn: (run: RunFn) => Promise<T>): Promise<T>;
 }

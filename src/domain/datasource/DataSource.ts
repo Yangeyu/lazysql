@@ -11,6 +11,7 @@
 import type { CapabilitySet } from './capabilities.ts';
 import type { ResultSet } from './ResultSet.ts';
 import type { SchemaSnapshot, ObjectRef, ObjectSchema } from './schema.ts';
+import type { RowKey, RowPatch, EditResult } from './edit.ts';
 import type { Query, BrowseSpec, Filter } from '../query/Query.ts';
 import type { Result } from '../../shared/Result.ts';
 import type { ConnectionError } from '../errors/errors.ts';
@@ -58,8 +59,25 @@ export interface Browsable {
   ): Promise<number>;
 }
 
-// (RowEditable, Transactional, Streamable arrive in later phases — the model
-//  is designed for them now so adding them touches no existing code.)
+/** Row/document level writes. Every method targets a single row via its key. */
+export interface RowEditable {
+  insert(ref: ObjectRef, row: RowPatch): Promise<EditResult>;
+  update(ref: ObjectRef, key: RowKey, patch: RowPatch): Promise<EditResult>;
+  delete(ref: ObjectRef, key: RowKey): Promise<EditResult>;
+}
+
+/** A scoped execution handle inside a transaction. */
+export interface Tx {
+  execute(query: Query): Promise<ResultSet>;
+}
+
+/** begin/commit/rollback around a unit of work. */
+export interface Transactional {
+  transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T>;
+}
+
+// (Streamable arrives in a later phase — the model is designed for it now so
+//  adding it touches no existing code.)
 
 // ── Type guards: narrow a DataSource to a capability ──────────────────────
 
@@ -78,4 +96,18 @@ export const asIntrospectable = (
 export const asBrowsable = (s: DataSource): (DataSource & Browsable) | null =>
   typeof (s as Partial<Browsable>).browse === 'function'
     ? (s as DataSource & Browsable)
+    : null;
+
+export const asRowEditable = (
+  s: DataSource,
+): (DataSource & RowEditable) | null =>
+  typeof (s as Partial<RowEditable>).update === 'function'
+    ? (s as DataSource & RowEditable)
+    : null;
+
+export const asTransactional = (
+  s: DataSource,
+): (DataSource & Transactional) | null =>
+  typeof (s as Partial<Transactional>).transaction === 'function'
+    ? (s as DataSource & Transactional)
     : null;

@@ -6,7 +6,7 @@
  */
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite';
-import type { SqlDriver, RawResult } from '../Driver.ts';
+import type { SqlDriver, RawResult, RunFn } from '../Driver.ts';
 import { ConnectionError } from '../../../../domain/errors/errors.ts';
 
 export class BunSqliteDriver implements SqlDriver {
@@ -51,6 +51,24 @@ export class BunSqliteDriver implements SqlDriver {
 
     const res = stmt.run(...bind);
     return { columns: [], rows: [], affected: res.changes };
+  }
+
+  async transaction<T>(fn: (run: RunFn) => Promise<T>): Promise<T> {
+    const db = this.requireDb();
+    // bun:sqlite is a single connection, so BEGIN/COMMIT scope it directly.
+    db.run('BEGIN');
+    try {
+      const result = await fn((text, params) => this.run(text, params));
+      db.run('COMMIT');
+      return result;
+    } catch (e) {
+      try {
+        db.run('ROLLBACK');
+      } catch {
+        /* already rolled back / not in a tx */
+      }
+      throw e;
+    }
   }
 
   private requireDb(): Database {

@@ -17,8 +17,10 @@ import type {
   ObjectRef,
   ColumnDef,
 } from '../../../../domain/datasource/schema.ts';
+import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
 import type { RawResult } from '../Driver.ts';
 import { buildWhere } from '../whereBuilder.ts';
+import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
 
 /** Quote a SQL identifier, escaping embedded double-quotes. */
 const quoteIdent = (name: string): string => `"${name.replace(/"/g, '""')}"`;
@@ -88,5 +90,20 @@ export class SqliteDialect implements Dialect {
       `SELECT COUNT(*) AS n FROM ${quoteIdent(ref.name)}${where.clause}`,
       where.params,
     );
+  }
+
+  insertQuery(ref: ObjectRef, row: RowPatch): Query {
+    const dml = buildInsert(quoteIdent(ref.name), row, quoteIdent, ph);
+    return sql(dml.text, dml.params);
+  }
+
+  updateQuery(ref: ObjectRef, key: RowKey, patch: RowPatch): Query {
+    const dml = buildUpdate(quoteIdent(ref.name), patch, key, quoteIdent, ph);
+    return sql(dml.text, dml.params);
+  }
+
+  deleteQuery(ref: ObjectRef, key: RowKey): Query {
+    const dml = buildDelete(quoteIdent(ref.name), key, quoteIdent, ph);
+    return sql(dml.text, dml.params);
   }
 }

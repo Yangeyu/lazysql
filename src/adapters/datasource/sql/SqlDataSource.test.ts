@@ -14,11 +14,15 @@ import { rmSync } from 'node:fs';
 import { createDataSource } from '../registry.ts';
 import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
 import type { DataSource } from '../../../domain/datasource/DataSource.ts';
+import {
+  asRowEditable,
+  asQueryable,
+} from '../../../domain/datasource/DataSource.ts';
 import { Capability } from '../../../domain/datasource/capabilities.ts';
 import { listObjects } from '../../../application/usecases/ListObjects.ts';
 import { browseTable } from '../../../application/usecases/BrowseTable.ts';
 import { unwrap } from '../../../shared/Result.ts';
-import { firstPage } from '../../../domain/query/Query.ts';
+import { firstPage, sql } from '../../../domain/query/Query.ts';
 
 const DB = join(tmpdir(), `lazysql-test-${process.pid}.db`);
 let source: DataSource;
@@ -51,7 +55,6 @@ test('declares Query/SchemaIntrospect/Browse capabilities', () => {
   const caps = source.capabilities();
   expect(caps.has(Capability.SchemaIntrospect)).toBe(true);
   expect(caps.has(Capability.Browse)).toBe(true);
-  expect(caps.has(Capability.RowEdit)).toBe(false); // not yet implemented
 });
 
 test('listObjects returns the table', async () => {
@@ -114,4 +117,60 @@ test('contains filter binds the value (no interpolation)', async () => {
   );
   expect(result.total).toBe(1);
   expect(result.rows.rows[0]?.[1]).toBe('w25');
+});
+
+// ── editing (RowEditable + Transactional) ──────────────────────────────────
+
+const widgetRef = { name: 'widget', kind: 'table' as const };
+const valueAt = async (id: number, column: string): Promise<unknown> => {
+  const rs = await asQueryable(source)!.execute(
+    sql(`SELECT ${column} FROM widget WHERE id = ?`, [id]),
+  );
+  return rs.rows[0]?.[0] ?? null;
+};
+
+test('declares RowEdit and Transaction capabilities', () => {
+  const caps = source.capabilities();
+  expect(caps.has(Capability.RowEdit)).toBe(true);
+  expect(caps.has(Capability.Transaction)).toBe(true);
+});
+
+test('update writes exactly one row by key', async () => {
+  const r = await asRowEditable(source)!.update(
+    widgetRef,
+    [{ column: 'id', value: 1 }],
+    [{ column: 'label', value: 'updated-1' }],
+  );
+  expect(r.affected).toBe(1);
+  expect(await valueAt(1, 'label')).toBe('updated-1');
+});
+
+test('update with a non-matching key rolls back (0 rows)', async () => {
+  await expect(
+    asRowEditable(source)!.update(
+      widgetRef,
+      [{ column: 'id', value: 99999 }],
+      [{ column: 'label', value: 'nope' }],
+    ),
+  ).rejects.toThrow(/affected 0/);
+});
+
+test('insert then delete round-trips a row', async () => {
+  const ins = await asRowEditable(source)!.insert(widgetRef, [
+    { column: 'label', value: 'temp' },
+    { column: 'qty', value: 999 },
+  ]);
+  expect(ins.affected).toBe(1);
+
+  const created = await asQueryable(source)!.execute(
+    sql('SELECT id FROM widget WHERE qty = ?', [999]),
+  );
+  const id = Number(created.rows[0]?.[0]);
+  expect(id).toBeGreaterThan(0);
+
+  const del = await asRowEditable(source)!.delete(widgetRef, [
+    { column: 'id', value: id },
+  ]);
+  expect(del.affected).toBe(1);
+  expect(await valueAt(id, 'label')).toBeNull();
 });

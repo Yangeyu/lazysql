@@ -7,6 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp as useInkApp, useInput } from 'ink';
 import { useApp, useStoreApi } from './context.ts';
+import { useShell } from './shell.ts';
 import { Sidebar } from '../components/Sidebar.tsx';
 import { DataGrid } from '../components/DataGrid.tsx';
 import { StatusBar } from '../components/StatusBar.tsx';
@@ -28,9 +29,11 @@ const useTerminalRows = (): number => {
 export const App: React.FC = () => {
   const ink = useInkApp();
   const store = useStoreApi();
+  const shell = useShell();
 
   const status = useApp((s) => s.status);
   const error = useApp((s) => s.error);
+  const connectionName = useApp((s) => s.connectionName);
   const objects = useApp((s) => s.objects);
   const selectedIndex = useApp((s) => s.selectedIndex);
   const focus = useApp((s) => s.focus);
@@ -66,6 +69,10 @@ export const App: React.FC = () => {
 
     if (input === 'q' || (key.ctrl && input === 'c')) {
       ink.exit();
+      return;
+    }
+    if (input === '`') {
+      shell.switchConnection();
       return;
     }
     if (key.tab) {
@@ -127,6 +134,7 @@ export const App: React.FC = () => {
       <StatusBar
         status={status}
         error={error}
+        connectionName={connectionName}
         current={current}
         total={total}
         page={page}

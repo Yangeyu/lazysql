@@ -31,6 +31,7 @@ export type Mode = 'normal' | 'filter';
 export interface AppState {
   status: Status;
   error: string | null;
+  connectionName: string | null;
   objects: ObjectRef[];
   selectedIndex: number;
   focus: Focus;
@@ -66,7 +67,10 @@ export interface AppState {
 
 export type AppStore = StoreApi<AppState>;
 
-export const createAppStore = (source: DataSource): AppStore =>
+export const createAppStore = (
+  source: DataSource,
+  connectionName: string | null = null,
+): AppStore =>
   createStore<AppState>((set, get) => {
     const load = async (ref: ObjectRef, spec: BrowseSpec): Promise<void> => {
       set({ loading: true, error: null });
@@ -90,6 +94,7 @@ export const createAppStore = (source: DataSource): AppStore =>
     return {
       status: 'connecting',
       error: null,
+      connectionName,
       objects: [],
       selectedIndex: 0,
       focus: 'sidebar',

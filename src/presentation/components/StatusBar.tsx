@@ -12,6 +12,7 @@ import type { Focus, Mode } from '../app/store.ts';
 interface Props {
   status: string;
   error: string | null;
+  connectionName: string | null;
   current: ObjectRef | null;
   total: number;
   page: Page;
@@ -34,6 +35,7 @@ const filterSummary = (filter: Filter | null): string => {
 const StatusBarImpl: React.FC<Props> = ({
   status,
   error,
+  connectionName,
   current,
   total,
   page,
@@ -70,8 +72,8 @@ const StatusBarImpl: React.FC<Props> = ({
 
   const hints =
     focus === 'sidebar'
-      ? '↑/↓ select · ⏎ open · tab grid · q quit'
-      : '↑/↓ row · ←/→ col · s sort · / filter · n/p page · tab objects · q quit';
+      ? '↑/↓ select · ⏎ open · tab grid · ` conn · q quit'
+      : '↑/↓ row · ←/→ col · s sort · / filter · n/p page · ` conn · q quit';
 
   return (
     <Box flexDirection="column">
@@ -80,6 +82,9 @@ const StatusBarImpl: React.FC<Props> = ({
           {' lazysql '}
         </Text>
         <Text> </Text>
+        {connectionName ? (
+          <Text color="green">{connectionName}{'  '}</Text>
+        ) : null}
         {error ? (
           <Text color="red">error: {error}</Text>
         ) : current ? (

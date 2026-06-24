@@ -65,9 +65,12 @@ docker run -d --name lazysql-pg -e POSTGRES_PASSWORD=lazysql \
     grid 内 `/` 进入输入态，对当前列做 contains 筛选。
   - ✅ **MySQL/MariaDB 适配器** —— 第三个引擎复用 `SqlDataSource`，仅加
     `MySqlDialect`（反引号 / `DATABASE()` / `COLUMN_KEY`）+ `MySqlDriver`（mysql2）。
-  - ✅ **连接管理（持久化层）** —— `connections.yml`（无密码）+ `secrets.json`（0600）
-    经 `ConnectionRepository` / `SecretStore` 端口隔离；`OpenConnection` 用例解析密钥并连接；
-    CLI 按 名称 / 文件 / 默认 打开。
-  - ⬜ in-TUI 连接选择/新增表单 · OS Keychain 适配器（SecretStore 的下一个实现）。
+  - ✅ **连接管理** —— `connections.yml`（无密码）+ `secrets.json`（0600）经
+    `ConnectionRepository` / `SecretStore` 端口隔离；`OpenConnection` 用例解析密钥并连接。
+    **in-TUI 连接选择器 + 会话内切换**（`` ` `` 键）；无 arg 启动进选择器，带名称/文件直连。
+  - ✅ **KeychainSecretStore** —— `SecretStore` 的第二实现（macOS `security`，零 native 依赖），
+    `LAZYSQL_SECRETS=keychain` 开启。
+  - ⬜ in-TUI「新增连接」表单（当前经编辑 `connections.yml` 添加）· Linux/Windows Keychain 后端。
 
-详见 `docs/ARCHITECTURE.md` §11 演进路线。当前 **30 项测试全绿**（SQLite / 真实 PG / 真实 MySQL / 持久化 / 无头 TUI）。
+Phase 1 核心完成。详见 `docs/ARCHITECTURE.md` §11。当前 **33 项测试全绿**
+（SQLite / 真实 PG / 真实 MySQL / 持久化 / Keychain / 无头 TUI 含连接选择器）。

@@ -17,9 +17,7 @@ import { render } from 'ink';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { StoreContext } from './presentation/app/context.ts';
-import { App } from './presentation/app/App.tsx';
-import { createAppStore } from './presentation/app/store.ts';
+import { Root } from './presentation/app/Root.tsx';
 import { createDataSource } from './adapters/datasource/registry.ts';
 import { YamlConnectionRepository } from './adapters/persistence/YamlConnectionRepository.ts';
 import { FileSecretStore } from './adapters/persistence/FileSecretStore.ts';
@@ -62,18 +60,15 @@ const looksLikeFile = (arg: string): boolean =>
   /\.(db|sqlite|sqlite3)$/i.test(arg) || existsSync(arg);
 
 const resolveProfile = (
-  arg: string | undefined,
+  arg: string,
   profiles: ConnectionProfile[],
 ): ConnectionProfile | null => {
-  if (arg) {
-    const named = profiles.find((p) => p.id === arg || p.name === arg);
-    if (named) return named;
-    if (looksLikeFile(arg)) {
-      return { id: 'cli', name: arg, driver: 'sqlite', options: { file: arg } };
-    }
-    return null;
+  const named = profiles.find((p) => p.id === arg || p.name === arg);
+  if (named) return named;
+  if (looksLikeFile(arg)) {
+    return { id: 'cli', name: arg, driver: 'sqlite', options: { file: arg } };
   }
-  return profiles.find((p) => p.id === 'default') ?? profiles[0] ?? null;
+  return null;
 };
 
 const die = (message: string): never => {
@@ -104,19 +99,20 @@ if (arg === '--list' || arg === '-l') {
   process.exit(0);
 }
 
-const profile =
-  resolveProfile(arg, profiles) ??
-  die(`unknown connection "${arg}" (try --list, a saved name, or a .db file)`);
+// With an explicit arg we connect straight in; with none we show the picker.
+let initial: ConnectionProfile | null = null;
+if (arg) {
+  initial = resolveProfile(arg, profiles);
+  if (!initial) {
+    die(`unknown connection "${arg}" (try --list, a saved name, or a .db file)`);
+  }
+}
 
-const opened = await openConnection(profile, { factory: createDataSource, secrets });
-const source = opened.ok ? opened.value : die(opened.error.message);
-const store = createAppStore(source);
+const open = (profile: ConnectionProfile) =>
+  openConnection(profile, { factory: createDataSource, secrets });
 
 const { waitUntilExit } = render(
-  <StoreContext.Provider value={store}>
-    <App />
-  </StoreContext.Provider>,
+  <Root profiles={profiles} open={open} initial={initial} />,
 );
 
 await waitUntilExit();
-await source.disconnect();

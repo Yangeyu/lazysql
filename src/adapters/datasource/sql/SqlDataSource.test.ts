@@ -61,7 +61,7 @@ test('listObjects returns the table', async () => {
 
 test('browseTable paginates and counts', async () => {
   const ref = { name: 'widget', kind: 'table' as const };
-  const result = unwrap(await browseTable(source, ref, firstPage(10)));
+  const result = unwrap(await browseTable(source, ref, { page: firstPage(10) }));
 
   expect(result.total).toBe(25);
   expect(result.rows.rows.length).toBe(10);
@@ -73,8 +73,45 @@ test('browseTable paginates and counts', async () => {
 test('second page returns the remainder window', async () => {
   const ref = { name: 'widget', kind: 'table' as const };
   const result = unwrap(
-    await browseTable(source, ref, { offset: 20, limit: 10 }),
+    await browseTable(source, ref, { page: { offset: 20, limit: 10 } }),
   );
   expect(result.rows.rows.length).toBe(5);
   expect(result.rows.truncated).toBe(false);
+});
+
+test('browse with descending sort orders by the column', async () => {
+  const ref = { name: 'widget', kind: 'table' as const };
+  const result = unwrap(
+    await browseTable(source, ref, {
+      page: firstPage(5),
+      sort: { column: 'qty', direction: 'desc' },
+    }),
+  );
+  // qty is the 3rd column; descending → first row holds the max (25).
+  expect(result.rows.rows[0]?.[2]).toBe(25);
+  expect(result.rows.rows[4]?.[2]).toBe(21);
+});
+
+test('numeric filter narrows rows and the count matches', async () => {
+  const ref = { name: 'widget', kind: 'table' as const };
+  const result = unwrap(
+    await browseTable(source, ref, {
+      page: firstPage(50),
+      filter: { conditions: [{ column: 'qty', op: 'gt', value: '20' }] },
+    }),
+  );
+  expect(result.total).toBe(5); // qty 21..25
+  expect(result.rows.rows.length).toBe(5);
+});
+
+test('contains filter binds the value (no interpolation)', async () => {
+  const ref = { name: 'widget', kind: 'table' as const };
+  const result = unwrap(
+    await browseTable(source, ref, {
+      page: firstPage(50),
+      filter: { conditions: [{ column: 'label', op: 'contains', value: '25' }] },
+    }),
+  );
+  expect(result.total).toBe(1);
+  expect(result.rows.rows[0]?.[1]).toBe('w25');
 });

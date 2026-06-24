@@ -1,50 +1,118 @@
 #!/usr/bin/env bun
 /**
- * Composition root — the ONLY place concrete adapters are wired to the app.
- * It builds a connection profile, instantiates the data source via the registry,
- * connects, then hands a store (with the source injected) to the Ink tree.
- * Every layer below depends on interfaces; the wiring lives here. (DIP)
+ * Composition root — wires concrete adapters (registry, YAML repo, file secret
+ * store) to the application and TUI. It decides which connection to open
+ * (by name, by ad-hoc SQLite file, or the default), resolves its secret, and
+ * hands a connected store to Ink. Everything below depends only on ports. (DIP)
  *
- * Usage: bun run src/main.tsx [path/to/database.db]   (default: data/sample.db)
+ * Usage:
+ *   bun start                 open the default saved connection
+ *   bun start <name>          open a saved connection by id/name
+ *   bun start <file.db>       open an ad-hoc SQLite file
+ *   bun start --list          list saved connections and exit
  */
 
 import React from 'react';
 import { render } from 'ink';
-import { StoreContext } from './presentation/app/context.ts';
-import { App } from './presentation/app/App.tsx';
-import { createAppStore } from './presentation/app/store.ts';
+import { existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { Root } from './presentation/app/Root.tsx';
 import { createDataSource } from './adapters/datasource/registry.ts';
+import { YamlConnectionRepository } from './adapters/persistence/YamlConnectionRepository.ts';
+import { FileSecretStore } from './adapters/persistence/FileSecretStore.ts';
+import { KeychainSecretStore } from './adapters/persistence/KeychainSecretStore.ts';
+import { connectionsFile } from './adapters/persistence/paths.ts';
+import { openConnection } from './application/usecases/OpenConnection.ts';
+import type { SecretStore } from './application/ports/SecretStore.ts';
 import type { ConnectionProfile } from './domain/connection/ConnectionProfile.ts';
 
-const file = process.argv[2] ?? 'data/sample.db';
+const DEFAULT_CONFIG = `# lazysql connections.
+# Passwords are NOT stored here — they live in secrets.json (chmod 600).
+# Edit this file to add connections; uncomment an example to get started.
+connections:
+  - id: sample
+    name: Sample (SQLite)
+    driver: sqlite
+    options:
+      file: data/sample.db
 
-const profile: ConnectionProfile = {
-  id: 'cli',
-  name: file,
-  driver: 'sqlite',
-  options: { file },
+  # - id: local-pg
+  #   name: Local Postgres
+  #   driver: postgres
+  #   options:
+  #     host: localhost
+  #     port: 5432
+  #     user: postgres
+  #     database: postgres
+
+  # - id: local-mysql
+  #   name: Local MySQL
+  #   driver: mysql
+  #   options:
+  #     host: localhost
+  #     port: 3306
+  #     user: root
+  #     database: mysql
+`;
+
+const looksLikeFile = (arg: string): boolean =>
+  /\.(db|sqlite|sqlite3)$/i.test(arg) || existsSync(arg);
+
+const resolveProfile = (
+  arg: string,
+  profiles: ConnectionProfile[],
+): ConnectionProfile | null => {
+  const named = profiles.find((p) => p.id === arg || p.name === arg);
+  if (named) return named;
+  if (looksLikeFile(arg)) {
+    return { id: 'cli', name: arg, driver: 'sqlite', options: { file: arg } };
+  }
+  return null;
 };
 
-const created = createDataSource(profile);
-if (!created.ok) {
-  console.error(`lazysql: ${created.error.message}`);
+const die = (message: string): never => {
+  console.error(`lazysql: ${message}`);
   process.exit(1);
+};
+
+// ── boot ──────────────────────────────────────────────────────────────────
+
+const repo = new YamlConnectionRepository();
+const secrets: SecretStore =
+  process.env.LAZYSQL_SECRETS === 'keychain' && KeychainSecretStore.isSupported()
+    ? new KeychainSecretStore()
+    : new FileSecretStore();
+
+const file = connectionsFile();
+if (!existsSync(file)) {
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, DEFAULT_CONFIG, 'utf8');
 }
 
-const source = created.value;
-const connection = await source.connect();
-if (!connection.ok) {
-  console.error(`lazysql: ${connection.error.message}`);
-  process.exit(1);
+const arg = process.argv[2];
+const profiles = await repo.list();
+
+if (arg === '--list' || arg === '-l') {
+  if (profiles.length === 0) console.log('(no saved connections)');
+  for (const p of profiles) console.log(`${p.id}\t${p.driver}\t${p.name}`);
+  process.exit(0);
 }
 
-const store = createAppStore(source);
+// With an explicit arg we connect straight in; with none we show the picker.
+let initial: ConnectionProfile | null = null;
+if (arg) {
+  initial = resolveProfile(arg, profiles);
+  if (!initial) {
+    die(`unknown connection "${arg}" (try --list, a saved name, or a .db file)`);
+  }
+}
+
+const open = (profile: ConnectionProfile) =>
+  openConnection(profile, { factory: createDataSource, secrets });
 
 const { waitUntilExit } = render(
-  <StoreContext.Provider value={store}>
-    <App />
-  </StoreContext.Provider>,
+  <Root profiles={profiles} open={open} initial={initial} />,
 );
 
 await waitUntilExit();
-await source.disconnect();

@@ -9,10 +9,14 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { ResultSet, CellValue } from '../../domain/datasource/ResultSet.ts';
+import type { Sort } from '../../domain/query/Query.ts';
 
 interface Props {
   result: ResultSet | null;
   cursor: number;
+  /** Index of the column cursor (target of sort). */
+  selectedCol: number;
+  sort: Sort | null;
   loading: boolean;
   hasTable: boolean;
   /** Rows of vertical space available for the grid body. */
@@ -35,9 +39,16 @@ const fit = (s: string, w: number): string => {
   return s + ' '.repeat(w - s.length);
 };
 
+const arrowFor = (sort: Sort | null, name: string): string => {
+  if (!sort || sort.column !== name) return '';
+  return sort.direction === 'asc' ? ' ▲' : ' ▼';
+};
+
 const DataGridImpl: React.FC<Props> = ({
   result,
   cursor,
+  selectedCol,
+  sort,
   loading,
   hasTable,
   viewportRows,
@@ -57,21 +68,34 @@ const DataGridImpl: React.FC<Props> = ({
     cursor >= vh ? Math.min(cursor - vh + 1, Math.max(0, rows.length - vh)) : 0;
   const visible = rows.slice(start, start + vh);
 
-  // Column widths computed from the visible window only — O(viewport), not O(table).
+  // Column widths from the visible window only — O(viewport), not O(table).
+  // The sorted column reserves 2 cells for its ▲/▼ marker so rows stay aligned.
   const widths = columns.map((c, i) => {
-    let w = c.name.length;
+    let w = c.name.length + (sort?.column === c.name ? 2 : 0);
     for (const row of visible) w = Math.max(w, formatCell(row[i] ?? null).length);
     return Math.min(Math.max(w, 3), MAX_COL);
   });
 
-  const header = columns.map((c, i) => fit(c.name, widths[i]!)).join(' │ ');
+  const lineWidth =
+    widths.reduce((a, b) => a + b, 0) + Math.max(0, columns.length - 1) * 3;
 
   return (
     <Box flexDirection="column">
-      <Text bold color={focused ? 'cyan' : undefined}>
-        {header}
-      </Text>
-      <Text dimColor>{'─'.repeat(header.length)}</Text>
+      <Box flexDirection="row">
+        {columns.map((c, i) => {
+          const label = fit(c.name + arrowFor(sort, c.name), widths[i]!);
+          const isSel = i === selectedCol;
+          return (
+            <React.Fragment key={c.name}>
+              {i > 0 ? <Text dimColor>{' │ '}</Text> : null}
+              <Text bold underline={isSel} color={isSel ? 'cyan' : undefined}>
+                {label}
+              </Text>
+            </React.Fragment>
+          );
+        })}
+      </Box>
+      <Text dimColor>{'─'.repeat(lineWidth)}</Text>
       {visible.map((row, i) => {
         const absolute = start + i;
         const line = columns

@@ -92,3 +92,36 @@ test('grid receives focus and cursor moves on arrow keys', async () => {
   expect(lastFrame() ?? '').toContain('w2');
   unmount();
 });
+
+test('pressing s sorts the current column and shows an indicator', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  stdin.write('\r'); // open table (focus → grid)
+  await tick();
+  stdin.write('s'); // sort current column (id) ascending
+  await tick();
+  expect(lastFrame() ?? '').toContain('▲');
+  unmount();
+});
+
+test('filtering a column narrows the grid via the input mode', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  stdin.write('\r'); // open table → grid focus, gridCol 0 (id)
+  await tick();
+  stdin.write('l'); // → label column (gridCol 1)
+  await tick();
+  stdin.write('/'); // enter filter input mode
+  await tick();
+  stdin.write('2');
+  stdin.write('5'); // draft "25"
+  await tick();
+  stdin.write('\r'); // commit → label contains 25
+  await tick();
+
+  const frame = lastFrame() ?? '';
+  expect(frame).toContain('w25');
+  expect(frame).toContain('of 1 rows'); // count reflects the filter
+  expect(frame).toContain('label~25'); // active-filter summary
+  unmount();
+});

@@ -11,7 +11,7 @@
 import type { CapabilitySet } from './capabilities.ts';
 import type { ResultSet } from './ResultSet.ts';
 import type { SchemaSnapshot, ObjectRef, ObjectSchema } from './schema.ts';
-import type { Query, Page } from '../query/Query.ts';
+import type { Query, BrowseSpec, Filter } from '../query/Query.ts';
 import type { Result } from '../../shared/Result.ts';
 import type { ConnectionError } from '../errors/errors.ts';
 
@@ -45,9 +45,17 @@ export interface SchemaIntrospectable {
  * find().skip().limit(). The use case calls this and never builds a query.
  */
 export interface Browsable {
-  browse(ref: ObjectRef, page: Page, signal?: AbortSignal): Promise<ResultSet>;
-  /** Approximate or exact total row count, for paging UI. */
-  count(ref: ObjectRef, signal?: AbortSignal): Promise<number>;
+  browse(
+    ref: ObjectRef,
+    spec: BrowseSpec,
+    signal?: AbortSignal,
+  ): Promise<ResultSet>;
+  /** Exact total row count under the same optional filter, for paging UI. */
+  count(
+    ref: ObjectRef,
+    filter?: Filter | null,
+    signal?: AbortSignal,
+  ): Promise<number>;
 }
 
 // (RowEditable, Transactional, Streamable arrive in later phases — the model

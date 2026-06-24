@@ -7,6 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp as useInkApp, useInput } from 'ink';
 import { useApp, useStoreApi } from './context.ts';
+import { useShell } from './shell.ts';
 import { Sidebar } from '../components/Sidebar.tsx';
 import { DataGrid } from '../components/DataGrid.tsx';
 import { StatusBar } from '../components/StatusBar.tsx';
@@ -28,9 +29,11 @@ const useTerminalRows = (): number => {
 export const App: React.FC = () => {
   const ink = useInkApp();
   const store = useStoreApi();
+  const shell = useShell();
 
   const status = useApp((s) => s.status);
   const error = useApp((s) => s.error);
+  const connectionName = useApp((s) => s.connectionName);
   const objects = useApp((s) => s.objects);
   const selectedIndex = useApp((s) => s.selectedIndex);
   const focus = useApp((s) => s.focus);
@@ -39,6 +42,11 @@ export const App: React.FC = () => {
   const total = useApp((s) => s.total);
   const page = useApp((s) => s.page);
   const gridRow = useApp((s) => s.gridRow);
+  const gridCol = useApp((s) => s.gridCol);
+  const sort = useApp((s) => s.sort);
+  const filter = useApp((s) => s.filter);
+  const mode = useApp((s) => s.mode);
+  const filterDraft = useApp((s) => s.filterDraft);
   const loading = useApp((s) => s.loading);
 
   useEffect(() => {
@@ -47,8 +55,24 @@ export const App: React.FC = () => {
 
   useInput((input, key) => {
     const s = store.getState();
+
+    // Filter input mode captures all keys until commit/cancel.
+    if (s.mode === 'filter') {
+      if (key.return) void s.commitFilter();
+      else if (key.escape) s.cancelFilter();
+      else if (key.backspace || key.delete)
+        s.updateFilterDraft(s.filterDraft.slice(0, -1));
+      else if (input && !key.ctrl && !key.meta)
+        s.updateFilterDraft(s.filterDraft + input);
+      return;
+    }
+
     if (input === 'q' || (key.ctrl && input === 'c')) {
       ink.exit();
+      return;
+    }
+    if (input === '`') {
+      shell.switchConnection();
       return;
     }
     if (key.tab) {
@@ -62,6 +86,10 @@ export const App: React.FC = () => {
     } else {
       if (key.upArrow || input === 'k') s.gridUp();
       else if (key.downArrow || input === 'j') s.gridDown();
+      else if (key.leftArrow || input === 'h') s.gridLeft();
+      else if (key.rightArrow || input === 'l') s.gridRight();
+      else if (input === 's') void s.applySort();
+      else if (input === '/') s.beginFilter();
       else if (input === 'n') void s.pageNext();
       else if (input === 'p') void s.pagePrev();
     }
@@ -94,6 +122,8 @@ export const App: React.FC = () => {
           <DataGrid
             result={result}
             cursor={gridRow}
+            selectedCol={gridCol}
+            sort={sort}
             loading={loading}
             hasTable={current !== null}
             viewportRows={viewportRows}
@@ -104,11 +134,16 @@ export const App: React.FC = () => {
       <StatusBar
         status={status}
         error={error}
+        connectionName={connectionName}
         current={current}
         total={total}
         page={page}
         rowsInPage={result?.rows.length ?? 0}
         focus={focus}
+        filter={filter}
+        mode={mode}
+        filterDraft={filterDraft}
+        filterColumn={result?.columns[gridCol]?.name ?? null}
       />
     </Box>
   );

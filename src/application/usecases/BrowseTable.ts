@@ -11,7 +11,7 @@ import {
   type DataSource,
 } from '../../domain/datasource/DataSource.ts';
 import type { ObjectRef } from '../../domain/datasource/schema.ts';
-import type { Page } from '../../domain/query/Query.ts';
+import type { BrowseSpec } from '../../domain/query/Query.ts';
 import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
 import { ok, err, type Result } from '../../shared/Result.ts';
 import { UnsupportedCapabilityError } from '../../domain/errors/errors.ts';
@@ -19,13 +19,13 @@ import { UnsupportedCapabilityError } from '../../domain/errors/errors.ts';
 export interface BrowseResult {
   readonly rows: ResultSet;
   readonly total: number;
-  readonly page: Page;
+  readonly spec: BrowseSpec;
 }
 
 export const browseTable = async (
   source: DataSource,
   ref: ObjectRef,
-  page: Page,
+  spec: BrowseSpec,
   signal?: AbortSignal,
 ): Promise<Result<BrowseResult, UnsupportedCapabilityError>> => {
   const browsable = asBrowsable(source);
@@ -35,8 +35,8 @@ export const browseTable = async (
     );
   }
   const [rows, total] = await Promise.all([
-    browsable.browse(ref, page, signal),
-    browsable.count(ref, signal),
+    browsable.browse(ref, spec, signal),
+    browsable.count(ref, spec.filter, signal),
   ]);
-  return ok({ rows, total, page });
+  return ok({ rows, total, spec });
 };

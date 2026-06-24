@@ -14,6 +14,9 @@ import { BunSqliteDriver } from './sql/drivers/BunSqliteDriver.ts';
 import { PostgresDialect } from './sql/dialects/PostgresDialect.ts';
 import { PgDriver } from './sql/drivers/PgDriver.ts';
 import type { PoolConfig } from 'pg';
+import { MySqlDialect } from './sql/dialects/MySqlDialect.ts';
+import { MySqlDriver } from './sql/drivers/MySqlDriver.ts';
+import type { PoolOptions } from 'mysql2';
 
 export const createDataSource = (
   profile: ConnectionProfile,
@@ -41,8 +44,16 @@ export const createDataSource = (
         ),
       );
     }
-    // Phase 1+: case 'mysql' → new SqlDataSource(id, MySqlDriver, MySqlDialect)
-    // Phase 6:  case 'mongodb' / 'redis' → MongoDataSource / RedisDataSource
+    case 'mysql': {
+      return ok(
+        new SqlDataSource(
+          profile.id,
+          new MySqlDriver(toMySqlConfig(profile.options)),
+          new MySqlDialect(),
+        ),
+      );
+    }
+    // Phase 6: case 'mongodb' / 'redis' → MongoDataSource / RedisDataSource
     default:
       return err(
         new ConnectionError(`unsupported driver: ${profile.driver}`),
@@ -61,6 +72,20 @@ const toPoolConfig = (options: Readonly<Record<string, unknown>>): PoolConfig =>
   return {
     host: options.host as string | undefined,
     port,
+    user: options.user as string | undefined,
+    password: options.password as string | undefined,
+    database: options.database as string | undefined,
+  };
+};
+
+/** Map profile options to a mysql2 config (connection URI or discrete fields). */
+const toMySqlConfig = (
+  options: Readonly<Record<string, unknown>>,
+): PoolOptions | string => {
+  if (typeof options.connectionString === 'string') return options.connectionString;
+  return {
+    host: options.host as string | undefined,
+    port: options.port === undefined ? undefined : Number(options.port),
     user: options.user as string | undefined,
     password: options.password as string | undefined,
     database: options.database as string | undefined,

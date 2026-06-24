@@ -57,6 +57,8 @@ docker run -d --name lazysql-pg -e POSTGRES_PASSWORD=lazysql \
     grid 内 `←/→` 移动列光标、`s` 循环 升→降→无。
   - ✅ **列筛选** —— 结构化 `Filter` 参数化生成 WHERE（防注入），count 同步；
     grid 内 `/` 进入输入态，对当前列做 contains 筛选。
-  - ⬜ MySQL 适配器 · 连接管理与 Keychain。
+  - ✅ **MySQL/MariaDB 适配器** —— 第三个引擎复用 `SqlDataSource`，仅加
+    `MySqlDialect`（反引号 / `DATABASE()` / `COLUMN_KEY`）+ `MySqlDriver`（mysql2）。
+  - ⬜ 连接管理与 Keychain。
 
-详见 `docs/ARCHITECTURE.md` §11 演进路线。当前 **20 项测试全绿**。
+详见 `docs/ARCHITECTURE.md` §11 演进路线。当前 **26 项测试全绿**（SQLite / 真实 PG / 真实 MySQL / 无头 TUI）。

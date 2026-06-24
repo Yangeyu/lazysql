@@ -351,7 +351,8 @@ src/
   - ✅ 列排序：引入 `BrowseSpec`(page + sort，为 filter 预留)，两个 Dialect 各自生成 `ORDER BY`；UI 列光标 + ▲/▼ 指示。同一增量在 SQLite/PG/TUI 三处验证。
   - ✅ 列筛选：`Filter` 结构化条件挂入 `BrowseSpec`（未改 `Browsable` 签名，验证预留扩展位）；共享 `whereBuilder` 参数化生成 WHERE（`?` vs `$n`、`LIKE` vs `ILIKE`），count 同步应用 filter；TUI `/` 进入输入态，contains 筛选当前列。
   - ✅ MySQL/MariaDB 适配器：再次复用 `SqlDataSource`，仅加 `MySqlDialect`(反引号标识符 / `DATABASE()` 限定 / `COLUMN_KEY='PRI'` 查主键) + `MySqlDriver`(`mysql2`)。**三个 SQL 引擎(SQLite/PG/MySQL)过同一套契约测试**——方言隔离的最强证据。
-  - ⬜ 连接管理与 Keychain。
+  - ✅ 连接管理(持久化层)：`ConnectionRepository`/`SecretStore`/`DataSourceFactory` 三个出站端口；`YamlConnectionRepository`(`connections.yml`，无密码，可手编) + `FileSecretStore`(`secrets.json`，`chmod 600`，与配置隔离)。`OpenConnection` 用例解析密钥并合并进 options 后连接；组合根按 名称/文件/默认 解析连接、首次运行写入起始配置。**Keychain 留作 `SecretStore` 的下一个适配器，零改动其余代码。**
+  - ⬜ in-TUI 连接选择器/新增表单 · OS Keychain 适配器。
 - **Phase 2 · 数据编辑**：行级 CRUD + 事务安全 + 二次确认。
 - **Phase 3 · 查询编辑器**：执行 SQL + 结果网格 + 历史 + **schema 感知补全**。
 - **Phase 4 · Schema 管理**：内省视图 + DDL。

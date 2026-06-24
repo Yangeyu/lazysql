@@ -23,8 +23,10 @@ import { createAppStore } from './presentation/app/store.ts';
 import { createDataSource } from './adapters/datasource/registry.ts';
 import { YamlConnectionRepository } from './adapters/persistence/YamlConnectionRepository.ts';
 import { FileSecretStore } from './adapters/persistence/FileSecretStore.ts';
+import { KeychainSecretStore } from './adapters/persistence/KeychainSecretStore.ts';
 import { connectionsFile } from './adapters/persistence/paths.ts';
 import { openConnection } from './application/usecases/OpenConnection.ts';
+import type { SecretStore } from './application/ports/SecretStore.ts';
 import type { ConnectionProfile } from './domain/connection/ConnectionProfile.ts';
 
 const DEFAULT_CONFIG = `# lazysql connections.
@@ -82,7 +84,10 @@ const die = (message: string): never => {
 // ── boot ──────────────────────────────────────────────────────────────────
 
 const repo = new YamlConnectionRepository();
-const secrets = new FileSecretStore();
+const secrets: SecretStore =
+  process.env.LAZYSQL_SECRETS === 'keychain' && KeychainSecretStore.isSupported()
+    ? new KeychainSecretStore()
+    : new FileSecretStore();
 
 const file = connectionsFile();
 if (!existsSync(file)) {

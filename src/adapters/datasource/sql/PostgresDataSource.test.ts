@@ -125,3 +125,25 @@ pgTest('browse with descending sort orders by the column', async () => {
   expect(result.rows.rows[0]?.[2]).toBe(25);
   expect(result.rows.rows[4]?.[2]).toBe(21);
 });
+
+pgTest('numeric filter narrows rows ($-bound) and count matches', async () => {
+  const result = unwrap(
+    await browseTable(source, widget, {
+      page: firstPage(50),
+      filter: { conditions: [{ column: 'qty', op: 'gt', value: '20' }] },
+    }),
+  );
+  expect(result.total).toBe(5);
+  expect(result.rows.rows.length).toBe(5);
+});
+
+pgTest('contains filter uses ILIKE with a bound value', async () => {
+  const result = unwrap(
+    await browseTable(source, widget, {
+      page: firstPage(50),
+      filter: { conditions: [{ column: 'label', op: 'contains', value: '25' }] },
+    }),
+  );
+  expect(result.total).toBe(1);
+  expect(result.rows.rows[0]?.[1]).toBe('w25');
+});

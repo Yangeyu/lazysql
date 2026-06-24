@@ -27,14 +27,37 @@ export interface Sort {
   readonly direction: SortDirection;
 }
 
+/** Comparison kinds. `contains` is a substring match (LIKE/ILIKE). */
+export type FilterOperator =
+  | 'eq'
+  | 'ne'
+  | 'lt'
+  | 'lte'
+  | 'gt'
+  | 'gte'
+  | 'contains';
+
+export interface FilterCondition {
+  readonly column: string;
+  readonly op: FilterOperator;
+  /** Raw user text; always bound as a parameter, never interpolated. */
+  readonly value: string;
+}
+
+/** Conditions are AND-combined. */
+export interface Filter {
+  readonly conditions: FilterCondition[];
+}
+
 /**
- * How to read one window of an object. Carries pagination and optional sort;
- * filters will join here in a later increment without changing the Browsable
- * signature again. (Open for extension.)
+ * How to read one window of an object: pagination + optional sort + optional
+ * filter. This is the single, extensible read specification — adding filter
+ * here did not change the Browsable signature. (Open for extension.)
  */
 export interface BrowseSpec {
   readonly page: Page;
   readonly sort?: Sort | null;
+  readonly filter?: Filter | null;
 }
 
 /**

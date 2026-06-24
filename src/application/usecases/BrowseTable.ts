@@ -36,7 +36,7 @@ export const browseTable = async (
   }
   const [rows, total] = await Promise.all([
     browsable.browse(ref, spec, signal),
-    browsable.count(ref, signal),
+    browsable.count(ref, spec.filter, signal),
   ]);
   return ok({ rows, total, spec });
 };

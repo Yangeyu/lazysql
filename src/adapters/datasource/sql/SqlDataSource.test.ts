@@ -91,3 +91,27 @@ test('browse with descending sort orders by the column', async () => {
   expect(result.rows.rows[0]?.[2]).toBe(25);
   expect(result.rows.rows[4]?.[2]).toBe(21);
 });
+
+test('numeric filter narrows rows and the count matches', async () => {
+  const ref = { name: 'widget', kind: 'table' as const };
+  const result = unwrap(
+    await browseTable(source, ref, {
+      page: firstPage(50),
+      filter: { conditions: [{ column: 'qty', op: 'gt', value: '20' }] },
+    }),
+  );
+  expect(result.total).toBe(5); // qty 21..25
+  expect(result.rows.rows.length).toBe(5);
+});
+
+test('contains filter binds the value (no interpolation)', async () => {
+  const ref = { name: 'widget', kind: 'table' as const };
+  const result = unwrap(
+    await browseTable(source, ref, {
+      page: firstPage(50),
+      filter: { conditions: [{ column: 'label', op: 'contains', value: '25' }] },
+    }),
+  );
+  expect(result.total).toBe(1);
+  expect(result.rows.rows[0]?.[1]).toBe('w25');
+});

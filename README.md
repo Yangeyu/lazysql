@@ -55,6 +55,8 @@ docker run -d --name lazysql-pg -e POSTGRES_PASSWORD=lazysql \
     通过与 SQLite **同一套契约测试**（针对真实 PG 容器）。
   - ✅ **列排序** —— `BrowseSpec` 承载 page + sort，两个方言各自生成 `ORDER BY`；
     grid 内 `←/→` 移动列光标、`s` 循环 升→降→无。
-  - ⬜ 筛选 · MySQL 适配器 · 连接管理与 Keychain。
+  - ✅ **列筛选** —— 结构化 `Filter` 参数化生成 WHERE（防注入），count 同步；
+    grid 内 `/` 进入输入态，对当前列做 contains 筛选。
+  - ⬜ MySQL 适配器 · 连接管理与 Keychain。
 
-详见 `docs/ARCHITECTURE.md` §11 演进路线。当前 **15 项测试全绿**。
+详见 `docs/ARCHITECTURE.md` §11 演进路线。当前 **20 项测试全绿**。

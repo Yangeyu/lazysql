@@ -6,16 +6,25 @@
  */
 
 import type { Dialect } from '../Dialect.ts';
-import type { Query, BrowseSpec, Sort } from '../../../../domain/query/Query.ts';
+import type {
+  Query,
+  BrowseSpec,
+  Sort,
+  Filter,
+} from '../../../../domain/query/Query.ts';
 import { sql } from '../../../../domain/query/Query.ts';
 import type {
   ObjectRef,
   ColumnDef,
 } from '../../../../domain/datasource/schema.ts';
 import type { RawResult } from '../Driver.ts';
+import { buildWhere } from '../whereBuilder.ts';
 
 /** Quote a SQL identifier, escaping embedded double-quotes. */
 const quoteIdent = (name: string): string => `"${name.replace(/"/g, '""')}"`;
+
+/** SQLite uses positional `?` placeholders. */
+const ph = (): string => '?';
 
 /** ` ORDER BY "col" ASC|DESC`, or empty when unsorted. */
 const orderBy = (sort: Sort | null | undefined): string =>
@@ -66,13 +75,18 @@ export class SqliteDialect implements Dialect {
   }
 
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {
+    const where = buildWhere(spec.filter, quoteIdent, ph, 'LIKE');
     return sql(
-      `SELECT * FROM ${quoteIdent(ref.name)}${orderBy(spec.sort)} LIMIT ? OFFSET ?`,
-      [spec.page.limit, spec.page.offset],
+      `SELECT * FROM ${quoteIdent(ref.name)}${where.clause}${orderBy(spec.sort)} LIMIT ? OFFSET ?`,
+      [...where.params, spec.page.limit, spec.page.offset],
     );
   }
 
-  countQuery(ref: ObjectRef): Query {
-    return sql(`SELECT COUNT(*) AS n FROM ${quoteIdent(ref.name)}`);
+  countQuery(ref: ObjectRef, filter?: Filter | null): Query {
+    const where = buildWhere(filter, quoteIdent, ph, 'LIKE');
+    return sql(
+      `SELECT COUNT(*) AS n FROM ${quoteIdent(ref.name)}${where.clause}`,
+      where.params,
+    );
   }
 }

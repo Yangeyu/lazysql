@@ -26,7 +26,7 @@ import type {
   ObjectSchema,
   ObjectRef,
 } from '../../../domain/datasource/schema.ts';
-import type { Query, BrowseSpec } from '../../../domain/query/Query.ts';
+import type { Query, BrowseSpec, Filter } from '../../../domain/query/Query.ts';
 import { ConnectionError, QueryError } from '../../../domain/errors/errors.ts';
 import { ok, err, type Result } from '../../../shared/Result.ts';
 import type { SqlDriver, RawResult } from './Driver.ts';
@@ -105,9 +105,13 @@ export class SqlDataSource
     return { ...rs, truncated: rs.rows.length >= spec.page.limit };
   }
 
-  async count(ref: ObjectRef, signal?: AbortSignal): Promise<number> {
+  async count(
+    ref: ObjectRef,
+    filter?: Filter | null,
+    signal?: AbortSignal,
+  ): Promise<number> {
     throwIfAborted(signal);
-    const raw = await this.runQuery(this.dialect.countQuery(ref));
+    const raw = await this.runQuery(this.dialect.countQuery(ref, filter));
     return Number(raw.rows[0]?.[0] ?? 0);
   }
 

@@ -349,7 +349,8 @@ src/
 - **Phase 1 · 核心浏览** 🚧：分页/筛选/排序 + PG/MySQL 适配器 + 连接管理 + Keychain。
   - ✅ PostgreSQL 适配器：复用 `SqlDataSource`，仅加 `PostgresDialect`(`$n` 占位/`information_schema` 内省/schema 限定名) + `PgDriver`(`pg`)，过与 SQLite 同一套契约测试。**新增引擎零改动 domain/application/presentation**（OCP 实证）。
   - ✅ 列排序：引入 `BrowseSpec`(page + sort，为 filter 预留)，两个 Dialect 各自生成 `ORDER BY`；UI 列光标 + ▲/▼ 指示。同一增量在 SQLite/PG/TUI 三处验证。
-  - ⬜ 筛选 · MySQL 适配器 · 连接管理与 Keychain。
+  - ✅ 列筛选：`Filter` 结构化条件挂入 `BrowseSpec`（未改 `Browsable` 签名，验证预留扩展位）；共享 `whereBuilder` 参数化生成 WHERE（`?` vs `$n`、`LIKE` vs `ILIKE`），count 同步应用 filter；TUI `/` 进入输入态，contains 筛选当前列。
+  - ⬜ MySQL 适配器 · 连接管理与 Keychain。
 - **Phase 2 · 数据编辑**：行级 CRUD + 事务安全 + 二次确认。
 - **Phase 3 · 查询编辑器**：执行 SQL + 结果网格 + 历史 + **schema 感知补全**。
 - **Phase 4 · Schema 管理**：内省视图 + DDL。

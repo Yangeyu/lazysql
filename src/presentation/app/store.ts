@@ -16,6 +16,7 @@ import {
   cycleSort,
   type Page,
   type Sort,
+  type Filter,
   type BrowseSpec,
 } from '../../domain/query/Query.ts';
 import { listObjects } from '../../application/usecases/ListObjects.ts';
@@ -25,6 +26,7 @@ export const PAGE_SIZE = 100;
 
 export type Focus = 'sidebar' | 'grid';
 export type Status = 'connecting' | 'ready' | 'error';
+export type Mode = 'normal' | 'filter';
 
 export interface AppState {
   status: Status;
@@ -36,9 +38,12 @@ export interface AppState {
   result: ResultSet | null;
   page: Page;
   sort: Sort | null;
+  filter: Filter | null;
   total: number;
   gridRow: number;
   gridCol: number;
+  mode: Mode;
+  filterDraft: string;
   loading: boolean;
 
   init: () => Promise<void>;
@@ -53,6 +58,10 @@ export interface AppState {
   applySort: () => Promise<void>;
   pageNext: () => Promise<void>;
   pagePrev: () => Promise<void>;
+  beginFilter: () => void;
+  updateFilterDraft: (text: string) => void;
+  cancelFilter: () => void;
+  commitFilter: () => Promise<void>;
 }
 
 export type AppStore = StoreApi<AppState>;
@@ -73,6 +82,7 @@ export const createAppStore = (source: DataSource): AppStore =>
         total: res.value.total,
         page: res.value.spec.page,
         sort: res.value.spec.sort ?? null,
+        filter: res.value.spec.filter ?? null,
         gridRow: 0,
       });
     };
@@ -87,9 +97,12 @@ export const createAppStore = (source: DataSource): AppStore =>
       result: null,
       page: firstPage(PAGE_SIZE),
       sort: null,
+      filter: null,
       total: 0,
       gridRow: 0,
       gridCol: 0,
+      mode: 'normal',
+      filterDraft: '',
       loading: false,
 
       init: async () => {
@@ -113,8 +126,8 @@ export const createAppStore = (source: DataSource): AppStore =>
         const { objects, selectedIndex } = get();
         const ref = objects[selectedIndex];
         if (!ref) return;
-        set({ focus: 'grid', gridCol: 0, sort: null });
-        await load(ref, { page: firstPage(PAGE_SIZE), sort: null });
+        set({ focus: 'grid', gridCol: 0, sort: null, filter: null });
+        await load(ref, { page: firstPage(PAGE_SIZE), sort: null, filter: null });
       },
 
       toggleFocus: () =>
@@ -141,24 +154,49 @@ export const createAppStore = (source: DataSource): AppStore =>
         })),
 
       applySort: async () => {
-        const { current, sort, result, gridCol } = get();
+        const { current, sort, filter, result, gridCol } = get();
         const column = result?.columns[gridCol]?.name;
         if (!current || !column) return;
         // Re-sort always returns to the first page for a coherent ordering.
         const next = cycleSort(sort, column);
-        await load(current, { page: firstPage(PAGE_SIZE), sort: next });
+        await load(current, { page: firstPage(PAGE_SIZE), sort: next, filter });
       },
 
       pageNext: async () => {
-        const { current, page, sort, total } = get();
+        const { current, page, sort, filter, total } = get();
         if (!current || page.offset + page.limit >= total) return;
-        await load(current, { page: nextPage(page), sort });
+        await load(current, { page: nextPage(page), sort, filter });
       },
 
       pagePrev: async () => {
-        const { current, page, sort } = get();
+        const { current, page, sort, filter } = get();
         if (!current || page.offset === 0) return;
-        await load(current, { page: prevPage(page), sort });
+        await load(current, { page: prevPage(page), sort, filter });
+      },
+
+      beginFilter: () => {
+        const { current, filter, result, gridCol } = get();
+        const column = result?.columns[gridCol]?.name;
+        if (!current || !column) return;
+        // Pre-fill the draft with the existing value for this column, if any.
+        const existing = filter?.conditions.find((c) => c.column === column);
+        set({ mode: 'filter', filterDraft: existing?.value ?? '' });
+      },
+
+      updateFilterDraft: (text) => set({ filterDraft: text }),
+
+      cancelFilter: () => set({ mode: 'normal', filterDraft: '' }),
+
+      commitFilter: async () => {
+        const { current, sort, result, gridCol, filterDraft } = get();
+        const column = result?.columns[gridCol]?.name;
+        set({ mode: 'normal', filterDraft: '' });
+        if (!current || !column) return;
+        const value = filterDraft.trim();
+        const filter: Filter | null = value
+          ? { conditions: [{ column, op: 'contains', value }] }
+          : null;
+        await load(current, { page: firstPage(PAGE_SIZE), sort, filter });
       },
     };
   });

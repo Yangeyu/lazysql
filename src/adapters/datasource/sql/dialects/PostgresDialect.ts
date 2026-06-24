@@ -8,17 +8,26 @@
  */
 
 import type { Dialect } from '../Dialect.ts';
-import type { Query, BrowseSpec, Sort } from '../../../../domain/query/Query.ts';
+import type {
+  Query,
+  BrowseSpec,
+  Sort,
+  Filter,
+} from '../../../../domain/query/Query.ts';
 import { sql } from '../../../../domain/query/Query.ts';
 import type {
   ObjectRef,
   ColumnDef,
 } from '../../../../domain/datasource/schema.ts';
 import type { RawResult } from '../Driver.ts';
+import { buildWhere } from '../whereBuilder.ts';
 
 const DEFAULT_SCHEMA = 'public';
 
 const quoteIdent = (name: string): string => `"${name.replace(/"/g, '""')}"`;
+
+/** Postgres uses numbered `$n` placeholders. */
+const ph = (index: number): string => `$${index}`;
 
 /** Schema-qualified, quoted object name. */
 const qualify = (ref: ObjectRef): string =>
@@ -88,13 +97,19 @@ export class PostgresDialect implements Dialect {
   }
 
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {
+    const where = buildWhere(spec.filter, quoteIdent, ph, 'ILIKE');
+    const n = where.params.length;
     return sql(
-      `SELECT * FROM ${qualify(ref)}${orderBy(spec.sort)} LIMIT $1 OFFSET $2`,
-      [spec.page.limit, spec.page.offset],
+      `SELECT * FROM ${qualify(ref)}${where.clause}${orderBy(spec.sort)} LIMIT ${ph(n + 1)} OFFSET ${ph(n + 2)}`,
+      [...where.params, spec.page.limit, spec.page.offset],
     );
   }
 
-  countQuery(ref: ObjectRef): Query {
-    return sql(`SELECT count(*) AS n FROM ${qualify(ref)}`);
+  countQuery(ref: ObjectRef, filter?: Filter | null): Query {
+    const where = buildWhere(filter, quoteIdent, ph, 'ILIKE');
+    return sql(
+      `SELECT count(*) AS n FROM ${qualify(ref)}${where.clause}`,
+      where.params,
+    );
   }
 }

@@ -6,7 +6,7 @@
  * `SqlDataSource` unchanged. (Strategy + OCP — docs/ARCHITECTURE.md §4.3)
  */
 
-import type { Query, BrowseSpec } from '../../../domain/query/Query.ts';
+import type { Query, BrowseSpec, Filter } from '../../../domain/query/Query.ts';
 import type {
   ObjectRef,
   ColumnDef,
@@ -26,8 +26,8 @@ export interface Dialect {
   /** Parse the raw result of `describeQuery` into column definitions. */
   parseColumns(raw: RawResult): ColumnDef[];
 
-  /** Query reading one paginated (and optionally sorted) window of rows. */
+  /** Query reading one paginated, optionally sorted/filtered window of rows. */
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query;
-  /** Query counting an object's rows. */
-  countQuery(ref: ObjectRef): Query;
+  /** Query counting an object's rows under the same optional filter. */
+  countQuery(ref: ObjectRef, filter?: Filter | null): Query;
 }

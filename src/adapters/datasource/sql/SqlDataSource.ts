@@ -26,7 +26,7 @@ import type {
   ObjectSchema,
   ObjectRef,
 } from '../../../domain/datasource/schema.ts';
-import type { Query, Page } from '../../../domain/query/Query.ts';
+import type { Query, BrowseSpec } from '../../../domain/query/Query.ts';
 import { ConnectionError, QueryError } from '../../../domain/errors/errors.ts';
 import { ok, err, type Result } from '../../../shared/Result.ts';
 import type { SqlDriver, RawResult } from './Driver.ts';
@@ -95,14 +95,14 @@ export class SqlDataSource
 
   async browse(
     ref: ObjectRef,
-    page: Page,
+    spec: BrowseSpec,
     signal?: AbortSignal,
   ): Promise<ResultSet> {
     throwIfAborted(signal);
-    const raw = await this.runQuery(this.dialect.browseQuery(ref, page));
+    const raw = await this.runQuery(this.dialect.browseQuery(ref, spec));
     const rs = toResultSet(raw);
     // A full page implies there may be more rows beyond this window.
-    return { ...rs, truncated: rs.rows.length >= page.limit };
+    return { ...rs, truncated: rs.rows.length >= spec.page.limit };
   }
 
   async count(ref: ObjectRef, signal?: AbortSignal): Promise<number> {

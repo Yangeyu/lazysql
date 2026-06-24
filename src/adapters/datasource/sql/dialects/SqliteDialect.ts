@@ -6,7 +6,7 @@
  */
 
 import type { Dialect } from '../Dialect.ts';
-import type { Query, Page } from '../../../../domain/query/Query.ts';
+import type { Query, BrowseSpec, Sort } from '../../../../domain/query/Query.ts';
 import { sql } from '../../../../domain/query/Query.ts';
 import type {
   ObjectRef,
@@ -16,6 +16,10 @@ import type { RawResult } from '../Driver.ts';
 
 /** Quote a SQL identifier, escaping embedded double-quotes. */
 const quoteIdent = (name: string): string => `"${name.replace(/"/g, '""')}"`;
+
+/** ` ORDER BY "col" ASC|DESC`, or empty when unsorted. */
+const orderBy = (sort: Sort | null | undefined): string =>
+  sort ? ` ORDER BY ${quoteIdent(sort.column)} ${sort.direction.toUpperCase()}` : '';
 
 /** Index of a column in a raw result, by name (case-insensitive). */
 const col = (raw: RawResult, name: string): number =>
@@ -61,11 +65,11 @@ export class SqliteDialect implements Dialect {
     }));
   }
 
-  browseQuery(ref: ObjectRef, page: Page): Query {
-    return sql(`SELECT * FROM ${quoteIdent(ref.name)} LIMIT ? OFFSET ?`, [
-      page.limit,
-      page.offset,
-    ]);
+  browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {
+    return sql(
+      `SELECT * FROM ${quoteIdent(ref.name)}${orderBy(spec.sort)} LIMIT ? OFFSET ?`,
+      [spec.page.limit, spec.page.offset],
+    );
   }
 
   countQuery(ref: ObjectRef): Query {

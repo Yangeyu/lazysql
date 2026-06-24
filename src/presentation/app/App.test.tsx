@@ -92,3 +92,14 @@ test('grid receives focus and cursor moves on arrow keys', async () => {
   expect(lastFrame() ?? '').toContain('w2');
   unmount();
 });
+
+test('pressing s sorts the current column and shows an indicator', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  stdin.write('\r'); // open table (focus → grid)
+  await tick();
+  stdin.write('s'); // sort current column (id) ascending
+  await tick();
+  expect(lastFrame() ?? '').toContain('▲');
+  unmount();
+});

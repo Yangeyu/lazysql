@@ -39,6 +39,8 @@ export const App: React.FC = () => {
   const total = useApp((s) => s.total);
   const page = useApp((s) => s.page);
   const gridRow = useApp((s) => s.gridRow);
+  const gridCol = useApp((s) => s.gridCol);
+  const sort = useApp((s) => s.sort);
   const loading = useApp((s) => s.loading);
 
   useEffect(() => {
@@ -62,6 +64,9 @@ export const App: React.FC = () => {
     } else {
       if (key.upArrow || input === 'k') s.gridUp();
       else if (key.downArrow || input === 'j') s.gridDown();
+      else if (key.leftArrow || input === 'h') s.gridLeft();
+      else if (key.rightArrow || input === 'l') s.gridRight();
+      else if (input === 's') void s.applySort();
       else if (input === 'n') void s.pageNext();
       else if (input === 'p') void s.pagePrev();
     }
@@ -94,6 +99,8 @@ export const App: React.FC = () => {
           <DataGrid
             result={result}
             cursor={gridRow}
+            selectedCol={gridCol}
+            sort={sort}
             loading={loading}
             hasTable={current !== null}
             viewportRows={viewportRows}

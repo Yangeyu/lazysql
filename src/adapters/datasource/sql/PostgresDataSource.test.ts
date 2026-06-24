@@ -100,7 +100,7 @@ pgTest('describe reports the primary key and nullability', async () => {
 });
 
 pgTest('browseTable paginates with $-placeholders and counts', async () => {
-  const result = unwrap(await browseTable(source, widget, firstPage(10)));
+  const result = unwrap(await browseTable(source, widget, { page: firstPage(10) }));
   expect(result.total).toBe(25);
   expect(result.rows.rows.length).toBe(10);
   expect(result.rows.truncated).toBe(true);
@@ -109,8 +109,19 @@ pgTest('browseTable paginates with $-placeholders and counts', async () => {
 
 pgTest('second page returns the remainder window', async () => {
   const result = unwrap(
-    await browseTable(source, widget, { offset: 20, limit: 10 }),
+    await browseTable(source, widget, { page: { offset: 20, limit: 10 } }),
   );
   expect(result.rows.rows.length).toBe(5);
   expect(result.rows.truncated).toBe(false);
+});
+
+pgTest('browse with descending sort orders by the column', async () => {
+  const result = unwrap(
+    await browseTable(source, widget, {
+      page: firstPage(5),
+      sort: { column: 'qty', direction: 'desc' },
+    }),
+  );
+  expect(result.rows.rows[0]?.[2]).toBe(25);
+  expect(result.rows.rows[4]?.[2]).toBe(21);
 });

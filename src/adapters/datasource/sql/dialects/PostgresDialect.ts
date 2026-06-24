@@ -8,7 +8,7 @@
  */
 
 import type { Dialect } from '../Dialect.ts';
-import type { Query, Page } from '../../../../domain/query/Query.ts';
+import type { Query, BrowseSpec, Sort } from '../../../../domain/query/Query.ts';
 import { sql } from '../../../../domain/query/Query.ts';
 import type {
   ObjectRef,
@@ -23,6 +23,10 @@ const quoteIdent = (name: string): string => `"${name.replace(/"/g, '""')}"`;
 /** Schema-qualified, quoted object name. */
 const qualify = (ref: ObjectRef): string =>
   `${quoteIdent(ref.namespace ?? DEFAULT_SCHEMA)}.${quoteIdent(ref.name)}`;
+
+/** ` ORDER BY "col" ASC|DESC`, or empty when unsorted. */
+const orderBy = (sort: Sort | null | undefined): string =>
+  sort ? ` ORDER BY ${quoteIdent(sort.column)} ${sort.direction.toUpperCase()}` : '';
 
 const col = (raw: RawResult, name: string): number =>
   raw.columns.findIndex((c) => c.toLowerCase() === name.toLowerCase());
@@ -83,11 +87,11 @@ export class PostgresDialect implements Dialect {
     }));
   }
 
-  browseQuery(ref: ObjectRef, page: Page): Query {
-    return sql(`SELECT * FROM ${qualify(ref)} LIMIT $1 OFFSET $2`, [
-      page.limit,
-      page.offset,
-    ]);
+  browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {
+    return sql(
+      `SELECT * FROM ${qualify(ref)}${orderBy(spec.sort)} LIMIT $1 OFFSET $2`,
+      [spec.page.limit, spec.page.offset],
+    );
   }
 
   countQuery(ref: ObjectRef): Query {

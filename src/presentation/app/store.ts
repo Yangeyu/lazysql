@@ -13,7 +13,10 @@ import {
   firstPage,
   nextPage,
   prevPage,
+  cycleSort,
   type Page,
+  type Sort,
+  type BrowseSpec,
 } from '../../domain/query/Query.ts';
 import { listObjects } from '../../application/usecases/ListObjects.ts';
 import { browseTable } from '../../application/usecases/BrowseTable.ts';
@@ -32,8 +35,10 @@ export interface AppState {
   current: ObjectRef | null;
   result: ResultSet | null;
   page: Page;
+  sort: Sort | null;
   total: number;
   gridRow: number;
+  gridCol: number;
   loading: boolean;
 
   init: () => Promise<void>;
@@ -43,6 +48,9 @@ export interface AppState {
   toggleFocus: () => void;
   gridUp: () => void;
   gridDown: () => void;
+  gridLeft: () => void;
+  gridRight: () => void;
+  applySort: () => Promise<void>;
   pageNext: () => Promise<void>;
   pagePrev: () => Promise<void>;
 }
@@ -51,9 +59,9 @@ export type AppStore = StoreApi<AppState>;
 
 export const createAppStore = (source: DataSource): AppStore =>
   createStore<AppState>((set, get) => {
-    const load = async (ref: ObjectRef, page: Page): Promise<void> => {
+    const load = async (ref: ObjectRef, spec: BrowseSpec): Promise<void> => {
       set({ loading: true, error: null });
-      const res = await browseTable(source, ref, page);
+      const res = await browseTable(source, ref, spec);
       if (!res.ok) {
         set({ loading: false, status: 'error', error: res.error.message });
         return;
@@ -63,7 +71,8 @@ export const createAppStore = (source: DataSource): AppStore =>
         current: ref,
         result: res.value.rows,
         total: res.value.total,
-        page: res.value.page,
+        page: res.value.spec.page,
+        sort: res.value.spec.sort ?? null,
         gridRow: 0,
       });
     };
@@ -77,8 +86,10 @@ export const createAppStore = (source: DataSource): AppStore =>
       current: null,
       result: null,
       page: firstPage(PAGE_SIZE),
+      sort: null,
       total: 0,
       gridRow: 0,
+      gridCol: 0,
       loading: false,
 
       init: async () => {
@@ -102,8 +113,8 @@ export const createAppStore = (source: DataSource): AppStore =>
         const { objects, selectedIndex } = get();
         const ref = objects[selectedIndex];
         if (!ref) return;
-        set({ focus: 'grid' });
-        await load(ref, firstPage(PAGE_SIZE));
+        set({ focus: 'grid', gridCol: 0, sort: null });
+        await load(ref, { page: firstPage(PAGE_SIZE), sort: null });
       },
 
       toggleFocus: () =>
@@ -119,16 +130,35 @@ export const createAppStore = (source: DataSource): AppStore =>
           ),
         })),
 
+      gridLeft: () => set((s) => ({ gridCol: Math.max(0, s.gridCol - 1) })),
+
+      gridRight: () =>
+        set((s) => ({
+          gridCol: Math.min(
+            Math.max(0, (s.result?.columns.length ?? 1) - 1),
+            s.gridCol + 1,
+          ),
+        })),
+
+      applySort: async () => {
+        const { current, sort, result, gridCol } = get();
+        const column = result?.columns[gridCol]?.name;
+        if (!current || !column) return;
+        // Re-sort always returns to the first page for a coherent ordering.
+        const next = cycleSort(sort, column);
+        await load(current, { page: firstPage(PAGE_SIZE), sort: next });
+      },
+
       pageNext: async () => {
-        const { current, page, total } = get();
+        const { current, page, sort, total } = get();
         if (!current || page.offset + page.limit >= total) return;
-        await load(current, nextPage(page));
+        await load(current, { page: nextPage(page), sort });
       },
 
       pagePrev: async () => {
-        const { current, page } = get();
+        const { current, page, sort } = get();
         if (!current || page.offset === 0) return;
-        await load(current, prevPage(page));
+        await load(current, { page: prevPage(page), sort });
       },
     };
   });

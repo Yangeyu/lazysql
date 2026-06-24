@@ -20,6 +20,36 @@ export interface Page {
   readonly limit: number;
 }
 
+export type SortDirection = 'asc' | 'desc';
+
+export interface Sort {
+  readonly column: string;
+  readonly direction: SortDirection;
+}
+
+/**
+ * How to read one window of an object. Carries pagination and optional sort;
+ * filters will join here in a later increment without changing the Browsable
+ * signature again. (Open for extension.)
+ */
+export interface BrowseSpec {
+  readonly page: Page;
+  readonly sort?: Sort | null;
+}
+
+/**
+ * UI helper: cycle a column's sort state asc → desc → none. Selecting a
+ * different column starts a fresh ascending sort.
+ */
+export const cycleSort = (
+  current: Sort | null | undefined,
+  column: string,
+): Sort | null => {
+  if (!current || current.column !== column) return { column, direction: 'asc' };
+  if (current.direction === 'asc') return { column, direction: 'desc' };
+  return null;
+};
+
 export const firstPage = (limit: number): Page => ({ offset: 0, limit });
 
 export const nextPage = (page: Page): Page => ({

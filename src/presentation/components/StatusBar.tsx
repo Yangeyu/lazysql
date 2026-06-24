@@ -34,7 +34,7 @@ const StatusBarImpl: React.FC<Props> = ({
   const hints =
     focus === 'sidebar'
       ? '↑/↓ select · ⏎ open · tab grid · q quit'
-      : '↑/↓ row · n/p page · tab objects · q quit';
+      : '↑/↓ row · ←/→ col · s sort · n/p page · tab objects · q quit';
 
   return (
     <Box flexDirection="column">

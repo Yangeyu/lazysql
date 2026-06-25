@@ -65,7 +65,13 @@ export class SqlDataSource
       }
       return ok(undefined);
     } catch (cause) {
-      return err(new ConnectionError(`failed to connect: ${this.id}`, cause));
+      // Surface the driver's own message (e.g. "password authentication
+      // failed") so the user can actually diagnose the failure, not just see
+      // an opaque wrapper.
+      const detail = cause instanceof Error ? `: ${cause.message}` : '';
+      return err(
+        new ConnectionError(`failed to connect (${this.id})${detail}`, cause),
+      );
     }
   }
 

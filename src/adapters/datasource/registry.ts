@@ -12,8 +12,7 @@ import { SqlDataSource } from './sql/SqlDataSource.ts';
 import { SqliteDialect } from './sql/dialects/SqliteDialect.ts';
 import { BunSqliteDriver } from './sql/drivers/BunSqliteDriver.ts';
 import { PostgresDialect } from './sql/dialects/PostgresDialect.ts';
-import { PgDriver } from './sql/drivers/PgDriver.ts';
-import type { PoolConfig } from 'pg';
+import { PgDriver, type PgConnectConfig } from './sql/drivers/PgDriver.ts';
 import { MySqlDialect } from './sql/dialects/MySqlDialect.ts';
 import { MySqlDriver } from './sql/drivers/MySqlDriver.ts';
 import type { PoolOptions } from 'mysql2';
@@ -74,17 +73,17 @@ export const createDataSource = (
   }
 };
 
-/** Map free-form profile options to a pg PoolConfig (connectionString or
+/** Map free-form profile options to a PgConnectConfig (connectionString or
  *  discrete fields), coercing `port` to a number when given as a string. */
-const toPoolConfig = (options: Readonly<Record<string, unknown>>): PoolConfig => {
+const toPoolConfig = (
+  options: Readonly<Record<string, unknown>>,
+): PgConnectConfig => {
   if (typeof options.connectionString === 'string') {
     return { connectionString: options.connectionString };
   }
-  const port =
-    options.port === undefined ? undefined : Number(options.port);
   return {
     host: options.host as string | undefined,
-    port,
+    port: options.port === undefined ? undefined : Number(options.port),
     user: options.user as string | undefined,
     password: options.password as string | undefined,
     database: options.database as string | undefined,

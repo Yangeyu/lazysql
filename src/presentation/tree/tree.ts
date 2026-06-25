@@ -10,20 +10,23 @@
 
 import type { ObjectKind, ObjectRef } from '../../domain/datasource/schema.ts';
 
-/** The connection shown as the tree root. */
-export interface ConnRoot {
+/** One connection shown as a tree root. The active one carries the schema. */
+export interface ConnNode {
+  readonly id: string;
   readonly name: string;
   /** Short driver tag shown next to the name, e.g. `PG`. */
   readonly tag: string;
-  readonly connected: boolean;
+  /** Whether this is the live connection (its schema is shown under it). */
+  readonly active: boolean;
 }
 
 export type TreeRow =
   | {
       readonly type: 'connection';
+      readonly id: string;
       readonly label: string;
       readonly tag: string;
-      readonly connected: boolean;
+      readonly active: boolean;
       readonly expanded: boolean;
     }
   | {
@@ -58,38 +61,43 @@ export const shortTag = (dialectLabel: string): string =>
   })[dialectLabel] ?? dialectLabel;
 
 export interface TreeInput {
-  readonly root: ConnRoot;
+  /** All connections shown as roots, in display order. */
+  readonly connections: ReadonlyArray<ConnNode>;
+  /** Objects of the *active* connection (grouped under its root). */
   readonly objects: ReadonlyArray<ObjectRef>;
+  /** Whether the active connection's root is expanded. */
   readonly rootExpanded: boolean;
   readonly expandedCats: ReadonlySet<ObjectKind>;
 }
 
 /** Flatten the tree to the list of currently visible rows, top to bottom. */
 export const buildTree = (input: TreeInput): TreeRow[] => {
-  const rows: TreeRow[] = [
-    {
-      type: 'connection',
-      label: input.root.name,
-      tag: input.root.tag,
-      connected: input.root.connected,
-      expanded: input.rootExpanded,
-    },
-  ];
-  if (!input.rootExpanded) return rows;
-
-  for (const cat of CATEGORY_ORDER) {
-    const objs = input.objects.filter((o) => o.kind === cat.kind);
-    if (objs.length === 0) continue;
-    const expanded = input.expandedCats.has(cat.kind);
+  const rows: TreeRow[] = [];
+  for (const conn of input.connections) {
+    const expanded = conn.active && input.rootExpanded;
     rows.push({
-      type: 'category',
-      kind: cat.kind,
-      label: cat.label,
-      count: objs.length,
+      type: 'connection',
+      id: conn.id,
+      label: conn.name,
+      tag: conn.tag,
+      active: conn.active,
       expanded,
     });
-    if (expanded) {
-      for (const ref of objs) rows.push({ type: 'object', ref, label: ref.name });
+    if (!expanded) continue;
+    for (const cat of CATEGORY_ORDER) {
+      const objs = input.objects.filter((o) => o.kind === cat.kind);
+      if (objs.length === 0) continue;
+      const catExpanded = input.expandedCats.has(cat.kind);
+      rows.push({
+        type: 'category',
+        kind: cat.kind,
+        label: cat.label,
+        count: objs.length,
+        expanded: catExpanded,
+      });
+      if (catExpanded) {
+        for (const ref of objs) rows.push({ type: 'object', ref, label: ref.name });
+      }
     }
   }
   return rows;

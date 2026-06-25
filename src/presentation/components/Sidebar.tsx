@@ -46,7 +46,7 @@ const rowContent = (row: TreeRow): React.ReactNode => {
     return (
       <>
         {fold(row.expanded)}{' '}
-        <Text color={row.connected ? 'green' : 'gray'}>●</Text>{' '}
+        <Text color={row.active ? 'green' : 'gray'}>{row.active ? '●' : '○'}</Text>{' '}
         <Text bold>{row.label}</Text>
         <Text dimColor> [{row.tag}]</Text>
       </>

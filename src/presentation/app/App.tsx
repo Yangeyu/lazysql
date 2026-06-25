@@ -14,12 +14,13 @@ import { QueryEditor } from '../components/QueryEditor.tsx';
 import { StructureView } from '../components/StructureView.tsx';
 import { StatusBar } from '../components/StatusBar.tsx';
 import { HelpOverlay } from '../components/HelpOverlay.tsx';
+import { ConnectionForm } from '../components/ConnectionForm.tsx';
 import {
   helpGroups,
   type KeyContext,
   type KeyFlags,
 } from '../keymap/keymap.ts';
-import { buildTree, shortTag } from '../tree/tree.ts';
+import { buildTree } from '../tree/tree.ts';
 
 const SIDEBAR_WIDTH = 26;
 
@@ -43,7 +44,7 @@ export const App: React.FC = () => {
   const status = useApp((s) => s.status);
   const error = useApp((s) => s.error);
   const connectionName = useApp((s) => s.connectionName);
-  const dialectLabel = useApp((s) => s.dialectLabel);
+  const connections = useApp((s) => s.connections);
   const objects = useApp((s) => s.objects);
   const rootExpanded = useApp((s) => s.rootExpanded);
   const expandedCats = useApp((s) => s.expandedCats);
@@ -62,6 +63,7 @@ export const App: React.FC = () => {
   const sort = useApp((s) => s.sort);
   const filter = useApp((s) => s.filter);
   const mode = useApp((s) => s.mode);
+  const connForm = useApp((s) => s.connForm);
   const filterDraft = useApp((s) => s.filterDraft);
   const editDraft = useApp((s) => s.editDraft);
   const pending = useApp((s) => s.pending);
@@ -161,6 +163,19 @@ export const App: React.FC = () => {
       return;
     }
 
+    // New-connection form owns all input while open.
+    if (s.mode === 'connform') {
+      if (key.return) void s.connFormSubmit();
+      else if (key.escape) s.connFormCancel();
+      else if (key.upArrow) s.connFormMove(-1);
+      else if (key.downArrow || key.tab) s.connFormMove(1);
+      else if (key.leftArrow) s.connFormCycleDriver(-1);
+      else if (key.rightArrow) s.connFormCycleDriver(1);
+      else if (key.backspace || key.delete) s.connFormBackspace();
+      else if (input && !key.ctrl && !key.meta) s.connFormType(input);
+      return;
+    }
+
     // Confirmation: y runs the pending write, n/Esc cancels.
     if (s.mode === 'confirm') {
       if (input === 'y' || input === 'Y') void s.confirmPending();
@@ -195,6 +210,7 @@ export const App: React.FC = () => {
       else if (key.rightArrow || input === 'l') void s.treeExpand();
       else if (key.leftArrow || input === 'h') s.treeCollapse();
       else if (input === 'D') void s.treeShowDdl();
+      else if (input === 'n') s.beginNewConnection();
     } else {
       // Data-grid focus. `D` flips between the Data and DDL faces; the DDL face
       // is read-only, so it ignores the row/edit keys.
@@ -218,23 +234,15 @@ export const App: React.FC = () => {
   const gridFocused = focus === 'grid';
 
   const treeRows = useMemo(
-    () =>
-      buildTree({
-        root: {
-          name: connectionName ?? '(no connection)',
-          tag: shortTag(dialectLabel),
-          connected: true,
-        },
-        objects,
-        rootExpanded,
-        expandedCats,
-      }),
-    [connectionName, dialectLabel, objects, rootExpanded, expandedCats],
+    () => buildTree({ connections, objects, rootExpanded, expandedCats }),
+    [connections, objects, rootExpanded, expandedCats],
   );
 
   const flags: KeyFlags = { queryable, nlAvailable };
   const context: KeyContext =
-    mode === 'filter'
+    mode === 'connform'
+      ? 'connform'
+      : mode === 'filter'
       ? 'filter'
       : mode === 'edit'
         ? 'edit'
@@ -258,6 +266,8 @@ export const App: React.FC = () => {
     <Box flexDirection="column">
       {helpOpen ? (
         <HelpOverlay groups={helpGroups(context, flags)} />
+      ) : connForm ? (
+        <ConnectionForm form={connForm} />
       ) : (
         <Box flexDirection="row" gap={1}>
           <Sidebar

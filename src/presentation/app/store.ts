@@ -22,8 +22,13 @@ import {
   firstCategoryKind,
   firstObjectIndex,
   shortTag,
+  type ConnNode,
   type TreeRow,
 } from '../tree/tree.ts';
+import type {
+  ConnectionProfile,
+  DriverId,
+} from '../../domain/connection/ConnectionProfile.ts';
 import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
 import {
   firstPage,
@@ -54,7 +59,48 @@ export const PAGE_SIZE = 100;
 
 export type Focus = 'sidebar' | 'grid';
 export type Status = 'connecting' | 'ready' | 'error';
-export type Mode = 'normal' | 'filter' | 'edit' | 'confirm';
+export type Mode = 'normal' | 'filter' | 'edit' | 'confirm' | 'connform';
+
+/** Connection-management actions the store delegates to the composition root.
+ *  The store never touches a driver, repository, or secret — it only signals
+ *  intent; Root performs the infrastructure work. (DIP) */
+export interface Workbench {
+  /** Switch the active connection to a saved profile by id. */
+  connect: (id: string) => void;
+  /** Persist a new/edited profile (and optional password), then refresh. */
+  saveConnection: (
+    profile: ConnectionProfile,
+    password: string | null,
+  ) => Promise<void>;
+  /** Forget a saved connection by id. */
+  removeConnection: (id: string) => Promise<void>;
+}
+
+/** One editable field in the new-connection form. */
+export interface ConnFormField {
+  readonly key: string;
+  readonly label: string;
+  value: string;
+  /** Masked input (passwords). */
+  readonly secret?: boolean;
+}
+
+/** Draft state for the new-connection form (mode === 'connform'). */
+export interface ConnForm {
+  driver: DriverId;
+  fields: ConnFormField[];
+  index: number;
+  error: string | null;
+}
+
+export interface AppStoreOptions {
+  /** All connections to show as tree roots (the active one flagged). */
+  connections?: ConnNode[];
+  activeId?: string | null;
+  workbench?: Workbench;
+  /** A message to show when there is no active connection (e.g. a failed open). */
+  initialError?: string | null;
+}
 export type View = 'browse' | 'query';
 export type QueryFocus = 'editor' | 'result';
 /** Which face of the main pane is showing for an open object. */
@@ -72,6 +118,12 @@ export interface AppState {
   connectionName: string | null;
   /** Human dialect label of the active connection, e.g. 'PostgreSQL'. */
   dialectLabel: string;
+  /** All connections shown as tree roots (the active one flagged). */
+  connections: ConnNode[];
+  /** Id of the live connection, or null when none is connected. */
+  activeId: string | null;
+  /** New-connection form draft, or null when not editing one. */
+  connForm: ConnForm | null;
   objects: ObjectRef[];
   // ── sidebar tree ──
   /** Whether the connection root is expanded (shows its categories). */
@@ -142,6 +194,15 @@ export interface AppState {
   treeShowDdl: () => Promise<void>;
   setMainTab: (tab: MainTab) => void;
   toggleMainTab: () => void;
+  // ── connections / new-connection form ──
+  setConnections: (connections: ConnNode[]) => void;
+  beginNewConnection: () => void;
+  connFormType: (ch: string) => void;
+  connFormBackspace: () => void;
+  connFormMove: (delta: 1 | -1) => void;
+  connFormCycleDriver: (dir: 1 | -1) => void;
+  connFormSubmit: () => Promise<void>;
+  connFormCancel: () => void;
   toggleFocus: () => void;
   gridUp: () => void;
   gridDown: () => void;
@@ -180,32 +241,84 @@ export interface AppState {
 
 export type AppStore = StoreApi<AppState>;
 
+/** Drivers offered by the new-connection form, in cycle order. */
+const FORM_DRIVERS: DriverId[] = [
+  'postgres',
+  'mysql',
+  'sqlite',
+  'mongodb',
+  'redis',
+];
+
+const DEFAULT_PORT: Record<DriverId, string> = {
+  postgres: '5432',
+  mysql: '3306',
+  mongodb: '27017',
+  redis: '6379',
+  sqlite: '',
+};
+
+/** The form fields for a driver (SQLite needs only a file; servers need host…). */
+const fieldsForDriver = (driver: DriverId): ConnFormField[] => {
+  const name: ConnFormField = { key: 'name', label: 'Name', value: '' };
+  if (driver === 'sqlite') {
+    return [name, { key: 'file', label: 'File', value: '' }];
+  }
+  const common: ConnFormField[] = [
+    name,
+    { key: 'host', label: 'Host', value: 'localhost' },
+    { key: 'port', label: 'Port', value: DEFAULT_PORT[driver] },
+    { key: 'user', label: 'User', value: '' },
+    { key: 'password', label: 'Password', value: '', secret: true },
+  ];
+  return driver === 'redis'
+    ? [...common, { key: 'db', label: 'DB', value: '0' }]
+    : [...common, { key: 'database', label: 'Database', value: '' }];
+};
+
+/** Stable id from a connection name, e.g. "Local PG" → "local-pg". */
+const slugify = (name: string): string =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '') || 'connection';
+
 export const createAppStore = (
-  source: DataSource,
+  source: DataSource | null,
   connectionName: string | null = null,
   generator: SqlGenerator | null = null,
   dialect: string = 'SQL',
+  options: AppStoreOptions = {},
 ): AppStore =>
   createStore<AppState>((set, get) => {
     // Capability-driven UI gating: features come from what the source can do,
     // never from its type. A non-Queryable source (Mongo/Redis) hides the SQL
     // editor and NL→SQL entirely. (docs/adr/0005)
-    const queryable = asQueryable(source) !== null;
+    const queryable = source != null && asQueryable(source) !== null;
+    const workbench = options.workbench ?? null;
+
+    const activeId =
+      options.activeId ?? (source != null ? connectionName ?? 'active' : null);
+
+    // When Root doesn't supply the full connection list (e.g. tests, ad-hoc
+    // sources), synthesize a single root for the active connection.
+    const initialConnections: ConnNode[] =
+      options.connections ??
+      (source != null || connectionName != null
+        ? [
+            {
+              id: activeId ?? 'active',
+              name: connectionName ?? '(connection)',
+              tag: shortTag(dialect),
+              active: source != null,
+            },
+          ]
+        : []);
 
     /** Build the flattened tree rows from the current state (pure). */
     const rowsNow = (): TreeRow[] => {
-      const { connectionName, dialectLabel, objects, rootExpanded, expandedCats } =
-        get();
-      return buildTree({
-        root: {
-          name: connectionName ?? '(no connection)',
-          tag: shortTag(dialectLabel),
-          connected: true,
-        },
-        objects,
-        rootExpanded,
-        expandedCats,
-      });
+      const { connections, objects, rootExpanded, expandedCats } = get();
+      return buildTree({ connections, objects, rootExpanded, expandedCats });
     };
 
     /** Re-clamp the cursor after the visible row count changes. */
@@ -216,6 +329,7 @@ export const createAppStore = (
 
     /** Open an object into the data grid (focus moves to the grid). */
     const openObject = async (ref: ObjectRef): Promise<void> => {
+      if (!source) return;
       set({
         focus: 'grid',
         gridCol: 0,
@@ -245,6 +359,7 @@ export const createAppStore = (
 
     /** Lazily fetch the open object's column schema for the DDL tab (cached). */
     const loadStructure = async (): Promise<void> => {
+      if (!source) return;
       const { current, structure } = get();
       if (!current || structure) return; // already loaded for this object
       const introspectable = asIntrospectable(source);
@@ -262,6 +377,7 @@ export const createAppStore = (
     };
 
     const load = async (ref: ObjectRef, spec: BrowseSpec): Promise<void> => {
+      if (!source) return;
       set({ loading: true, error: null });
       const res = await browseTable(source, ref, spec);
       if (!res.ok) {
@@ -315,6 +431,7 @@ export const createAppStore = (
 
     /** Build the table/column catalog once, for schema-aware completion. */
     const buildCatalog = async (): Promise<void> => {
+      if (!source) return;
       const introspectable = asIntrospectable(source);
       if (!introspectable) return;
       try {
@@ -338,10 +455,13 @@ export const createAppStore = (
     };
 
     return {
-      status: 'connecting',
-      error: null,
+      status: source != null ? 'connecting' : 'ready',
+      error: options.initialError ?? null,
       connectionName,
       dialectLabel: dialect,
+      connections: initialConnections,
+      activeId,
+      connForm: null,
       objects: [],
       rootExpanded: true,
       expandedCats: new Set<ObjectKind>(),
@@ -388,6 +508,10 @@ export const createAppStore = (
       nlKind: null,
 
       init: async () => {
+        if (!source) {
+          set({ status: 'ready', objects: [] });
+          return;
+        }
         const res = await listObjects(source);
         if (!res.ok) {
           set({ status: 'error', error: res.error.message });
@@ -421,7 +545,9 @@ export const createAppStore = (
           return;
         }
         if (row.type === 'connection') {
-          set((s) => ({ rootExpanded: !s.rootExpanded }));
+          // Active connection folds; an inactive one connects (switches to it).
+          if (row.active) set((s) => ({ rootExpanded: !s.rootExpanded }));
+          else workbench?.connect(row.id);
         } else {
           const next = new Set(get().expandedCats);
           if (next.has(row.kind)) next.delete(row.kind);
@@ -437,7 +563,8 @@ export const createAppStore = (
         if (row.type === 'object') {
           await openObject(row.ref);
         } else if (row.type === 'connection') {
-          if (!get().rootExpanded) set({ rootExpanded: true });
+          if (!row.active) workbench?.connect(row.id);
+          else if (!get().rootExpanded) set({ rootExpanded: true });
         } else if (!get().expandedCats.has(row.kind)) {
           set({ expandedCats: new Set(get().expandedCats).add(row.kind) });
         }
@@ -448,12 +575,14 @@ export const createAppStore = (
         const i = get().treeIndex;
         const row = rows[i];
         if (!row) return;
-        if (row.type === 'object') {
-          // Jump to the parent category header.
+        const parentAbove = (type: TreeRow['type']): void => {
           for (let j = i - 1; j >= 0; j--) {
-            if (rows[j]!.type === 'category') return set({ treeIndex: j });
+            if (rows[j]!.type === type) return set({ treeIndex: j });
           }
           set({ treeIndex: 0 });
+        };
+        if (row.type === 'object') {
+          parentAbove('category'); // jump to the parent category header
         } else if (row.type === 'category') {
           if (get().expandedCats.has(row.kind)) {
             const next = new Set(get().expandedCats);
@@ -461,9 +590,9 @@ export const createAppStore = (
             set({ expandedCats: next });
             clampTree();
           } else {
-            set({ treeIndex: 0 }); // to the connection root
+            parentAbove('connection'); // jump to the owning connection root
           }
-        } else if (get().rootExpanded) {
+        } else if (row.active && get().rootExpanded) {
           set({ rootExpanded: false });
           clampTree();
         }
@@ -486,6 +615,100 @@ export const createAppStore = (
         const next = get().mainTab === 'data' ? 'ddl' : 'data';
         set({ mainTab: next });
         if (next === 'ddl') void loadStructure();
+      },
+
+      setConnections: (connections) => {
+        set({ connections });
+        clampTree();
+      },
+
+      beginNewConnection: () => {
+        const driver: DriverId = 'postgres';
+        set({
+          mode: 'connform',
+          connForm: {
+            driver,
+            fields: fieldsForDriver(driver),
+            index: 0,
+            error: null,
+          },
+        });
+      },
+
+      connFormType: (ch) => {
+        const f = get().connForm;
+        if (!f) return;
+        const fields = f.fields.map((field, i) =>
+          i === f.index ? { ...field, value: field.value + ch } : field,
+        );
+        set({ connForm: { ...f, fields } });
+      },
+
+      connFormBackspace: () => {
+        const f = get().connForm;
+        if (!f) return;
+        const fields = f.fields.map((field, i) =>
+          i === f.index ? { ...field, value: field.value.slice(0, -1) } : field,
+        );
+        set({ connForm: { ...f, fields } });
+      },
+
+      connFormMove: (delta) => {
+        const f = get().connForm;
+        if (!f) return;
+        const index = Math.max(0, Math.min(f.fields.length - 1, f.index + delta));
+        set({ connForm: { ...f, index } });
+      },
+
+      connFormCycleDriver: (dir) => {
+        const f = get().connForm;
+        if (!f) return;
+        const at = FORM_DRIVERS.indexOf(f.driver);
+        const driver =
+          FORM_DRIVERS[(at + dir + FORM_DRIVERS.length) % FORM_DRIVERS.length]!;
+        // Carry the typed name across a driver change.
+        const name = f.fields.find((x) => x.key === 'name')?.value ?? '';
+        const fields = fieldsForDriver(driver).map((x) =>
+          x.key === 'name' ? { ...x, value: name } : x,
+        );
+        set({ connForm: { ...f, driver, fields, index: 0 } });
+      },
+
+      connFormCancel: () => set({ mode: 'normal', connForm: null }),
+
+      connFormSubmit: async () => {
+        const f = get().connForm;
+        if (!f) return;
+        const val = (k: string) =>
+          (f.fields.find((x) => x.key === k)?.value ?? '').trim();
+        const name = val('name');
+        if (!name) {
+          set({ connForm: { ...f, error: 'name is required' } });
+          return;
+        }
+        if (!workbench) {
+          set({ mode: 'normal', connForm: null });
+          return;
+        }
+        const password = val('password') || null;
+        const options: Record<string, unknown> = {};
+        if (f.driver === 'sqlite') {
+          options.file = val('file');
+        } else {
+          options.host = val('host');
+          options.port = val('port');
+          options.user = val('user');
+          if (f.driver === 'redis') options.db = val('db');
+          else options.database = val('database');
+        }
+        const profile: ConnectionProfile = {
+          id: slugify(name),
+          name,
+          driver: f.driver,
+          options,
+        };
+        set({ mode: 'normal', connForm: null });
+        await workbench.saveConnection(profile, password);
       },
 
       toggleFocus: () =>
@@ -588,6 +811,7 @@ export const createAppStore = (
           pending: {
             message: `UPDATE ${current.name} SET ${column} = '${value}' WHERE ${keyText(key)}`,
             run: async () => {
+              if (!source) return;
               const r = await updateRow(source, current, key, [
                 { column, value },
               ]);
@@ -610,6 +834,7 @@ export const createAppStore = (
           pending: {
             message: `DELETE FROM ${current.name} WHERE ${keyText(key)}`,
             run: async () => {
+              if (!source) return;
               const r = await deleteRow(source, current, key);
               if (!r.ok) set({ status: 'error', error: r.error.message });
               else await reloadKeepingCursor();
@@ -648,6 +873,7 @@ export const createAppStore = (
         }),
 
       executeQuery: async () => {
+        if (!source) return;
         const { queryText, history } = get();
         const text = queryText.trim();
         if (!text) return;

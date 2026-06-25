@@ -129,12 +129,36 @@ if (arg) {
 const open = (profile: ConnectionProfile) =>
   openConnection(profile, { factory: createDataSource, secrets });
 
+// New/edited connections are persisted to the YAML repo; the password (if any)
+// goes to the SecretStore under the profile id and never touches the YAML.
+const saveProfile = async (
+  profile: ConnectionProfile,
+  password: string | null,
+): Promise<ConnectionProfile[]> => {
+  await repo.save(profile);
+  if (password) await secrets.set(profile.id, password);
+  return repo.list();
+};
+
+const removeProfile = async (id: string): Promise<ConnectionProfile[]> => {
+  await repo.remove(id);
+  await secrets.delete(id).catch(() => {});
+  return repo.list();
+};
+
 // NL→SQL is enabled only when a provider is configured; otherwise it stays off.
 // Provider is picked by createSqlGenerator (LAZYSQL_LLM_PROVIDER, else by key).
 const generator: SqlGenerator | null = createSqlGenerator();
 
 const { waitUntilExit } = render(
-  <Root profiles={profiles} open={open} initial={initial} generator={generator} />,
+  <Root
+    profiles={profiles}
+    open={open}
+    saveProfile={saveProfile}
+    removeProfile={removeProfile}
+    initial={initial}
+    generator={generator}
+  />,
 );
 
 await waitUntilExit();

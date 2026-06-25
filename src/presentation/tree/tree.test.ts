@@ -1,6 +1,7 @@
 /**
- * Unit tests for the pure tree projection — grouping objects into categories,
- * fold behaviour, and the initial-cursor helpers. No Ink, no store.
+ * Unit tests for the pure tree projection — multiple connection roots, grouping
+ * objects into categories, fold behaviour, and the initial-cursor helpers. No
+ * Ink, no store.
  */
 
 import { test, expect } from 'bun:test';
@@ -9,25 +10,26 @@ import {
   firstCategoryKind,
   firstObjectIndex,
   shortTag,
-  type ConnRoot,
+  type ConnNode,
 } from './tree.ts';
 import type { ObjectRef } from '../../domain/datasource/schema.ts';
 
-const root: ConnRoot = { name: 'db', tag: 'PG', connected: true };
+const active: ConnNode = { id: 'db', name: 'db', tag: 'PG', active: true };
+const other: ConnNode = { id: 'cache', name: 'cache', tag: 'Redis', active: false };
 const objects: ObjectRef[] = [
   { name: 'users', kind: 'table' },
   { name: 'orders', kind: 'table' },
   { name: 'active_users', kind: 'view' },
 ];
 
-test('groups objects into categories in canonical order, present-only', () => {
+test('groups the active connection objects into categories; inactive roots stay leaves', () => {
   const rows = buildTree({
-    root,
+    connections: [active, other],
     objects,
     rootExpanded: true,
     expandedCats: new Set(['table', 'view']),
   });
-  // connection, Tables, users, orders, Views, active_users
+  // db, Tables, users, orders, Views, active_users, cache
   expect(rows.map((r) => r.type)).toEqual([
     'connection',
     'category',
@@ -35,6 +37,7 @@ test('groups objects into categories in canonical order, present-only', () => {
     'object',
     'category',
     'object',
+    'connection',
   ]);
   const tables = rows[1]!;
   expect(tables.type).toBe('category');
@@ -42,24 +45,26 @@ test('groups objects into categories in canonical order, present-only', () => {
     expect(tables.label).toBe('Tables');
     expect(tables.count).toBe(2);
   }
+  // the inactive connection never carries a schema subtree
+  expect(rows[rows.length - 1]!.type).toBe('connection');
 });
 
 test('a collapsed category hides its objects; a collapsed root hides all', () => {
   const collapsedCat = buildTree({
-    root,
+    connections: [active],
     objects,
     rootExpanded: true,
     expandedCats: new Set(['view']), // tables collapsed
   });
-  expect(collapsedCat.some((r) => r.type === 'object' && r.label === 'users')).toBe(
-    false,
-  );
-  expect(collapsedCat.some((r) => r.type === 'object' && r.label === 'active_users')).toBe(
-    true,
-  );
+  expect(
+    collapsedCat.some((r) => r.type === 'object' && r.label === 'users'),
+  ).toBe(false);
+  expect(
+    collapsedCat.some((r) => r.type === 'object' && r.label === 'active_users'),
+  ).toBe(true);
 
   const collapsedRoot = buildTree({
-    root,
+    connections: [active],
     objects,
     rootExpanded: false,
     expandedCats: new Set(['table', 'view']),
@@ -73,7 +78,7 @@ test('initial-cursor helpers point at the first present category and object', ()
   expect(firstCategoryKind([])).toBeNull();
 
   const rows = buildTree({
-    root,
+    connections: [active],
     objects,
     rootExpanded: true,
     expandedCats: new Set(['table']),

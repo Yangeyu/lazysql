@@ -18,6 +18,7 @@ export type KeyContext =
   | 'filter'
   | 'edit'
   | 'confirm'
+  | 'connform'
   | 'nl';
 
 /** Runtime flags that gate context-dependent bindings (capability-driven). */
@@ -68,6 +69,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '→/l', hint: 'expand', desc: 'Expand a node · open an object' },
       { keys: '←/h', hint: 'collapse', desc: 'Collapse a node · jump to parent' },
       { keys: 'D', hint: 'ddl', desc: 'Open the object showing its DDL/structure' },
+      { keys: 'n', hint: 'new', desc: 'New connection' },
       { keys: 'tab', hint: 'grid', desc: 'Focus the data grid' },
     ],
   },
@@ -133,6 +135,15 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: 'n', hint: 'cancel', desc: 'Cancel' },
     ],
   },
+  connform: {
+    title: 'New connection',
+    bindings: [
+      { keys: '↑/↓', hint: 'field', desc: 'Move between fields' },
+      { keys: '←/→', hint: 'driver', desc: 'Change the driver' },
+      { keys: '⏎', hint: 'save', desc: 'Save the connection' },
+      { keys: 'esc', hint: 'cancel', desc: 'Cancel' },
+    ],
+  },
   nl: {
     title: 'Ask AI',
     bindings: [
@@ -151,6 +162,7 @@ const MODAL: ReadonlySet<KeyContext> = new Set<KeyContext>([
   'filter',
   'edit',
   'confirm',
+  'connform',
   'nl',
 ]);
 

@@ -44,32 +44,63 @@ beforeAll(() => {
 
 afterAll(() => rmSync(DB, { force: true }));
 
-test('picker lists saved connections', async () => {
+test('the sidebar lists saved connections as roots', async () => {
   const { lastFrame, unmount } = render(
     <Root profiles={profiles} open={open} />,
   );
   await tick();
   const frame = lastFrame() ?? '';
-  expect(frame).toContain('lazysql — connections');
-  expect(frame).toContain('TestDB');
+  expect(frame).toContain('TestDB'); // connection root
+  expect(frame).toContain('[SQLite]'); // driver tag
+  expect(frame).toContain('○'); // inactive (not yet connected)
   unmount();
 });
 
-test('selecting a connection enters the browse UI, backtick returns', async () => {
+test('Enter on a connection connects and lists its objects; backtick disconnects', async () => {
   const { lastFrame, stdin, unmount } = render(
     <Root profiles={profiles} open={open} />,
   );
   await tick();
 
-  stdin.write('\r'); // connect selected profile
-  await tick(140);
+  stdin.write('\r'); // connect the selected connection root
+  await tick(180);
   const browsing = lastFrame() ?? '';
-  expect(browsing).toContain('gadget'); // sidebar object → we're browsing
+  expect(browsing).toContain('gadget'); // its schema object → connected
   expect(browsing).toContain('TestDB'); // status bar shows the connection name
 
-  stdin.write('`'); // switch connection → back to picker
+  stdin.write('`'); // disconnect → back to the connection list
+  await tick(80);
+  const after = lastFrame() ?? '';
+  expect(after).toContain('TestDB'); // still listed
+  expect(after).not.toContain('gadget'); // no longer connected/expanded
+  unmount();
+});
+
+test('n opens the new-connection form and persists a profile', async () => {
+  const saved: ConnectionProfile[] = [];
+  const saveProfile = async (p: ConnectionProfile) => {
+    saved.push(p);
+    return [...profiles, p];
+  };
+  const { lastFrame, stdin, unmount } = render(
+    <Root profiles={profiles} open={open} saveProfile={saveProfile} />,
+  );
   await tick();
-  expect(lastFrame() ?? '').toContain('lazysql — connections');
+
+  stdin.write('n'); // open the new-connection form
+  await tick();
+  expect(lastFrame() ?? '').toContain('New connection');
+
+  stdin.write('mydb'); // type into the Name field
+  await tick();
+  stdin.write('\r'); // save
+  await tick(80);
+
+  expect(saved).toHaveLength(1);
+  expect(saved[0]!.name).toBe('mydb');
+  expect(saved[0]!.id).toBe('mydb');
+  expect(saved[0]!.driver).toBe('postgres'); // default driver
+  expect(lastFrame() ?? '').toContain('mydb'); // new root appears in the tree
   unmount();
 });
 

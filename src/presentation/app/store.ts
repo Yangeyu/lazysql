@@ -8,6 +8,7 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import {
   asIntrospectable,
+  asQueryable,
   type DataSource,
 } from '../../domain/datasource/DataSource.ts';
 import type { ObjectRef } from '../../domain/datasource/schema.ts';
@@ -73,6 +74,8 @@ export interface AppState {
   pkColumns: string[];
   pending: Pending | null;
   loading: boolean;
+  /** Whether this source speaks SQL (Query capability) — gates the `:` editor. */
+  queryable: boolean;
 
   // ── query editor ──
   view: View;
@@ -144,6 +147,11 @@ export const createAppStore = (
   dialect: string = 'SQL',
 ): AppStore =>
   createStore<AppState>((set, get) => {
+    // Capability-driven UI gating: features come from what the source can do,
+    // never from its type. A non-Queryable source (Mongo/Redis) hides the SQL
+    // editor and NL→SQL entirely. (docs/adr/0005)
+    const queryable = asQueryable(source) !== null;
+
     const load = async (ref: ObjectRef, spec: BrowseSpec): Promise<void> => {
       set({ loading: true, error: null });
       const res = await browseTable(source, ref, spec);
@@ -241,6 +249,7 @@ export const createAppStore = (
       pkColumns: [],
       pending: null,
       loading: false,
+      queryable,
 
       view: 'browse',
       queryFocus: 'editor',
@@ -254,7 +263,7 @@ export const createAppStore = (
       catalog: null,
       completions: [],
 
-      nlAvailable: generator !== null,
+      nlAvailable: generator !== null && queryable,
       nlMode: false,
       nlDraft: '',
       generating: false,
@@ -442,7 +451,11 @@ export const createAppStore = (
       // ── query editor ──────────────────────────────────────────────────────
 
       enterQueryView: () => {
-        set({ view: 'query', queryFocus: 'editor' });
+        if (!get().queryable) {
+          set({ error: 'This source does not support SQL queries.' });
+          return;
+        }
+        set({ view: 'query', queryFocus: 'editor', error: null });
         if (!get().catalog) void buildCatalog();
       },
 

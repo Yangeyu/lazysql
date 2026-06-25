@@ -17,6 +17,7 @@ import type { PoolConfig } from 'pg';
 import { MySqlDialect } from './sql/dialects/MySqlDialect.ts';
 import { MySqlDriver } from './sql/drivers/MySqlDriver.ts';
 import type { PoolOptions } from 'mysql2';
+import { RedisDataSource } from './redis/RedisDataSource.ts';
 
 export const createDataSource = (
   profile: ConnectionProfile,
@@ -53,7 +54,10 @@ export const createDataSource = (
         ),
       );
     }
-    // Phase 6: case 'mongodb' / 'redis' → MongoDataSource / RedisDataSource
+    case 'redis': {
+      return ok(new RedisDataSource(profile.id, toRedisUrl(profile.options)));
+    }
+    // Phase 6: case 'mongodb' → MongoDataSource (added once the driver is wired)
     default:
       return err(
         new ConnectionError(`unsupported driver: ${profile.driver}`),
@@ -76,6 +80,19 @@ const toPoolConfig = (options: Readonly<Record<string, unknown>>): PoolConfig =>
     password: options.password as string | undefined,
     database: options.database as string | undefined,
   };
+};
+
+/** Build a redis:// URL from a connection URL or discrete host/port/db fields. */
+const toRedisUrl = (options: Readonly<Record<string, unknown>>): string => {
+  if (typeof options.url === 'string') return options.url;
+  if (typeof options.connectionString === 'string') return options.connectionString;
+  const host = (options.host as string | undefined) ?? 'localhost';
+  const port = options.port === undefined ? 6379 : Number(options.port);
+  const db = options.db === undefined ? '' : `/${Number(options.db)}`;
+  const user = options.user ? String(options.user) : '';
+  const password = options.password ? String(options.password) : '';
+  const auth = password ? `${user}:${password}@` : user ? `${user}@` : '';
+  return `redis://${auth}${host}:${port}${db}`;
 };
 
 /** Map profile options to a mysql2 config (connection URI or discrete fields). */

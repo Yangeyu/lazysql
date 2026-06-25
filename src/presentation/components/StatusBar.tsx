@@ -14,6 +14,7 @@ interface Props {
   error: string | null;
   connectionName: string | null;
   view: View;
+  queryable: boolean;
   nlAvailable: boolean;
   current: ObjectRef | null;
   total: number;
@@ -42,6 +43,7 @@ const StatusBarImpl: React.FC<Props> = ({
   error,
   connectionName,
   view,
+  queryable,
   nlAvailable,
   current,
   total,
@@ -142,10 +144,11 @@ const StatusBarImpl: React.FC<Props> = ({
     );
   }
 
+  const sqlHint = queryable ? ' · : sql' : '';
   const hints =
     focus === 'sidebar'
-      ? '↑/↓ select · ⏎ open · tab grid · ` conn · : sql · q quit'
-      : '↑/↓ row · ←/→ col · s sort · / filter · e edit · d del · n/p page · ` conn · q quit';
+      ? `↑/↓ select · ⏎ open · tab grid · \` conn${sqlHint} · q quit`
+      : `↑/↓ row · ←/→ col · s sort · / filter · e edit · d del · n/p page · \` conn · q quit`;
 
   return (
     <Box flexDirection="column">

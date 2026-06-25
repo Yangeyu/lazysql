@@ -82,4 +82,12 @@ Phase 1 核心完成。详见 `docs/ARCHITECTURE.md` §11。
   SQL 语句，`y` 应用 / `n` 取消。无主键的表自动只读。
 - ⬜ in-TUI「新增行」表单（Insert 已在适配器层）。
 
-当前 **45 项测试全绿**（SQLite / 真实 PG / 真实 MySQL / 持久化 / Keychain / 无头 TUI 含编辑流程）。
+### Phase 3（SQL 查询编辑器，进行中）
+
+- ✅ **查询编辑器** —— `:` 进入；自由写/执行 SQL（经 `Queryable`），结果复用 `DataGrid`，
+  会话内历史 `↑/↓`，`tab` 在编辑器/结果间切换，`esc` 返回浏览。
+- ✅ **schema 感知补全** —— 纯 tokenizer 引擎，按上下文给 表名 / 列名（按 FROM 作用域）/
+  关键字，`Tab` 接受首候选。无新依赖。
+- ⬜ NL→SQL（LLM，下一步）· 多行编辑 · 历史持久化。
+
+当前 **53 项测试全绿**（含补全单元测试 + 查询编辑器 TUI）。

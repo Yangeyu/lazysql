@@ -1,0 +1,6 @@
+# Preload a tiny compat shim before any module so `import 'mongodb'` works under
+# Bun (bson calls an unimplemented v8 API at load). See scripts/bun-v8-shim.ts.
+preload = ["./scripts/bun-v8-shim.ts"]
+
+[test]
+preload = ["./scripts/bun-v8-shim.ts"]

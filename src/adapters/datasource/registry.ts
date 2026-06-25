@@ -18,6 +18,7 @@ import { MySqlDialect } from './sql/dialects/MySqlDialect.ts';
 import { MySqlDriver } from './sql/drivers/MySqlDriver.ts';
 import type { PoolOptions } from 'mysql2';
 import { RedisDataSource } from './redis/RedisDataSource.ts';
+import { MongoDataSource } from './mongo/MongoDataSource.ts';
 
 export const createDataSource = (
   profile: ConnectionProfile,
@@ -57,7 +58,15 @@ export const createDataSource = (
     case 'redis': {
       return ok(new RedisDataSource(profile.id, toRedisUrl(profile.options)));
     }
-    // Phase 6: case 'mongodb' → MongoDataSource (added once the driver is wired)
+    case 'mongodb': {
+      const { uri, dbName } = toMongoConfig(profile.options);
+      if (!dbName) {
+        return err(
+          new ConnectionError('mongodb profile requires options.database'),
+        );
+      }
+      return ok(new MongoDataSource(profile.id, uri, dbName));
+    }
     default:
       return err(
         new ConnectionError(`unsupported driver: ${profile.driver}`),
@@ -80,6 +89,33 @@ const toPoolConfig = (options: Readonly<Record<string, unknown>>): PoolConfig =>
     password: options.password as string | undefined,
     database: options.database as string | undefined,
   };
+};
+
+/** Resolve a mongodb URI + database name from a URI or discrete fields. */
+const toMongoConfig = (
+  options: Readonly<Record<string, unknown>>,
+): { uri: string; dbName: string } => {
+  const explicit = (options.connectionString ?? options.uri) as
+    | string
+    | undefined;
+  const fromField = options.database ? String(options.database) : '';
+  if (explicit) {
+    return { uri: explicit, dbName: fromField || dbFromUri(explicit) };
+  }
+  const host = (options.host as string | undefined) ?? 'localhost';
+  const port = options.port === undefined ? 27017 : Number(options.port);
+  const user = options.user ? encodeURIComponent(String(options.user)) : '';
+  const password = options.password
+    ? encodeURIComponent(String(options.password))
+    : '';
+  const auth = user ? `${user}:${password}@` : '';
+  return { uri: `mongodb://${auth}${host}:${port}`, dbName: fromField };
+};
+
+/** Extract the default database name from a mongodb:// URI path, if present. */
+const dbFromUri = (uri: string): string => {
+  const m = /mongodb(?:\+srv)?:\/\/[^/]+\/([^?]+)/.exec(uri);
+  return m?.[1] ? decodeURIComponent(m[1]) : '';
 };
 
 /** Build a redis:// URL from a connection URL or discrete host/port/db fields. */

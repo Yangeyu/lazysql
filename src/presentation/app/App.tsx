@@ -10,6 +10,7 @@ import { useApp, useStoreApi } from './context.ts';
 import { useShell } from './shell.ts';
 import { Sidebar } from '../components/Sidebar.tsx';
 import { DataGrid } from '../components/DataGrid.tsx';
+import { QueryEditor } from '../components/QueryEditor.tsx';
 import { StatusBar } from '../components/StatusBar.tsx';
 
 const SIDEBAR_WIDTH = 26;
@@ -51,12 +52,45 @@ export const App: React.FC = () => {
   const pending = useApp((s) => s.pending);
   const loading = useApp((s) => s.loading);
 
+  const view = useApp((s) => s.view);
+  const queryFocus = useApp((s) => s.queryFocus);
+  const queryText = useApp((s) => s.queryText);
+  const queryResult = useApp((s) => s.queryResult);
+  const queryError = useApp((s) => s.queryError);
+  const queryElapsedMs = useApp((s) => s.queryElapsedMs);
+  const queryGridRow = useApp((s) => s.queryGridRow);
+
   useEffect(() => {
     void store.getState().init();
   }, [store]);
 
   useInput((input, key) => {
     const s = store.getState();
+
+    // Query editor view owns all input while active.
+    if (s.view === 'query') {
+      if (key.ctrl && input === 'c') {
+        ink.exit();
+        return;
+      }
+      if (s.queryFocus === 'editor') {
+        if (key.escape) s.exitQueryView();
+        else if (key.return) void s.executeQuery();
+        else if (key.upArrow) s.historyPrev();
+        else if (key.downArrow) s.historyNext();
+        else if (key.tab) s.toggleQueryFocus();
+        else if (key.backspace || key.delete)
+          s.updateQueryText(s.queryText.slice(0, -1));
+        else if (input && !key.ctrl && !key.meta)
+          s.updateQueryText(s.queryText + input);
+      } else {
+        if (key.escape) s.exitQueryView();
+        else if (key.tab) s.toggleQueryFocus();
+        else if (key.upArrow || input === 'k') s.queryGridUp();
+        else if (key.downArrow || input === 'j') s.queryGridDown();
+      }
+      return;
+    }
 
     // Filter input mode captures all keys until commit/cancel.
     if (s.mode === 'filter') {
@@ -93,6 +127,10 @@ export const App: React.FC = () => {
     }
     if (input === '`') {
       shell.switchConnection();
+      return;
+    }
+    if (input === ':') {
+      s.enterQueryView();
       return;
     }
     if (key.tab) {
@@ -134,29 +172,44 @@ export const App: React.FC = () => {
           focused={focus === 'sidebar'}
           width={SIDEBAR_WIDTH}
         />
-        <Box
-          flexDirection="column"
-          flexGrow={1}
-          borderStyle="round"
-          borderColor={gridFocused ? 'cyan' : 'gray'}
-          paddingX={1}
-        >
-          <DataGrid
-            result={result}
-            cursor={gridRow}
-            selectedCol={gridCol}
-            sort={sort}
+        {view === 'query' ? (
+          <QueryEditor
+            queryText={queryText}
+            editorFocused={queryFocus === 'editor'}
+            resultFocused={queryFocus === 'result'}
+            result={queryResult}
+            error={queryError}
+            elapsedMs={queryElapsedMs}
+            gridRow={queryGridRow}
             loading={loading}
-            hasTable={current !== null}
-            viewportRows={viewportRows}
-            focused={gridFocused}
+            viewportRows={Math.max(3, terminalRows - 12)}
           />
-        </Box>
+        ) : (
+          <Box
+            flexDirection="column"
+            flexGrow={1}
+            borderStyle="round"
+            borderColor={gridFocused ? 'cyan' : 'gray'}
+            paddingX={1}
+          >
+            <DataGrid
+              result={result}
+              cursor={gridRow}
+              selectedCol={gridCol}
+              sort={sort}
+              loading={loading}
+              hasTable={current !== null}
+              viewportRows={viewportRows}
+              focused={gridFocused}
+            />
+          </Box>
+        )}
       </Box>
       <StatusBar
         status={status}
         error={error}
         connectionName={connectionName}
+        view={view}
         current={current}
         total={total}
         page={page}

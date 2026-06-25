@@ -161,3 +161,22 @@ test('deleting a row removes it after confirmation', async () => {
   expect(lastFrame() ?? '').toContain('of 24 rows'); // one fewer row
   unmount();
 });
+
+test('the SQL editor runs a typed query and shows the result', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  stdin.write(':'); // enter the query editor view
+  await tick();
+  expect(lastFrame() ?? '').toContain('SQL>'); // editor prompt
+
+  stdin.write('SELECT 42 AS answer'); // type a query (data-independent)
+  await tick();
+  stdin.write('\r'); // execute
+  await tick(160);
+
+  const frame = lastFrame() ?? '';
+  expect(frame).toContain('answer'); // result column header
+  expect(frame).toContain('42'); // result value
+  expect(frame).toContain('1 rows'); // result summary
+  unmount();
+});

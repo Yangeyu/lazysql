@@ -26,12 +26,15 @@ import {
 import { listObjects } from '../../application/usecases/ListObjects.ts';
 import { browseTable } from '../../application/usecases/BrowseTable.ts';
 import { updateRow, deleteRow } from '../../application/usecases/EditRow.ts';
+import { runQuery } from '../../application/usecases/RunQuery.ts';
 
 export const PAGE_SIZE = 100;
 
 export type Focus = 'sidebar' | 'grid';
 export type Status = 'connecting' | 'ready' | 'error';
 export type Mode = 'normal' | 'filter' | 'edit' | 'confirm';
+export type View = 'browse' | 'query';
+export type QueryFocus = 'editor' | 'result';
 
 /** A confirmed, ready-to-run action awaiting the user's y/n. */
 export interface Pending {
@@ -61,6 +64,17 @@ export interface AppState {
   pending: Pending | null;
   loading: boolean;
 
+  // ── query editor ──
+  view: View;
+  queryFocus: QueryFocus;
+  queryText: string;
+  queryResult: ResultSet | null;
+  queryError: string | null;
+  queryElapsedMs: number | null;
+  queryGridRow: number;
+  history: string[];
+  historyIndex: number | null;
+
   init: () => Promise<void>;
   selectPrev: () => void;
   selectNext: () => void;
@@ -84,6 +98,16 @@ export interface AppState {
   beginDelete: () => void;
   confirmPending: () => Promise<void>;
   cancelPending: () => void;
+
+  enterQueryView: () => void;
+  exitQueryView: () => void;
+  updateQueryText: (text: string) => void;
+  executeQuery: () => Promise<void>;
+  historyPrev: () => void;
+  historyNext: () => void;
+  toggleQueryFocus: () => void;
+  queryGridUp: () => void;
+  queryGridDown: () => void;
 }
 
 export type AppStore = StoreApi<AppState>;
@@ -160,6 +184,16 @@ export const createAppStore = (
       pkColumns: [],
       pending: null,
       loading: false,
+
+      view: 'browse',
+      queryFocus: 'editor',
+      queryText: '',
+      queryResult: null,
+      queryError: null,
+      queryElapsedMs: null,
+      queryGridRow: 0,
+      history: [],
+      historyIndex: null,
 
       init: async () => {
         const res = await listObjects(source);
@@ -338,5 +372,78 @@ export const createAppStore = (
       },
 
       cancelPending: () => set({ mode: 'normal', pending: null }),
+
+      // ── query editor ──────────────────────────────────────────────────────
+
+      enterQueryView: () => set({ view: 'query', queryFocus: 'editor' }),
+
+      exitQueryView: () => set({ view: 'browse' }),
+
+      updateQueryText: (text) => set({ queryText: text, historyIndex: null }),
+
+      executeQuery: async () => {
+        const { queryText, history } = get();
+        const text = queryText.trim();
+        if (!text) return;
+        set({ loading: true, queryError: null });
+        const r = await runQuery(source, text);
+        if (!r.ok) {
+          set({
+            loading: false,
+            queryError: r.error.message,
+            queryResult: null,
+            queryElapsedMs: null,
+          });
+          return;
+        }
+        set({
+          loading: false,
+          queryResult: r.value.result,
+          queryElapsedMs: r.value.elapsedMs,
+          queryError: null,
+          queryGridRow: 0,
+          queryFocus: 'result',
+          // record in history, skipping an immediate duplicate
+          history:
+            history[history.length - 1] === text ? history : [...history, text],
+          historyIndex: null,
+        });
+      },
+
+      historyPrev: () => {
+        const { history, historyIndex } = get();
+        if (history.length === 0) return;
+        const idx =
+          historyIndex === null
+            ? history.length - 1
+            : Math.max(0, historyIndex - 1);
+        set({ historyIndex: idx, queryText: history[idx] ?? '' });
+      },
+
+      historyNext: () => {
+        const { history, historyIndex } = get();
+        if (historyIndex === null) return;
+        if (historyIndex >= history.length - 1) {
+          set({ historyIndex: null, queryText: '' });
+          return;
+        }
+        const idx = historyIndex + 1;
+        set({ historyIndex: idx, queryText: history[idx] ?? '' });
+      },
+
+      toggleQueryFocus: () =>
+        set((s) => ({
+          queryFocus: s.queryFocus === 'editor' ? 'result' : 'editor',
+        })),
+
+      queryGridUp: () => set((s) => ({ queryGridRow: Math.max(0, s.queryGridRow - 1) })),
+
+      queryGridDown: () =>
+        set((s) => ({
+          queryGridRow: Math.min(
+            Math.max(0, (s.queryResult?.rows.length ?? 1) - 1),
+            s.queryGridRow + 1,
+          ),
+        })),
     };
   });

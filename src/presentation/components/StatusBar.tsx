@@ -7,12 +7,13 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import type { ObjectRef } from '../../domain/datasource/schema.ts';
 import type { Page, Filter } from '../../domain/query/Query.ts';
-import type { Focus, Mode } from '../app/store.ts';
+import type { Focus, Mode, View } from '../app/store.ts';
 
 interface Props {
   status: string;
   error: string | null;
   connectionName: string | null;
+  view: View;
   current: ObjectRef | null;
   total: number;
   page: Page;
@@ -39,6 +40,7 @@ const StatusBarImpl: React.FC<Props> = ({
   status,
   error,
   connectionName,
+  view,
   current,
   total,
   page,
@@ -114,9 +116,32 @@ const StatusBarImpl: React.FC<Props> = ({
     );
   }
 
+  if (view === 'query') {
+    return (
+      <Box flexDirection="column">
+        <Box>
+          <Text backgroundColor="blue" color="white">
+            {' lazysql '}
+          </Text>
+          <Text> </Text>
+          {connectionName ? (
+            <Text color="green">
+              {connectionName}
+              {'  '}
+            </Text>
+          ) : null}
+          <Text color="magenta">SQL query</Text>
+        </Box>
+        <Text dimColor>
+          ⏎ run · tab editor/result · ↑/↓ history · esc browse · ^C quit
+        </Text>
+      </Box>
+    );
+  }
+
   const hints =
     focus === 'sidebar'
-      ? '↑/↓ select · ⏎ open · tab grid · ` conn · q quit'
+      ? '↑/↓ select · ⏎ open · tab grid · ` conn · : sql · q quit'
       : '↑/↓ row · ←/→ col · s sort · / filter · e edit · d del · n/p page · ` conn · q quit';
 
   return (

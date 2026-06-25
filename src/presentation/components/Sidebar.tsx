@@ -1,14 +1,17 @@
 /**
- * Sidebar — the lazygit-style navigation tree: the connection root, its object
- * categories (Tables, Views, …) and the objects themselves. It is a pure
+ * Sidebar — the lazygit-style navigation tree: the connection roots, their
+ * object categories (Tables, Views, …) and the objects themselves. It is a pure
  * projection of the flattened `TreeRow[]` the store computes; all folding and
- * cursor logic lives in the store, so this component only draws rows.
+ * cursor logic lives in the store, so this component only draws rows. A selected
+ * row gets an accent gutter (and inverse when the panel is focused) so the
+ * cursor is always obvious.
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { ObjectKind } from '../../domain/datasource/schema.ts';
 import type { TreeRow } from '../tree/tree.ts';
+import { theme, driverColor } from '../theme/theme.ts';
 
 interface Props {
   rows: TreeRow[];
@@ -17,7 +20,7 @@ interface Props {
   width: number;
 }
 
-const fold = (expanded: boolean): string => (expanded ? '▼' : '▶');
+const fold = (expanded: boolean): string => (expanded ? '▾' : '▸');
 
 const objectIcon = (kind: ObjectKind): string => {
   switch (kind) {
@@ -40,15 +43,17 @@ const objectIcon = (kind: ObjectKind): string => {
   }
 };
 
-/** Render one tree row's text (indentation + glyph + label). */
-const rowContent = (row: TreeRow): React.ReactNode => {
+/** Render one tree row's content (indentation + glyph + label). */
+const rowContent = (row: TreeRow, selected: boolean): React.ReactNode => {
   if (row.type === 'connection') {
     return (
       <>
-        {fold(row.expanded)}{' '}
-        <Text color={row.active ? 'green' : 'gray'}>{row.active ? '●' : '○'}</Text>{' '}
-        <Text bold>{row.label}</Text>
-        <Text dimColor> [{row.tag}]</Text>
+        <Text color={theme.border}>{fold(row.expanded)} </Text>
+        <Text color={row.active ? theme.green : theme.border}>
+          {row.active ? '●' : '○'}{' '}
+        </Text>
+        <Text bold={row.active}>{row.label} </Text>
+        <Text color={driverColor(row.tag)}>[{row.tag}]</Text>
       </>
     );
   }
@@ -56,15 +61,17 @@ const rowContent = (row: TreeRow): React.ReactNode => {
     return (
       <>
         {'  '}
-        {fold(row.expanded)} {row.label}
-        <Text dimColor> ({row.count})</Text>
+        <Text color={theme.border}>{fold(row.expanded)} </Text>
+        <Text color={selected ? undefined : theme.cyan}>{row.label}</Text>
+        <Text color={theme.border}> {row.count}</Text>
       </>
     );
   }
   return (
     <>
       {'    '}
-      {objectIcon(row.ref.kind)} {row.label}
+      <Text color={theme.border}>{objectIcon(row.ref.kind)} </Text>
+      {row.label}
     </>
   );
 };
@@ -79,11 +86,14 @@ const SidebarImpl: React.FC<Props> = ({
     flexDirection="column"
     width={width}
     borderStyle="round"
-    borderColor={focused ? 'cyan' : 'gray'}
+    borderColor={focused ? theme.borderFocus : theme.border}
     paddingX={1}
   >
+    <Text bold color={focused ? theme.accent : theme.border}>
+      CONNECTIONS
+    </Text>
     {rows.length === 0 ? (
-      <Text dimColor>(no connection)</Text>
+      <Text color={theme.border}>(no connection)</Text>
     ) : (
       rows.map((row, i) => {
         const selected = i === selectedIndex;
@@ -91,10 +101,11 @@ const SidebarImpl: React.FC<Props> = ({
           <Text
             key={i}
             inverse={selected && focused}
-            color={selected && !focused ? 'cyan' : undefined}
+            color={selected && !focused ? theme.accent : undefined}
             wrap="truncate"
           >
-            {rowContent(row)}
+            {selected && !focused ? <Text color={theme.accent}>▎</Text> : ' '}
+            {rowContent(row, selected)}
           </Text>
         );
       })

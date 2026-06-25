@@ -148,6 +148,26 @@ const connectionService: ConnectionService = {
 // Provider is picked by createSqlGenerator (LAZYSQL_LLM_PROVIDER, else by key).
 const generator: SqlGenerator | null = createSqlGenerator();
 
+// Fullscreen: switch to the terminal's alternate screen buffer so lazysql owns
+// the whole window (like vim/lazygit) and leaves the user's scrollback intact
+// on exit. `?1049h` enters + clears; `?1049l` restores the prior screen. Guarded
+// to a TTY so piped/CI runs are unaffected.
+// `?1049h` alt screen + `?1000h`/`?1006h` SGR mouse click reporting (decoded by
+// the useMouse hook). The composition root owns these terminal modes so they are
+// always paired with a restore on exit.
+const isTty = Boolean(process.stdout.isTTY);
+const enterAltScreen = (): void => {
+  if (isTty) process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H\x1b[?1000h\x1b[?1006h');
+};
+const leaveAltScreen = (): void => {
+  if (isTty) process.stdout.write('\x1b[?1000l\x1b[?1006l\x1b[?1049l');
+};
+
+enterAltScreen();
+// Belt-and-braces: restore the screen however the process ends (clean exit,
+// ^C, or an unexpected throw), so the terminal is never left in alt mode.
+process.on('exit', leaveAltScreen);
+
 const { waitUntilExit } = render(
   <Root
     connectionService={connectionService}
@@ -156,4 +176,9 @@ const { waitUntilExit } = render(
   />,
 );
 
-await waitUntilExit();
+try {
+  await waitUntilExit();
+} finally {
+  process.off('exit', leaveAltScreen);
+  leaveAltScreen();
+}

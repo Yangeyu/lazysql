@@ -19,6 +19,7 @@ export type KeyContext =
   | 'edit'
   | 'confirm'
   | 'connform'
+  | 'cell'
   | 'nl';
 
 /** Runtime flags that gate context-dependent bindings (capability-driven). */
@@ -70,6 +71,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '←/h', hint: 'collapse', desc: 'Collapse a node · jump to parent' },
       { keys: 'D', hint: 'ddl', desc: 'Open the object showing its DDL/structure' },
       { keys: 'n', hint: 'new', desc: 'New connection' },
+      { keys: 'e', hint: 'edit', desc: 'Edit the selected connection’s config' },
       { keys: 'tab', hint: 'grid', desc: 'Focus the data grid' },
     ],
   },
@@ -77,7 +79,8 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
     title: 'Data grid',
     bindings: [
       { keys: '↑/↓ k/j', hint: 'row', desc: 'Move the row cursor' },
-      { keys: '←/→ h/l', hint: 'col', desc: 'Move the column cursor' },
+      { keys: '←/→ h/l', hint: 'col', desc: 'Move the column cursor · scroll wide tables' },
+      { keys: '⏎', hint: 'inspect', desc: 'Inspect the full cell value' },
       { keys: 's', hint: 'sort', desc: 'Cycle sort on the column' },
       { keys: '/', hint: 'filter', desc: 'Filter the column by a substring' },
       { keys: 'e', hint: 'edit', desc: 'Edit the cell under the cursor' },
@@ -144,6 +147,13 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: 'esc', hint: 'cancel', desc: 'Cancel' },
     ],
   },
+  cell: {
+    title: 'Cell inspector',
+    bindings: [
+      { keys: 'j/k ↑/↓', hint: 'scroll', desc: 'Scroll the value' },
+      { keys: 'esc/⏎', hint: 'close', desc: 'Close the inspector' },
+    ],
+  },
   nl: {
     title: 'Ask AI',
     bindings: [
@@ -163,6 +173,7 @@ const MODAL: ReadonlySet<KeyContext> = new Set<KeyContext>([
   'edit',
   'confirm',
   'connform',
+  'cell',
   'nl',
 ]);
 

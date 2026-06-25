@@ -9,6 +9,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { ObjectSchema } from '../../domain/datasource/schema.ts';
+import { theme } from '../theme/theme.ts';
 
 interface Props {
   structure: ObjectSchema | null;
@@ -39,30 +40,34 @@ const StructureViewImpl: React.FC<Props> = ({
   hasTable,
 }) => {
   if (!hasTable)
-    return <Text dimColor>Select an object and press Enter, then ⇥ DDL.</Text>;
-  if (loading) return <Text color="yellow">Loading structure…</Text>;
-  if (error) return <Text color="red">error: {error}</Text>;
-  if (!structure) return <Text dimColor>(no structure)</Text>;
+    return (
+      <Text color={theme.border}>
+        Select an object and press Enter, then ⇥ DDL.
+      </Text>
+    );
+  if (loading) return <Text color={theme.yellow}>Loading structure…</Text>;
+  if (error) return <Text color={theme.red}>error: {error}</Text>;
+  if (!structure) return <Text color={theme.border}>(no structure)</Text>;
 
   return (
     <Box flexDirection="column">
       <Box>
-        <Text bold>{'pk'.padEnd(4)}</Text>
-        <Text bold>{'column'.padEnd(NAME_COL)}</Text>
-        <Text bold>{'type'.padEnd(TYPE_COL)}</Text>
-        <Text bold>null</Text>
+        <Text bold color={theme.border}>{'pk'.padEnd(4)}</Text>
+        <Text bold color={theme.border}>{'column'.padEnd(NAME_COL)}</Text>
+        <Text bold color={theme.border}>{'type'.padEnd(TYPE_COL)}</Text>
+        <Text bold color={theme.border}>null</Text>
       </Box>
-      <Text dimColor>{'─'.repeat(4 + NAME_COL + TYPE_COL + 4)}</Text>
+      <Text color={theme.border}>{'─'.repeat(4 + NAME_COL + TYPE_COL + 4)}</Text>
       {structure.columns.map((c) => (
         <Text key={c.name} wrap="truncate">
-          <Text color="yellow">{(c.isPrimaryKey ? '🔑' : '').padEnd(4)}</Text>
-          <Text color="cyan">{c.name.padEnd(NAME_COL)}</Text>
-          {c.dataType.padEnd(TYPE_COL)}
-          <Text dimColor>{c.nullable ? 'yes' : 'no'}</Text>
+          <Text color={theme.yellow}>{(c.isPrimaryKey ? '🔑' : '').padEnd(4)}</Text>
+          <Text color={theme.cyan}>{c.name.padEnd(NAME_COL)}</Text>
+          <Text color={theme.green}>{c.dataType.padEnd(TYPE_COL)}</Text>
+          <Text color={theme.border}>{c.nullable ? 'yes' : 'no'}</Text>
         </Text>
       ))}
       <Text> </Text>
-      <Text dimColor wrap="truncate">
+      <Text color={theme.border} wrap="truncate">
         {synthDdl(structure)
           .split('\n')
           .map((l, i) => (

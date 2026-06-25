@@ -30,7 +30,7 @@ import type {
   DriverId,
 } from '../../domain/connection/ConnectionProfile.ts';
 import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
-import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
+import type { ResultSet, CellValue } from '../../domain/datasource/ResultSet.ts';
 import {
   firstPage,
   nextPage,
@@ -77,6 +77,8 @@ export interface ConnForm {
   fields: ConnFormField[];
   index: number;
   error: string | null;
+  /** Id of the profile being edited, or null when creating a new one. */
+  editingId: string | null;
 }
 
 export interface AppStoreDeps {
@@ -96,6 +98,17 @@ export interface Pending {
   readonly message: string;
   readonly run: () => Promise<void>;
 }
+
+/** The full-cell inspector overlay: one self-contained slice (value + scroll). */
+export interface CellInspect {
+  readonly column: string;
+  readonly value: CellValue;
+  /** First visible line of the (possibly long) formatted value. */
+  readonly offset: number;
+}
+
+/** The two clickable panes a mouse press can focus. */
+export type Region = 'sidebar' | 'grid';
 
 export interface AppState {
   status: Status;
@@ -138,6 +151,8 @@ export interface AppState {
   queryable: boolean;
   /** Whether the `?` help overlay is showing. */
   helpOpen: boolean;
+  /** The cell inspector overlay, or null when closed. */
+  cellView: CellInspect | null;
 
   // ── query editor ──
   view: View;
@@ -162,6 +177,13 @@ export interface AppState {
 
   init: () => Promise<void>;
   toggleHelp: () => void;
+  /** Focus a pane from a mouse click (sidebar vs main grid). */
+  focusRegion: (region: Region) => void;
+  /** Open the full-value inspector for the cell under the grid cursor. */
+  openCell: () => void;
+  closeCell: () => void;
+  /** Scroll the open inspector by `delta` lines (clamped at the top). */
+  scrollCell: (delta: number) => void;
   /** The flattened, currently-visible sidebar tree rows. */
   treeRows: () => TreeRow[];
   treeUp: () => void;
@@ -189,6 +211,8 @@ export interface AppState {
   ) => Promise<void>;
   removeConnection: (id: string) => Promise<void>;
   beginNewConnection: () => void;
+  /** Edit the connection under the cursor: open the form prefilled from it. */
+  beginEditConnection: () => void;
   connFormType: (ch: string) => void;
   connFormBackspace: () => void;
   connFormMove: (delta: 1 | -1) => void;
@@ -267,6 +291,16 @@ const fieldsForDriver = (driver: DriverId): ConnFormField[] => {
     ? [...common, { key: 'db', label: 'DB', value: '0' }]
     : [...common, { key: 'database', label: 'Database', value: '' }];
 };
+
+/** Prefill the driver's fields from a saved profile (for the edit form). The
+ *  password is never prefilled — left blank, it keeps the stored secret. */
+const fieldsForProfile = (profile: ConnectionProfile): ConnFormField[] =>
+  fieldsForDriver(profile.driver).map((f) => {
+    if (f.key === 'name') return { ...f, value: profile.name };
+    if (f.secret) return f; // never echo a stored password
+    const v = profile.options[f.key];
+    return v === undefined || v === null ? f : { ...f, value: String(v) };
+  });
 
 /** Stable id from a connection name, e.g. "Local PG" → "local-pg". */
 const slugify = (name: string): string =>
@@ -472,6 +506,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         mainTab: 'data',
         structure: null,
         structureError: null,
+        cellView: null,
         view: 'browse',
         queryText: '',
         queryResult: null,
@@ -514,6 +549,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       loading: false,
       queryable: false,
       helpOpen: false,
+      cellView: null,
 
       view: 'browse',
       queryFocus: 'editor',
@@ -546,6 +582,32 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       },
 
       toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
+
+      focusRegion: (region) =>
+        set((s) =>
+          region === 'sidebar'
+            ? { focus: 'sidebar', view: 'browse' }
+            : s.view === 'query'
+              ? { queryFocus: 'result' }
+              : { focus: 'grid' },
+        ),
+
+      openCell: () => {
+        const { result, gridRow, gridCol } = get();
+        const column = result?.columns[gridCol]?.name;
+        if (!result || !column) return;
+        const value = result.rows[gridRow]?.[gridCol] ?? null;
+        set({ cellView: { column, value, offset: 0 } });
+      },
+
+      closeCell: () => set({ cellView: null }),
+
+      scrollCell: (delta) =>
+        set((s) =>
+          s.cellView
+            ? { cellView: { ...s.cellView, offset: Math.max(0, s.cellView.offset + delta) } }
+            : {},
+        ),
 
       treeRows: () => rowsNow(),
 
@@ -666,6 +728,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           objects: [],
           current: null,
           result: null,
+          cellView: null,
           view: 'browse',
           rootExpanded: true,
           treeIndex: 0,
@@ -696,6 +759,29 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             fields: fieldsForDriver(driver),
             index: 0,
             error: null,
+            editingId: null,
+          },
+        });
+      },
+
+      beginEditConnection: () => {
+        const row = rowsNow()[get().treeIndex];
+        // A connection row edits itself; a category/object row belongs to the
+        // active connection, so edit that.
+        const id =
+          row?.type === 'connection' ? row.id : get().activeId;
+        const profile = id
+          ? get().profiles.find((p) => p.id === id)
+          : null;
+        if (!profile) return;
+        set({
+          mode: 'connform',
+          connForm: {
+            driver: profile.driver,
+            fields: fieldsForProfile(profile),
+            index: 0,
+            error: null,
+            editingId: profile.id,
           },
         });
       },
@@ -763,7 +849,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           else options.database = val('database');
         }
         const profile: ConnectionProfile = {
-          id: slugify(name),
+          // Editing keeps the original id so the saved secret stays linked; a
+          // blank password leaves that secret untouched (saveConnection only
+          // writes a secret when one is provided).
+          id: f.editingId ?? slugify(name),
           name,
           driver: f.driver,
           options,

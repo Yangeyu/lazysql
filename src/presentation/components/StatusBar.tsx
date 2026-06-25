@@ -1,29 +1,25 @@
 /**
- * StatusBar — context line (current object, page window, totals) plus a compact,
- * context-aware keybinding hint. Mirrors lazygit's always-present status footer.
- * The hint line is rendered from the keymap registry (footerHints) so it never
- * drifts from the `?` overlay or the actual bindings.
+ * StatusBar — the bottom bar: a context/mode badge on the left and the compact,
+ * context-aware keybinding hints on the right. Input modes (filter / edit /
+ * confirm) take over the bar to show their live prompt. The hint text is
+ * rendered from the keymap registry (footerHints) so it never drifts from the
+ * `?` overlay or the real bindings. Branding and the data breadcrumb live in the
+ * top Header; this bar is purely about *what you can do right now*.
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { ObjectRef } from '../../domain/datasource/schema.ts';
-import type { Page, Filter } from '../../domain/query/Query.ts';
 import type { Mode, View } from '../app/store.ts';
 import { footerHints, type KeyContext, type KeyFlags } from '../keymap/keymap.ts';
+import { theme } from '../theme/theme.ts';
 
 interface Props {
+  width: number;
   status: string;
   error: string | null;
-  connectionName: string | null;
   view: View;
   context: KeyContext;
   flags: KeyFlags;
-  current: ObjectRef | null;
-  total: number;
-  page: Page;
-  rowsInPage: number;
-  filter: Filter | null;
   mode: Mode;
   filterDraft: string;
   filterColumn: string | null;
@@ -32,26 +28,42 @@ interface Props {
   pendingMessage: string | null;
 }
 
-/** Compact one-line summary of an active filter, e.g. `label~foo`. */
-const filterSummary = (filter: Filter | null): string => {
-  if (!filter || filter.conditions.length === 0) return '';
-  return filter.conditions
-    .map((c) => `${c.column}${c.op === 'contains' ? '~' : ` ${c.op} `}${c.value}`)
-    .join(' & ');
+const Badge: React.FC<{ label: string; bg: string; fg?: string }> = ({
+  label,
+  bg,
+  fg = theme.onAccent,
+}) => (
+  <Text backgroundColor={bg} color={fg} bold>
+    {` ${label} `}
+  </Text>
+);
+
+const CURSOR = <Text color={theme.accent}>▌</Text>;
+
+/** Short label for the resting context badge. */
+const contextBadge = (context: KeyContext): { label: string; bg: string } => {
+  switch (context) {
+    case 'sidebar':
+      return { label: 'TREE', bg: theme.accent };
+    case 'grid':
+      return { label: 'DATA', bg: theme.cyan };
+    case 'editor':
+    case 'result':
+      return { label: 'SQL', bg: theme.magenta };
+    case 'cell':
+      return { label: 'CELL', bg: theme.cyan };
+    default:
+      return { label: 'lazysql', bg: theme.accent };
+  }
 };
 
 const StatusBarImpl: React.FC<Props> = ({
+  width,
   status,
   error,
-  connectionName,
   view,
   context,
   flags,
-  current,
-  total,
-  page,
-  rowsInPage,
-  filter,
   mode,
   filterDraft,
   filterColumn,
@@ -59,117 +71,66 @@ const StatusBarImpl: React.FC<Props> = ({
   editColumn,
   pendingMessage,
 }) => {
-  const from = total === 0 ? 0 : page.offset + 1;
-  const to = page.offset + rowsInPage;
-  const active = filterSummary(filter);
-  const hints = <Text dimColor>{footerHints(context, flags)}</Text>;
+  const hints = <Text color={theme.border}>{footerHints(context, flags)}</Text>;
+  const bar = (left: React.ReactNode): React.ReactNode => (
+    <Box width={width} justifyContent="space-between" paddingX={1}>
+      <Box>{left}</Box>
+      <Box>{hints}</Box>
+    </Box>
+  );
 
   // Cell-edit input mode: show the value being typed.
   if (mode === 'edit') {
-    return (
-      <Box flexDirection="column">
-        <Box>
-          <Text backgroundColor="magenta" color="black">
-            {' edit '}
-          </Text>
-          <Text>
-            {' '}
-            {editColumn ?? '?'} ={' '}
-            <Text color="cyan">{editDraft}</Text>
-            <Text>▌</Text>
-          </Text>
-        </Box>
-        {hints}
-      </Box>
+    return bar(
+      <Text>
+        <Badge label="edit" bg={theme.magenta} />
+        <Text> </Text>
+        <Text color={theme.border}>{editColumn ?? '?'} = </Text>
+        <Text color={theme.cyan}>{editDraft}</Text>
+        {CURSOR}
+      </Text>,
     );
   }
 
   // Confirmation: show the exact statement intent before it runs.
   if (mode === 'confirm') {
-    return (
-      <Box flexDirection="column">
-        <Box>
-          <Text backgroundColor="red" color="white">
-            {' confirm '}
-          </Text>
-          <Text wrap="truncate">
-            {' '}
-            {pendingMessage}
-          </Text>
-        </Box>
-        {hints}
-      </Box>
-    );
-  }
-
-  // Filter input mode owns the footer: show the live prompt.
-  if (mode === 'filter') {
-    return (
-      <Box flexDirection="column">
-        <Box>
-          <Text backgroundColor="yellow" color="black">
-            {' filter '}
-          </Text>
-          <Text>
-            {' '}
-            {filterColumn ?? '?'} contains:{' '}
-            <Text color="cyan">{filterDraft}</Text>
-            <Text>▌</Text>
-          </Text>
-        </Box>
-        {hints}
-      </Box>
-    );
-  }
-
-  if (view === 'query') {
-    return (
-      <Box flexDirection="column">
-        <Box>
-          <Text backgroundColor="blue" color="white">
-            {' lazysql '}
-          </Text>
-          <Text> </Text>
-          {connectionName ? (
-            <Text color="green">
-              {connectionName}
-              {'  '}
-            </Text>
-          ) : null}
-          <Text color="magenta">SQL query</Text>
-        </Box>
-        {hints}
-      </Box>
-    );
-  }
-
-  return (
-    <Box flexDirection="column">
-      <Box>
-        <Text backgroundColor="blue" color="white">
-          {' lazysql '}
-        </Text>
+    return bar(
+      <Text wrap="truncate">
+        <Badge label="confirm" bg={theme.red} fg="#ffffff" />
         <Text> </Text>
-        {connectionName ? (
-          <Text color="green">{connectionName}{'  '}</Text>
-        ) : null}
-        {error ? (
-          <Text color="red">error: {error}</Text>
-        ) : current ? (
-          <Text>
-            <Text color="cyan">{current.name}</Text>
-            <Text dimColor>
-              {'  '}
-              {from}–{to} of {total} rows
-            </Text>
-            {active ? <Text color="yellow">{'  '}⛃ {active}</Text> : null}
-          </Text>
-        ) : (
-          <Text dimColor>{status}</Text>
-        )}
-      </Box>
-      {hints}
-    </Box>
+        <Text color={theme.yellow}>{pendingMessage}</Text>
+      </Text>,
+    );
+  }
+
+  // Filter input mode owns the bar: live prompt.
+  if (mode === 'filter') {
+    return bar(
+      <Text>
+        <Badge label="filter" bg={theme.yellow} />
+        <Text> </Text>
+        <Text color={theme.border}>{filterColumn ?? '?'} contains </Text>
+        <Text color={theme.cyan}>{filterDraft}</Text>
+        {CURSOR}
+      </Text>,
+    );
+  }
+
+  if (error) {
+    return bar(
+      <Text wrap="truncate">
+        <Badge label="error" bg={theme.red} fg="#ffffff" />
+        <Text color={theme.red}> {error}</Text>
+      </Text>,
+    );
+  }
+
+  const badge = contextBadge(view === 'query' ? 'editor' : context);
+  return bar(
+    <Text>
+      <Badge label={badge.label} bg={badge.bg} />
+      <Text color={theme.border}> {status === 'connecting' ? 'connecting…' : ''}</Text>
+    </Text>,
   );
 };
 

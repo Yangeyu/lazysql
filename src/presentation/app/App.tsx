@@ -12,27 +12,49 @@ import { DataGrid } from '../components/DataGrid.tsx';
 import { QueryEditor } from '../components/QueryEditor.tsx';
 import { StructureView } from '../components/StructureView.tsx';
 import { StatusBar } from '../components/StatusBar.tsx';
+import { Header } from '../components/Header.tsx';
 import { HelpOverlay } from '../components/HelpOverlay.tsx';
 import { ConnectionForm } from '../components/ConnectionForm.tsx';
+import { CellView } from '../components/CellView.tsx';
 import {
   helpGroups,
   type KeyContext,
   type KeyFlags,
 } from '../keymap/keymap.ts';
-import { buildTree, toConnNodes } from '../tree/tree.ts';
+import { buildTree, toConnNodes, dialectLabel, shortTag } from '../tree/tree.ts';
+import { theme } from '../theme/theme.ts';
+import { regionAt } from './layout.ts';
+import { useMouse } from '../hooks/useMouse.ts';
+import type { Filter } from '../../domain/query/Query.ts';
 
-const SIDEBAR_WIDTH = 26;
+const SIDEBAR_WIDTH = 28;
 
-const useTerminalRows = (): number => {
-  const [rows, setRows] = useState(process.stdout.rows || 24);
+/** Live terminal dimensions, so the workbench fills the screen and reflows. */
+const useTerminalSize = (): { rows: number; cols: number } => {
+  const [size, setSize] = useState({
+    rows: process.stdout.rows || 24,
+    cols: process.stdout.columns || 80,
+  });
   useEffect(() => {
-    const onResize = () => setRows(process.stdout.rows || 24);
+    const onResize = () =>
+      setSize({
+        rows: process.stdout.rows || 24,
+        cols: process.stdout.columns || 80,
+      });
     process.stdout.on('resize', onResize);
     return () => {
       process.stdout.off('resize', onResize);
     };
   }, []);
-  return rows;
+  return size;
+};
+
+/** Compact one-line summary of an active filter, e.g. `label~foo`. */
+const filterSummary = (filter: Filter | null): string => {
+  if (!filter || filter.conditions.length === 0) return '';
+  return filter.conditions
+    .map((c) => `${c.column}${c.op === 'contains' ? '~' : ` ${c.op} `}${c.value}`)
+    .join(' & ');
 };
 
 export const App: React.FC = () => {
@@ -69,6 +91,7 @@ export const App: React.FC = () => {
 
   const queryable = useApp((s) => s.queryable);
   const helpOpen = useApp((s) => s.helpOpen);
+  const cellView = useApp((s) => s.cellView);
   const view = useApp((s) => s.view);
   const queryFocus = useApp((s) => s.queryFocus);
   const queryText = useApp((s) => s.queryText);
@@ -88,8 +111,31 @@ export const App: React.FC = () => {
     void store.getState().init();
   }, [store]);
 
+  // A click focuses the pane it lands in (sidebar vs main grid).
+  useMouse((e) => {
+    const region = regionAt(
+      { rows: terminalRows, cols: terminalCols, sidebarWidth: SIDEBAR_WIDTH },
+      e.x,
+      e.y,
+    );
+    if (region) store.getState().focusRegion(region);
+  });
+
   useInput((input, key) => {
     const s = store.getState();
+
+    // Mouse escape sequences arrive here as a stray "[<…M" input (Ink strips the
+    // ESC); useMouse handles the real event, so we just drop them as keys.
+    if (input.startsWith('[<')) return;
+
+    // Cell inspector owns all input while open: Esc/⏎ closes, j/k scrolls.
+    if (s.cellView) {
+      if (key.ctrl && input === 'c') ink.exit();
+      else if (key.escape || key.return) s.closeCell();
+      else if (key.downArrow || input === 'j') s.scrollCell(1);
+      else if (key.upArrow || input === 'k') s.scrollCell(-1);
+      return;
+    }
 
     // Help overlay owns all input while open: ? or Esc closes, ^C still quits.
     if (s.helpOpen) {
@@ -209,11 +255,13 @@ export const App: React.FC = () => {
       else if (key.leftArrow || input === 'h') s.treeCollapse();
       else if (input === 'D') void s.treeShowDdl();
       else if (input === 'n') s.beginNewConnection();
+      else if (input === 'e') s.beginEditConnection();
     } else {
       // Data-grid focus. `D` flips between the Data and DDL faces; the DDL face
       // is read-only, so it ignores the row/edit keys.
       if (input === 'D') s.toggleMainTab();
       else if (s.mainTab === 'ddl') return;
+      else if (key.return) s.openCell();
       else if (key.upArrow || input === 'k') s.gridUp();
       else if (key.downArrow || input === 'j') s.gridDown();
       else if (key.leftArrow || input === 'h') s.gridLeft();
@@ -227,16 +275,21 @@ export const App: React.FC = () => {
     }
   });
 
-  const terminalRows = useTerminalRows();
-  const viewportRows = Math.max(3, terminalRows - 9);
+  const { rows: terminalRows, cols: terminalCols } = useTerminalSize();
+  const viewportRows = Math.max(3, terminalRows - 11);
+  // Width available to the main pane: total minus the sidebar, the row gap, and
+  // the main panel's own border + horizontal padding.
+  const viewportCols = Math.max(24, terminalCols - SIDEBAR_WIDTH - 1 - 4);
   const gridFocused = focus === 'grid';
 
-  // The active connection's display name is derived from the single source of
-  // truth (profiles + activeId) — not stored separately.
-  const connectionName = useMemo(
-    () => profiles.find((p) => p.id === activeId)?.name ?? null,
+  // The active connection's display name + driver tag are derived from the
+  // single source of truth (profiles + activeId), not stored separately.
+  const activeProfile = useMemo(
+    () => profiles.find((p) => p.id === activeId) ?? null,
     [profiles, activeId],
   );
+  const connectionName = activeProfile?.name ?? null;
+  const driverTag = activeProfile ? shortTag(dialectLabel(activeProfile.driver)) : null;
   const treeRows = useMemo(
     () =>
       buildTree({
@@ -250,7 +303,9 @@ export const App: React.FC = () => {
 
   const flags: KeyFlags = { queryable, nlAvailable };
   const context: KeyContext =
-    mode === 'connform'
+    cellView
+      ? 'cell'
+      : mode === 'connform'
       ? 'connform'
       : mode === 'filter'
       ? 'filter'
@@ -268,102 +323,136 @@ export const App: React.FC = () => {
               ? 'sidebar'
               : 'grid';
 
-  if (status === 'connecting') {
-    return <Text color="yellow">Connecting…</Text>;
-  }
+  const rowsInPage = result?.rows.length ?? 0;
+  const from = total === 0 ? 0 : page.offset + 1;
+  const to = page.offset + rowsInPage;
 
-  return (
-    <Box flexDirection="column">
-      {helpOpen ? (
-        <HelpOverlay groups={helpGroups(context, flags)} />
-      ) : connForm ? (
-        <ConnectionForm form={connForm} />
+  const body = helpOpen ? (
+    <HelpOverlay groups={helpGroups(context, flags)} />
+  ) : cellView ? (
+    <CellView
+      column={cellView.column}
+      value={cellView.value}
+      offset={cellView.offset}
+      viewportRows={Math.max(5, terminalRows - 2)}
+      viewportCols={viewportCols}
+    />
+  ) : connForm ? (
+    <ConnectionForm form={connForm} />
+  ) : status === 'connecting' ? (
+    <Box flexGrow={1} alignItems="center" justifyContent="center">
+      <Text color={theme.yellow}>◢◣◤◥ connecting…</Text>
+    </Box>
+  ) : (
+    <Box flexDirection="row" gap={1} flexGrow={1}>
+      <Sidebar
+        rows={treeRows}
+        selectedIndex={treeIndex}
+        focused={focus === 'sidebar'}
+        width={SIDEBAR_WIDTH}
+      />
+      {view === 'query' ? (
+        <QueryEditor
+          queryText={queryText}
+          editorFocused={queryFocus === 'editor'}
+          resultFocused={queryFocus === 'result'}
+          result={queryResult}
+          error={queryError}
+          elapsedMs={queryElapsedMs}
+          gridRow={queryGridRow}
+          completions={completions}
+          loading={loading}
+          nlMode={nlMode}
+          nlDraft={nlDraft}
+          generating={generating}
+          nlExplanation={nlExplanation}
+          nlKind={nlKind}
+          viewportRows={Math.max(3, terminalRows - 15)}
+          viewportCols={viewportCols}
+        />
       ) : (
-        <Box flexDirection="row" gap={1}>
-          <Sidebar
-            rows={treeRows}
-            selectedIndex={treeIndex}
-            focused={focus === 'sidebar'}
-            width={SIDEBAR_WIDTH}
-          />
-          {view === 'query' ? (
-          <QueryEditor
-            queryText={queryText}
-            editorFocused={queryFocus === 'editor'}
-            resultFocused={queryFocus === 'result'}
-            result={queryResult}
-            error={queryError}
-            elapsedMs={queryElapsedMs}
-            gridRow={queryGridRow}
-            completions={completions}
-            loading={loading}
-            nlMode={nlMode}
-            nlDraft={nlDraft}
-            generating={generating}
-            nlExplanation={nlExplanation}
-            nlKind={nlKind}
-            viewportRows={Math.max(3, terminalRows - 13)}
-          />
-        ) : (
-          <Box
-            flexDirection="column"
-            flexGrow={1}
-            borderStyle="round"
-            borderColor={gridFocused ? 'cyan' : 'gray'}
-            paddingX={1}
-          >
-            {current ? (
-              <Box>
-                <Text
-                  inverse={mainTab === 'data'}
-                  color={mainTab === 'data' ? 'cyan' : undefined}
-                >
-                  {' Data '}
-                </Text>
-                <Text dimColor>│</Text>
-                <Text
-                  inverse={mainTab === 'ddl'}
-                  color={mainTab === 'ddl' ? 'cyan' : undefined}
-                >
-                  {' DDL '}
-                </Text>
-              </Box>
-            ) : null}
-            {mainTab === 'ddl' ? (
-              <StructureView
-                structure={structure}
-                loading={structureLoading}
-                error={structureError}
-                hasTable={current !== null}
-              />
-            ) : (
-              <DataGrid
-                result={result}
-                cursor={gridRow}
-                selectedCol={gridCol}
-                sort={sort}
-                loading={loading}
-                hasTable={current !== null}
-                viewportRows={current ? viewportRows - 1 : viewportRows}
-                focused={gridFocused}
-              />
-            )}
+        <Box
+          flexDirection="column"
+          flexGrow={1}
+          borderStyle="round"
+          borderColor={gridFocused ? theme.borderFocus : theme.border}
+          paddingX={1}
+        >
+          {current ? (
+            <Box>
+              <Text
+                backgroundColor={mainTab === 'data' ? theme.accent : undefined}
+                color={mainTab === 'data' ? theme.onAccent : theme.border}
+                bold={mainTab === 'data'}
+              >
+                {' Data '}
+              </Text>
+              <Text> </Text>
+              <Text
+                backgroundColor={mainTab === 'ddl' ? theme.accent : undefined}
+                color={mainTab === 'ddl' ? theme.onAccent : theme.border}
+                bold={mainTab === 'ddl'}
+              >
+                {' DDL '}
+              </Text>
             </Box>
+          ) : (
+            <Text bold color={focus === 'grid' ? theme.accent : theme.border}>
+              RESULTS
+            </Text>
+          )}
+          {mainTab === 'ddl' ? (
+            <StructureView
+              structure={structure}
+              loading={structureLoading}
+              error={structureError}
+              hasTable={current !== null}
+            />
+          ) : (
+            <DataGrid
+              result={result}
+              cursor={gridRow}
+              selectedCol={gridCol}
+              sort={sort}
+              loading={loading}
+              hasTable={current !== null}
+              viewportRows={current ? viewportRows - 1 : viewportRows}
+              viewportCols={viewportCols}
+              focused={gridFocused}
+            />
           )}
         </Box>
       )}
+    </Box>
+  );
+
+  return (
+    // minHeight is terminalRows-1, NOT terminalRows: Ink full-clears the screen
+    // (causing flicker on every keypress) whenever the frame height reaches the
+    // terminal height. Staying one row short keeps it on the incremental path.
+    <Box flexDirection="column" minHeight={terminalRows - 1} width={terminalCols}>
+      <Header
+        width={terminalCols}
+        connectionName={connectionName}
+        driverTag={driverTag}
+        connected={activeId !== null}
+        objectName={view === 'query' ? null : current?.name ?? null}
+        from={from}
+        to={to}
+        total={total}
+        filterSummary={view === 'query' ? '' : filterSummary(filter)}
+        nlAvailable={nlAvailable}
+      />
+      <Box flexGrow={1} flexDirection="column">
+        {body}
+      </Box>
       <StatusBar
+        width={terminalCols}
         status={status}
         error={error}
-        connectionName={connectionName}
         view={view}
         context={context}
         flags={flags}
-        current={current}
-        total={total}
-        page={page}
-        rowsInPage={result?.rows.length ?? 0}
-        filter={filter}
         mode={mode}
         filterDraft={filterDraft}
         filterColumn={result?.columns[gridCol]?.name ?? null}

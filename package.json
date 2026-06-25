@@ -12,7 +12,9 @@
     "dev": "bun run src/main.tsx",
     "seed": "bun run scripts/seed.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "commitlint": "commitlint --edit",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
@@ -24,6 +26,8 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
     "@types/bun": "^1.3.14",
     "@types/pg": "^8.20.0",
     "@types/react": "^18.3.12",

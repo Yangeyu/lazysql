@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Validate the commit message against Conventional Commits via commitlint.
+# No-ops when commitlint isn't installed, so a missing dev dependency never
+# blocks a commit (e.g. fresh clone before `bun install`).
+[ -d node_modules/@commitlint ] || exit 0
+
+if command -v bunx >/dev/null 2>&1; then
+  exec bunx commitlint --edit "$1"
+elif command -v npx >/dev/null 2>&1; then
+  exec npx --no-install commitlint --edit "$1"
+fi

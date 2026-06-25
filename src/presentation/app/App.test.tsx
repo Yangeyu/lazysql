@@ -57,12 +57,28 @@ const renderApp = () => {
   );
 };
 
-test('sidebar lists objects after init', async () => {
+test('sidebar shows the connection tree with objects after init', async () => {
   const { lastFrame, unmount } = renderApp();
   await tick();
   const frame = lastFrame() ?? '';
-  expect(frame).toContain('Objects');
-  expect(frame).toContain('widget');
+  expect(frame).toContain('Tables'); // category header
+  expect(frame).toContain('widget'); // object under it
+  unmount();
+});
+
+test('the sidebar tree folds a category with h and reopens it with l', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  // Cursor starts on the first object (widget). h → parent category (Tables).
+  stdin.write('h');
+  await tick();
+  stdin.write('h'); // h again → collapse Tables
+  await tick();
+  expect(lastFrame() ?? '').not.toContain('widget'); // object hidden when folded
+
+  stdin.write('l'); // l → expand Tables again
+  await tick();
+  expect(lastFrame() ?? '').toContain('widget'); // object visible again
   unmount();
 });
 

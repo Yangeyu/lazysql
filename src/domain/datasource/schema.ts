@@ -5,8 +5,22 @@
  * only needs object identity and columns.
  */
 
-/** Kind of schema object, kept open for non-relational sources. */
-export type ObjectKind = 'table' | 'view' | 'collection' | 'keyspace';
+/**
+ * Kind of schema object, kept open for non-relational sources. The relational
+ * kinds beyond table/view (index, trigger, sequence, procedure) are recognised
+ * by the navigation tree now; adapters start populating them as their
+ * introspection grows, at which point the matching category lights up with no
+ * UI change (the tree groups purely by kind).
+ */
+export type ObjectKind =
+  | 'table'
+  | 'view'
+  | 'index'
+  | 'trigger'
+  | 'sequence'
+  | 'procedure'
+  | 'collection'
+  | 'keyspace';
 
 /**
  * A stable reference to a browsable object. `namespace` maps to a SQL schema

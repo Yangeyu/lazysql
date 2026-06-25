@@ -11,8 +11,15 @@ import {
   asQueryable,
   type DataSource,
 } from '../../domain/datasource/DataSource.ts';
-import type { ObjectRef } from '../../domain/datasource/schema.ts';
+import type { ObjectKind, ObjectRef } from '../../domain/datasource/schema.ts';
 import type { RowKey, FieldValue } from '../../domain/datasource/edit.ts';
+import {
+  buildTree,
+  firstCategoryKind,
+  firstObjectIndex,
+  shortTag,
+  type TreeRow,
+} from '../tree/tree.ts';
 import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
 import {
   firstPage,
@@ -57,8 +64,16 @@ export interface AppState {
   status: Status;
   error: string | null;
   connectionName: string | null;
+  /** Human dialect label of the active connection, e.g. 'PostgreSQL'. */
+  dialectLabel: string;
   objects: ObjectRef[];
-  selectedIndex: number;
+  // ── sidebar tree ──
+  /** Whether the connection root is expanded (shows its categories). */
+  rootExpanded: boolean;
+  /** Categories currently expanded (by object kind). */
+  expandedCats: Set<ObjectKind>;
+  /** Cursor into the flattened visible tree rows. */
+  treeIndex: number;
   focus: Focus;
   current: ObjectRef | null;
   result: ResultSet | null;
@@ -102,9 +117,16 @@ export interface AppState {
 
   init: () => Promise<void>;
   toggleHelp: () => void;
-  selectPrev: () => void;
-  selectNext: () => void;
-  openSelected: () => Promise<void>;
+  /** The flattened, currently-visible sidebar tree rows. */
+  treeRows: () => TreeRow[];
+  treeUp: () => void;
+  treeDown: () => void;
+  /** Enter/Space: toggle a container's fold, or open an object. */
+  treeToggle: () => Promise<void>;
+  /** →/l: expand a container, or open an object. */
+  treeExpand: () => Promise<void>;
+  /** ←/h: collapse a container, or jump from an object to its category. */
+  treeCollapse: () => void;
   toggleFocus: () => void;
   gridUp: () => void;
   gridDown: () => void;
@@ -154,6 +176,48 @@ export const createAppStore = (
     // never from its type. A non-Queryable source (Mongo/Redis) hides the SQL
     // editor and NL→SQL entirely. (docs/adr/0005)
     const queryable = asQueryable(source) !== null;
+
+    /** Build the flattened tree rows from the current state (pure). */
+    const rowsNow = (): TreeRow[] => {
+      const { connectionName, dialectLabel, objects, rootExpanded, expandedCats } =
+        get();
+      return buildTree({
+        root: {
+          name: connectionName ?? '(no connection)',
+          tag: shortTag(dialectLabel),
+          connected: true,
+        },
+        objects,
+        rootExpanded,
+        expandedCats,
+      });
+    };
+
+    /** Re-clamp the cursor after the visible row count changes. */
+    const clampTree = (): void =>
+      set((s) => ({
+        treeIndex: Math.min(s.treeIndex, Math.max(0, rowsNow().length - 1)),
+      }));
+
+    /** Open an object into the data grid (focus moves to the grid). */
+    const openObject = async (ref: ObjectRef): Promise<void> => {
+      set({ focus: 'grid', gridCol: 0, sort: null, filter: null, pkColumns: [] });
+      // Primary-key columns gate editing; a table without one is read-only.
+      const introspectable = asIntrospectable(source);
+      if (introspectable) {
+        try {
+          const schema = await introspectable.describe(ref);
+          set({
+            pkColumns: schema.columns
+              .filter((c) => c.isPrimaryKey)
+              .map((c) => c.name),
+          });
+        } catch {
+          /* leave pkColumns empty → editing disabled for this table */
+        }
+      }
+      await load(ref, { page: firstPage(PAGE_SIZE), sort: null, filter: null });
+    };
 
     const load = async (ref: ObjectRef, spec: BrowseSpec): Promise<void> => {
       set({ loading: true, error: null });
@@ -235,8 +299,11 @@ export const createAppStore = (
       status: 'connecting',
       error: null,
       connectionName,
+      dialectLabel: dialect,
       objects: [],
-      selectedIndex: 0,
+      rootExpanded: true,
+      expandedCats: new Set<ObjectKind>(),
+      treeIndex: 0,
       focus: 'sidebar',
       current: null,
       result: null,
@@ -280,39 +347,80 @@ export const createAppStore = (
           set({ status: 'error', error: res.error.message });
           return;
         }
-        set({ status: 'ready', objects: res.value });
+        // Expand the first present category and land the cursor on its first
+        // object, so a single Enter browses straight away.
+        const first = firstCategoryKind(res.value);
+        const expandedCats = new Set<ObjectKind>(first ? [first] : []);
+        set({ status: 'ready', objects: res.value, expandedCats });
+        set({ treeIndex: firstObjectIndex(rowsNow()) });
       },
 
       toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
 
-      selectPrev: () =>
-        set((s) => ({ selectedIndex: Math.max(0, s.selectedIndex - 1) })),
+      treeRows: () => rowsNow(),
 
-      selectNext: () =>
+      treeUp: () =>
+        set((s) => ({ treeIndex: Math.max(0, s.treeIndex - 1) })),
+
+      treeDown: () =>
         set((s) => ({
-          selectedIndex: Math.min(s.objects.length - 1, s.selectedIndex + 1),
+          treeIndex: Math.min(rowsNow().length - 1, s.treeIndex + 1),
         })),
 
-      openSelected: async () => {
-        const { objects, selectedIndex } = get();
-        const ref = objects[selectedIndex];
-        if (!ref) return;
-        set({ focus: 'grid', gridCol: 0, sort: null, filter: null, pkColumns: [] });
-        // Primary-key columns gate editing; a table without one is read-only.
-        const introspectable = asIntrospectable(source);
-        if (introspectable) {
-          try {
-            const schema = await introspectable.describe(ref);
-            set({
-              pkColumns: schema.columns
-                .filter((c) => c.isPrimaryKey)
-                .map((c) => c.name),
-            });
-          } catch {
-            /* leave pkColumns empty → editing disabled for this table */
-          }
+      treeToggle: async () => {
+        const row = rowsNow()[get().treeIndex];
+        if (!row) return;
+        if (row.type === 'object') {
+          await openObject(row.ref);
+          return;
         }
-        await load(ref, { page: firstPage(PAGE_SIZE), sort: null, filter: null });
+        if (row.type === 'connection') {
+          set((s) => ({ rootExpanded: !s.rootExpanded }));
+        } else {
+          const next = new Set(get().expandedCats);
+          if (next.has(row.kind)) next.delete(row.kind);
+          else next.add(row.kind);
+          set({ expandedCats: next });
+        }
+        clampTree();
+      },
+
+      treeExpand: async () => {
+        const row = rowsNow()[get().treeIndex];
+        if (!row) return;
+        if (row.type === 'object') {
+          await openObject(row.ref);
+        } else if (row.type === 'connection') {
+          if (!get().rootExpanded) set({ rootExpanded: true });
+        } else if (!get().expandedCats.has(row.kind)) {
+          set({ expandedCats: new Set(get().expandedCats).add(row.kind) });
+        }
+      },
+
+      treeCollapse: () => {
+        const rows = rowsNow();
+        const i = get().treeIndex;
+        const row = rows[i];
+        if (!row) return;
+        if (row.type === 'object') {
+          // Jump to the parent category header.
+          for (let j = i - 1; j >= 0; j--) {
+            if (rows[j]!.type === 'category') return set({ treeIndex: j });
+          }
+          set({ treeIndex: 0 });
+        } else if (row.type === 'category') {
+          if (get().expandedCats.has(row.kind)) {
+            const next = new Set(get().expandedCats);
+            next.delete(row.kind);
+            set({ expandedCats: next });
+            clampTree();
+          } else {
+            set({ treeIndex: 0 }); // to the connection root
+          }
+        } else if (get().rootExpanded) {
+          set({ rootExpanded: false });
+          clampTree();
+        }
       },
 
       toggleFocus: () =>

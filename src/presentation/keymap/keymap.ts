@@ -57,10 +57,16 @@ const GLOBAL: readonly KeyBinding[] = [
 
 const GROUPS: Record<KeyContext, KeyGroup> = {
   sidebar: {
-    title: 'Objects',
+    title: 'Tree',
     bindings: [
-      { keys: '↑/↓ k/j', hint: 'select', desc: 'Move the selection' },
-      { keys: '⏎', hint: 'open', desc: 'Open the selected object' },
+      { keys: '↑/↓ k/j', hint: 'move', desc: 'Move the selection' },
+      {
+        keys: '⏎/space',
+        hint: 'open',
+        desc: 'Expand/collapse a node · open an object',
+      },
+      { keys: '→/l', hint: 'expand', desc: 'Expand a node · open an object' },
+      { keys: '←/h', hint: 'collapse', desc: 'Collapse a node · jump to parent' },
       { keys: 'tab', hint: 'grid', desc: 'Focus the data grid' },
     ],
   },

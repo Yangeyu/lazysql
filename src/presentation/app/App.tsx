@@ -4,7 +4,7 @@
  * that arrives in Phase 3); rendering is pure projection of store state.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useApp as useInkApp, useInput } from 'ink';
 import { useApp, useStoreApi } from './context.ts';
 import { useShell } from './shell.ts';
@@ -18,6 +18,7 @@ import {
   type KeyContext,
   type KeyFlags,
 } from '../keymap/keymap.ts';
+import { buildTree, shortTag } from '../tree/tree.ts';
 
 const SIDEBAR_WIDTH = 26;
 
@@ -41,8 +42,11 @@ export const App: React.FC = () => {
   const status = useApp((s) => s.status);
   const error = useApp((s) => s.error);
   const connectionName = useApp((s) => s.connectionName);
+  const dialectLabel = useApp((s) => s.dialectLabel);
   const objects = useApp((s) => s.objects);
-  const selectedIndex = useApp((s) => s.selectedIndex);
+  const rootExpanded = useApp((s) => s.rootExpanded);
+  const expandedCats = useApp((s) => s.expandedCats);
+  const treeIndex = useApp((s) => s.treeIndex);
   const focus = useApp((s) => s.focus);
   const current = useApp((s) => s.current);
   const result = useApp((s) => s.result);
@@ -180,9 +184,11 @@ export const App: React.FC = () => {
       return;
     }
     if (s.focus === 'sidebar') {
-      if (key.upArrow || input === 'k') s.selectPrev();
-      else if (key.downArrow || input === 'j') s.selectNext();
-      else if (key.return) void s.openSelected();
+      if (key.upArrow || input === 'k') s.treeUp();
+      else if (key.downArrow || input === 'j') s.treeDown();
+      else if (key.return || input === ' ') void s.treeToggle();
+      else if (key.rightArrow || input === 'l') void s.treeExpand();
+      else if (key.leftArrow || input === 'h') s.treeCollapse();
     } else {
       if (key.upArrow || input === 'k') s.gridUp();
       else if (key.downArrow || input === 'j') s.gridDown();
@@ -200,6 +206,21 @@ export const App: React.FC = () => {
   const terminalRows = useTerminalRows();
   const viewportRows = Math.max(3, terminalRows - 9);
   const gridFocused = focus === 'grid';
+
+  const treeRows = useMemo(
+    () =>
+      buildTree({
+        root: {
+          name: connectionName ?? '(no connection)',
+          tag: shortTag(dialectLabel),
+          connected: true,
+        },
+        objects,
+        rootExpanded,
+        expandedCats,
+      }),
+    [connectionName, dialectLabel, objects, rootExpanded, expandedCats],
+  );
 
   const flags: KeyFlags = { queryable, nlAvailable };
   const context: KeyContext =
@@ -230,8 +251,8 @@ export const App: React.FC = () => {
       ) : (
         <Box flexDirection="row" gap={1}>
           <Sidebar
-            objects={objects}
-            selectedIndex={selectedIndex}
+            rows={treeRows}
+            selectedIndex={treeIndex}
             focused={focus === 'sidebar'}
             width={SIDEBAR_WIDTH}
           />

@@ -13,8 +13,8 @@ import type {
   SqlGenerator,
   GenerateInput,
   GeneratedSql,
-} from '../../application/ports/SqlGenerator.ts';
-import { buildSystemPrompt, buildUserPrompt } from './prompt.ts';
+} from '../../../application/ports/SqlGenerator.ts';
+import { buildSystemPrompt, buildUserPrompt } from '../prompt.ts';
 
 const DEFAULT_MODEL = 'claude-opus-4-8';
 

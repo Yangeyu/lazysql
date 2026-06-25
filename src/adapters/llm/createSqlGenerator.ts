@@ -12,13 +12,13 @@
  */
 
 import type { SqlGenerator } from '../../application/ports/SqlGenerator.ts';
-import { AnthropicSqlGenerator } from './AnthropicSqlGenerator.ts';
-import { OpenAiCompatibleSqlGenerator } from './OpenAiCompatibleSqlGenerator.ts';
+import { AnthropicSqlGenerator } from './providers/AnthropicSqlGenerator.ts';
+import { OpenAiCompatibleSqlGenerator } from './providers/OpenAiCompatibleSqlGenerator.ts';
 import {
   OPENAI_COMPATIBLE_PRESETS,
   BAILIAN,
   type OpenAiCompatiblePreset,
-} from './providers.ts';
+} from './providers/presets.ts';
 
 type Env = Record<string, string | undefined>;
 

@@ -2,7 +2,7 @@
  * SqlGenerator backed by any OpenAI-compatible /chat/completions endpoint.
  * ONE adapter serves every OpenAI-compatible provider — Bailian (Qwen),
  * DeepSeek, Moonshot/Kimi, a local Ollama/vLLM — each is just a different
- * { baseURL, model, apiKey } preset (see providers.ts). Uses forced function
+ * { baseURL, model, apiKey } preset (see presets.ts). Uses forced function
  * calling to get a typed { sql, explanation } back, with a defensive fallback
  * to plain content for models that ignore tool_choice.
  *
@@ -15,8 +15,8 @@ import type {
   SqlGenerator,
   GenerateInput,
   GeneratedSql,
-} from '../../application/ports/SqlGenerator.ts';
-import { buildSystemPrompt, buildUserPrompt } from './prompt.ts';
+} from '../../../application/ports/SqlGenerator.ts';
+import { buildSystemPrompt, buildUserPrompt } from '../prompt.ts';
 
 export interface OpenAiCompatibleConfig {
   readonly apiKey: string;

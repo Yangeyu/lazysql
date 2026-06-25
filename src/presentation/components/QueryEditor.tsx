@@ -17,6 +17,7 @@ interface Props {
   error: string | null;
   elapsedMs: number | null;
   gridRow: number;
+  completions: string[];
   loading: boolean;
   viewportRows: number;
 }
@@ -29,6 +30,7 @@ const QueryEditorImpl: React.FC<Props> = ({
   error,
   elapsedMs,
   gridRow,
+  completions,
   loading,
   viewportRows,
 }) => (
@@ -46,6 +48,16 @@ const QueryEditorImpl: React.FC<Props> = ({
         {editorFocused ? <Text>▌</Text> : null}
       </Text>
     </Box>
+
+    {editorFocused && completions.length > 0 ? (
+      <Text wrap="truncate">
+        <Text dimColor>⇥ </Text>
+        <Text color="cyan" bold>
+          {completions[0]}
+        </Text>
+        <Text dimColor>{completions.slice(1).map((c) => ` · ${c}`).join('')}</Text>
+      </Text>
+    ) : null}
 
     {error ? (
       <Text color="red" wrap="truncate">

@@ -180,3 +180,18 @@ test('the SQL editor runs a typed query and shows the result', async () => {
   expect(frame).toContain('1 rows'); // result summary
   unmount();
 });
+
+test('schema-aware completion completes a table name on Tab', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  stdin.write(':'); // query view → catalog builds (introspect + describe)
+  await tick(140);
+  stdin.write('SELECT * FROM wi'); // partial table name
+  await tick();
+  expect(lastFrame() ?? '').toContain('⇥'); // completion hint is shown
+
+  stdin.write('\t'); // Tab → accept the top candidate
+  await tick();
+  expect(lastFrame() ?? '').toContain('FROM widget'); // completed to "widget"
+  unmount();
+});

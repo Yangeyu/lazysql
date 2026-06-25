@@ -59,6 +59,7 @@ export const App: React.FC = () => {
   const queryError = useApp((s) => s.queryError);
   const queryElapsedMs = useApp((s) => s.queryElapsedMs);
   const queryGridRow = useApp((s) => s.queryGridRow);
+  const completions = useApp((s) => s.completions);
 
   useEffect(() => {
     void store.getState().init();
@@ -78,8 +79,11 @@ export const App: React.FC = () => {
         else if (key.return) void s.executeQuery();
         else if (key.upArrow) s.historyPrev();
         else if (key.downArrow) s.historyNext();
-        else if (key.tab) s.toggleQueryFocus();
-        else if (key.backspace || key.delete)
+        else if (key.tab) {
+          // Tab completes the current word, or moves to the result grid.
+          if (s.completions.length > 0) s.acceptCompletion();
+          else s.toggleQueryFocus();
+        } else if (key.backspace || key.delete)
           s.updateQueryText(s.queryText.slice(0, -1));
         else if (input && !key.ctrl && !key.meta)
           s.updateQueryText(s.queryText + input);
@@ -181,6 +185,7 @@ export const App: React.FC = () => {
             error={queryError}
             elapsedMs={queryElapsedMs}
             gridRow={queryGridRow}
+            completions={completions}
             loading={loading}
             viewportRows={Math.max(3, terminalRows - 12)}
           />

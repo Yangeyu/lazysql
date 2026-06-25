@@ -27,6 +27,10 @@ import { listObjects } from '../../application/usecases/ListObjects.ts';
 import { browseTable } from '../../application/usecases/BrowseTable.ts';
 import { updateRow, deleteRow } from '../../application/usecases/EditRow.ts';
 import { runQuery } from '../../application/usecases/RunQuery.ts';
+import {
+  complete,
+  type SchemaCatalog,
+} from '../completion/sqlCompleter.ts';
 
 export const PAGE_SIZE = 100;
 
@@ -74,6 +78,8 @@ export interface AppState {
   queryGridRow: number;
   history: string[];
   historyIndex: number | null;
+  catalog: SchemaCatalog | null;
+  completions: string[];
 
   init: () => Promise<void>;
   selectPrev: () => void;
@@ -108,6 +114,7 @@ export interface AppState {
   toggleQueryFocus: () => void;
   queryGridUp: () => void;
   queryGridDown: () => void;
+  acceptCompletion: () => void;
 }
 
 export type AppStore = StoreApi<AppState>;
@@ -163,6 +170,36 @@ export const createAppStore = (
     const keyText = (key: RowKey): string =>
       key.map((k) => `${k.column}=${String(k.value)}`).join(' AND ');
 
+    /** Recompute completions for the editor text against the cached catalog. */
+    const completionsFor = (text: string): string[] => {
+      const cat = get().catalog;
+      return cat ? complete(text, cat).candidates : [];
+    };
+
+    /** Build the table/column catalog once, for schema-aware completion. */
+    const buildCatalog = async (): Promise<void> => {
+      const introspectable = asIntrospectable(source);
+      if (!introspectable) return;
+      try {
+        const snapshot = await introspectable.introspect();
+        const tables = snapshot.objects.map((o) => o.name);
+        const columnsByTable: Record<string, string[]> = {};
+        await Promise.all(
+          snapshot.objects.slice(0, 50).map(async (o) => {
+            try {
+              const schema = await introspectable.describe(o);
+              columnsByTable[o.name] = schema.columns.map((c) => c.name);
+            } catch {
+              /* skip a table we cannot describe */
+            }
+          }),
+        );
+        set({ catalog: { tables, columnsByTable } });
+      } catch {
+        /* completion simply stays empty if introspection fails */
+      }
+    };
+
     return {
       status: 'connecting',
       error: null,
@@ -194,6 +231,8 @@ export const createAppStore = (
       queryGridRow: 0,
       history: [],
       historyIndex: null,
+      catalog: null,
+      completions: [],
 
       init: async () => {
         const res = await listObjects(source);
@@ -375,11 +414,19 @@ export const createAppStore = (
 
       // ── query editor ──────────────────────────────────────────────────────
 
-      enterQueryView: () => set({ view: 'query', queryFocus: 'editor' }),
+      enterQueryView: () => {
+        set({ view: 'query', queryFocus: 'editor' });
+        if (!get().catalog) void buildCatalog();
+      },
 
       exitQueryView: () => set({ view: 'browse' }),
 
-      updateQueryText: (text) => set({ queryText: text, historyIndex: null }),
+      updateQueryText: (text) =>
+        set({
+          queryText: text,
+          historyIndex: null,
+          completions: completionsFor(text),
+        }),
 
       executeQuery: async () => {
         const { queryText, history } = get();
@@ -417,18 +464,20 @@ export const createAppStore = (
           historyIndex === null
             ? history.length - 1
             : Math.max(0, historyIndex - 1);
-        set({ historyIndex: idx, queryText: history[idx] ?? '' });
+        const text = history[idx] ?? '';
+        set({ historyIndex: idx, queryText: text, completions: [] });
       },
 
       historyNext: () => {
         const { history, historyIndex } = get();
         if (historyIndex === null) return;
         if (historyIndex >= history.length - 1) {
-          set({ historyIndex: null, queryText: '' });
+          set({ historyIndex: null, queryText: '', completions: [] });
           return;
         }
         const idx = historyIndex + 1;
-        set({ historyIndex: idx, queryText: history[idx] ?? '' });
+        const text = history[idx] ?? '';
+        set({ historyIndex: idx, queryText: text, completions: [] });
       },
 
       toggleQueryFocus: () =>
@@ -445,5 +494,14 @@ export const createAppStore = (
             s.queryGridRow + 1,
           ),
         })),
+
+      acceptCompletion: () => {
+        const { queryText, completions } = get();
+        const top = completions[0];
+        if (!top) return;
+        const word = queryText.match(/([A-Za-z_][A-Za-z0-9_]*)$/)?.[1] ?? '';
+        const next = queryText.slice(0, queryText.length - word.length) + top;
+        set({ queryText: next, completions: completionsFor(next) });
+      },
     };
   });

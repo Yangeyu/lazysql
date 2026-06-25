@@ -4,7 +4,7 @@
  * DeepSeek, Moonshot/Kimi, a local Ollama/vLLM — each is just a different
  * { baseURL, model, apiKey } preset (see presets.ts). Uses forced function
  * calling to get a typed { sql, explanation } back, with a defensive fallback
- * to plain content for models that ignore tool_choice.
+ * to plain content for models that ignore (or cannot honour) tool_choice.
  *
  * Talks raw HTTP (the wire format is small, stable, and dependency-free) so the
  * binary stays lean; swapping in the official `openai` SDK later is internal to
@@ -93,7 +93,12 @@ export class OpenAiCompatibleSqlGenerator implements SqlGenerator {
           { role: 'user', content: buildUserPrompt(input) },
         ],
         tools: [EMIT_SQL_TOOL],
-        tool_choice: { type: 'function', function: { name: 'emit_sql' } },
+        // `auto`, not a forced object: reasoning/"thinking" models (e.g. Qwen3
+        // on DashScope) reject `tool_choice: required|object` with HTTP 400
+        // ("does not support being set to required or object in thinking mode").
+        // With a single tool the model still calls it reliably, and the content
+        // fallback below salvages the rare case where it answers in prose.
+        tool_choice: 'auto',
       }),
     });
 

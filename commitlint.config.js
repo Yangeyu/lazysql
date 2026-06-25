@@ -7,6 +7,9 @@
  */
 export default {
   extends: ['@commitlint/config-conventional'],
+  // Merge commits keep their readable "Merge phase N: …" subjects and are exempt
+  // from the Conventional Commits grammar (standard practice).
+  ignores: [(commit) => commit.startsWith('Merge ')],
   rules: {
     'scope-enum': [
       1,

@@ -26,6 +26,7 @@ import { connectionsFile } from './adapters/persistence/paths.ts';
 import { openConnection } from './application/usecases/OpenConnection.ts';
 import { createSqlGenerator } from './adapters/llm/createSqlGenerator.ts';
 import type { SecretStore } from './application/ports/SecretStore.ts';
+import type { ConnectionService } from './application/ports/ConnectionService.ts';
 import type { SqlGenerator } from './application/ports/SqlGenerator.ts';
 import type { ConnectionProfile } from './domain/connection/ConnectionProfile.ts';
 
@@ -126,24 +127,21 @@ if (arg) {
   }
 }
 
-const open = (profile: ConnectionProfile) =>
-  openConnection(profile, { factory: createDataSource, secrets });
-
-// New/edited connections are persisted to the YAML repo; the password (if any)
-// goes to the SecretStore under the profile id and never touches the YAML.
-const saveProfile = async (
-  profile: ConnectionProfile,
-  password: string | null,
-): Promise<ConnectionProfile[]> => {
-  await repo.save(profile);
-  if (password) await secrets.set(profile.id, password);
-  return repo.list();
-};
-
-const removeProfile = async (id: string): Promise<ConnectionProfile[]> => {
-  await repo.remove(id);
-  await secrets.delete(id).catch(() => {});
-  return repo.list();
+// The single port the UI store uses for all connection work. It wires the
+// repository, secret store and factory; the password goes to the SecretStore
+// under the profile id and never touches the YAML.
+const connectionService: ConnectionService = {
+  list: () => repo.list(),
+  open: (profile) =>
+    openConnection(profile, { factory: createDataSource, secrets }),
+  save: async (profile, password) => {
+    await repo.save(profile);
+    if (password) await secrets.set(profile.id, password);
+  },
+  remove: async (id) => {
+    await repo.remove(id);
+    await secrets.delete(id).catch(() => {});
+  },
 };
 
 // NL→SQL is enabled only when a provider is configured; otherwise it stays off.
@@ -152,10 +150,7 @@ const generator: SqlGenerator | null = createSqlGenerator();
 
 const { waitUntilExit } = render(
   <Root
-    profiles={profiles}
-    open={open}
-    saveProfile={saveProfile}
-    removeProfile={removeProfile}
+    connectionService={connectionService}
     initial={initial}
     generator={generator}
   />,

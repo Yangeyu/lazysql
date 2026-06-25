@@ -18,13 +18,30 @@ import { App } from './App.tsx';
 import { createAppStore } from './store.ts';
 import { createDataSource } from '../../adapters/datasource/registry.ts';
 import type { ConnectionProfile } from '../../domain/connection/ConnectionProfile.ts';
+import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
 import type { DataSource } from '../../domain/datasource/DataSource.ts';
-import { unwrap } from '../../shared/Result.ts';
+import { ok, unwrap } from '../../shared/Result.ts';
 
 const DB = join(tmpdir(), `lazysql-tui-${process.pid}.db`);
 let source: DataSource;
 
 const tick = (ms = 60) => Bun.sleep(ms);
+
+const profile: ConnectionProfile = {
+  id: 'tui',
+  name: 'tui',
+  driver: 'sqlite',
+  options: { file: DB },
+};
+
+// The store reaches connections only through this port; the fake opens the
+// single shared source and auto-connects it via `initial` on init().
+const service: ConnectionService = {
+  list: async () => [profile],
+  open: async () => ok(source),
+  save: async () => {},
+  remove: async () => {},
+};
 
 beforeAll(async () => {
   const db = new Database(DB, { create: true });
@@ -33,12 +50,6 @@ beforeAll(async () => {
   for (let i = 1; i <= 25; i++) ins.run(`w${i}`, i);
   db.close();
 
-  const profile: ConnectionProfile = {
-    id: 'tui',
-    name: 'tui',
-    driver: 'sqlite',
-    options: { file: DB },
-  };
   source = unwrap(createDataSource(profile));
   unwrap(await source.connect());
 });
@@ -49,7 +60,7 @@ afterAll(async () => {
 });
 
 const renderApp = () => {
-  const store = createAppStore(source);
+  const store = createAppStore({ connectionService: service, initial: profile });
   return render(
     <StoreContext.Provider value={store}>
       <App />

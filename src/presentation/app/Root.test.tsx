@@ -1,7 +1,8 @@
 /**
- * Connection-picker flow test (headless): render Root with a saved profile,
- * pick it, land in the browse UI, then switch back to the picker. Exercises the
- * full picker ↔ browsing lifecycle including teardown.
+ * Root lifecycle test (headless): the connection list lives in the sidebar.
+ * Render Root with a fake ConnectionService, connect a profile (Enter on its
+ * root), browse its objects, disconnect (backtick), and add a new connection
+ * via the `n` form. Exercises the workbench store end to end.
  */
 
 import React from 'react';
@@ -16,6 +17,7 @@ import { Root } from './Root.tsx';
 import { createDataSource } from '../../adapters/datasource/registry.ts';
 import { openConnection } from '../../application/usecases/OpenConnection.ts';
 import type { ConnectionProfile } from '../../domain/connection/ConnectionProfile.ts';
+import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
 import type { SecretStore } from '../../application/ports/SecretStore.ts';
 import type { SqlGenerator } from '../../application/ports/SqlGenerator.ts';
 
@@ -32,8 +34,15 @@ const profiles: ConnectionProfile[] = [
   { id: 't', name: 'TestDB', driver: 'sqlite', options: { file: DB } },
 ];
 
-const open = (p: ConnectionProfile) =>
-  openConnection(p, { factory: createDataSource, secrets: noSecrets });
+/** A ConnectionService over the real factory; `saved` captures persisted ones. */
+const makeService = (saved: ConnectionProfile[] = []): ConnectionService => ({
+  list: async () => [...profiles, ...saved],
+  open: (p) => openConnection(p, { factory: createDataSource, secrets: noSecrets }),
+  save: async (p) => {
+    saved.push(p);
+  },
+  remove: async () => {},
+});
 
 beforeAll(() => {
   const db = new Database(DB, { create: true });
@@ -46,19 +55,19 @@ afterAll(() => rmSync(DB, { force: true }));
 
 test('the sidebar lists saved connections as roots', async () => {
   const { lastFrame, unmount } = render(
-    <Root profiles={profiles} open={open} />,
+    <Root connectionService={makeService()} />,
   );
   await tick();
   const frame = lastFrame() ?? '';
   expect(frame).toContain('TestDB'); // connection root
   expect(frame).toContain('[SQLite]'); // driver tag
-  expect(frame).toContain('○'); // inactive (not yet connected)
+  expect(frame).toContain('○'); // inactive — not yet connected
   unmount();
 });
 
 test('Enter on a connection connects and lists its objects; backtick disconnects', async () => {
   const { lastFrame, stdin, unmount } = render(
-    <Root profiles={profiles} open={open} />,
+    <Root connectionService={makeService()} />,
   );
   await tick();
 
@@ -78,12 +87,8 @@ test('Enter on a connection connects and lists its objects; backtick disconnects
 
 test('n opens the new-connection form and persists a profile', async () => {
   const saved: ConnectionProfile[] = [];
-  const saveProfile = async (p: ConnectionProfile) => {
-    saved.push(p);
-    return [...profiles, p];
-  };
   const { lastFrame, stdin, unmount } = render(
-    <Root profiles={profiles} open={open} saveProfile={saveProfile} />,
+    <Root connectionService={makeService(saved)} />,
   );
   await tick();
 
@@ -112,11 +117,11 @@ test('NL→SQL fills the editor with generated SQL for review (never auto-runs)'
     }),
   };
   const { lastFrame, stdin, unmount } = render(
-    <Root profiles={profiles} open={open} generator={fakeGen} />,
+    <Root connectionService={makeService()} generator={fakeGen} />,
   );
   await tick();
   stdin.write('\r'); // connect
-  await tick(140);
+  await tick(180);
   stdin.write(':'); // query view
   await tick(120);
   stdin.write(String.fromCharCode(7)); // Ctrl+G → begin NL prompt
@@ -126,10 +131,8 @@ test('NL→SQL fills the editor with generated SQL for review (never auto-runs)'
   stdin.write('\r'); // generate
   await tick(120);
 
-  // The explanation only appears after generateFromNl fills the editor with the
-  // generated SQL — proof the NL→SQL flow ran end to end and updated the editor.
-  // (The exact SQL text lives in the editor box, which mis-renders in the narrow
-  // test snapshot; verified visually via a wide preview.)
+  // The explanation appears only after generateFromNl fills the editor — proof
+  // the NL→SQL flow ran end to end.
   expect(lastFrame() ?? '').toContain('counts the gadgets');
   unmount();
 });

@@ -19,16 +19,17 @@ import type {
 import type { RowKey, FieldValue } from '../../domain/datasource/edit.ts';
 import {
   buildTree,
+  dialectLabel,
   firstCategoryKind,
   firstObjectIndex,
-  shortTag,
-  type ConnNode,
+  toConnNodes,
   type TreeRow,
 } from '../tree/tree.ts';
 import type {
   ConnectionProfile,
   DriverId,
 } from '../../domain/connection/ConnectionProfile.ts';
+import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
 import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
 import {
   firstPage,
@@ -61,21 +62,6 @@ export type Focus = 'sidebar' | 'grid';
 export type Status = 'connecting' | 'ready' | 'error';
 export type Mode = 'normal' | 'filter' | 'edit' | 'confirm' | 'connform';
 
-/** Connection-management actions the store delegates to the composition root.
- *  The store never touches a driver, repository, or secret — it only signals
- *  intent; Root performs the infrastructure work. (DIP) */
-export interface Workbench {
-  /** Switch the active connection to a saved profile by id. */
-  connect: (id: string) => void;
-  /** Persist a new/edited profile (and optional password), then refresh. */
-  saveConnection: (
-    profile: ConnectionProfile,
-    password: string | null,
-  ) => Promise<void>;
-  /** Forget a saved connection by id. */
-  removeConnection: (id: string) => Promise<void>;
-}
-
 /** One editable field in the new-connection form. */
 export interface ConnFormField {
   readonly key: string;
@@ -93,13 +79,12 @@ export interface ConnForm {
   error: string | null;
 }
 
-export interface AppStoreOptions {
-  /** All connections to show as tree roots (the active one flagged). */
-  connections?: ConnNode[];
-  activeId?: string | null;
-  workbench?: Workbench;
-  /** A message to show when there is no active connection (e.g. a failed open). */
-  initialError?: string | null;
+export interface AppStoreDeps {
+  /** The only way the store reaches connections — never a driver/repo directly. */
+  connectionService: ConnectionService;
+  generator?: SqlGenerator | null;
+  /** Profile to connect to on init (e.g. a CLI arg); also shown as a root. */
+  initial?: ConnectionProfile | null;
 }
 export type View = 'browse' | 'query';
 export type QueryFocus = 'editor' | 'result';
@@ -115,11 +100,8 @@ export interface Pending {
 export interface AppState {
   status: Status;
   error: string | null;
-  connectionName: string | null;
-  /** Human dialect label of the active connection, e.g. 'PostgreSQL'. */
-  dialectLabel: string;
-  /** All connections shown as tree roots (the active one flagged). */
-  connections: ConnNode[];
+  /** All saved connection profiles — the single source for the tree roots. */
+  profiles: ConnectionProfile[];
   /** Id of the live connection, or null when none is connected. */
   activeId: string | null;
   /** New-connection form draft, or null when not editing one. */
@@ -195,7 +177,17 @@ export interface AppState {
   setMainTab: (tab: MainTab) => void;
   toggleMainTab: () => void;
   // ── connections / new-connection form ──
-  setConnections: (connections: ConnNode[]) => void;
+  /** Switch the active connection to a saved profile by id. */
+  connect: (id: string) => Promise<void>;
+  /** Open an arbitrary profile (e.g. an ad-hoc CLI file) and show it as a root. */
+  connectProfile: (profile: ConnectionProfile) => Promise<void>;
+  /** Tear down the active connection, back to the connection list. */
+  disconnect: () => void;
+  saveConnection: (
+    profile: ConnectionProfile,
+    password: string | null,
+  ) => Promise<void>;
+  removeConnection: (id: string) => Promise<void>;
   beginNewConnection: () => void;
   connFormType: (ch: string) => void;
   connFormBackspace: () => void;
@@ -283,42 +275,27 @@ const slugify = (name: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '') || 'connection';
 
-export const createAppStore = (
-  source: DataSource | null,
-  connectionName: string | null = null,
-  generator: SqlGenerator | null = null,
-  dialect: string = 'SQL',
-  options: AppStoreOptions = {},
-): AppStore =>
+export const createAppStore = (deps: AppStoreDeps): AppStore =>
   createStore<AppState>((set, get) => {
-    // Capability-driven UI gating: features come from what the source can do,
-    // never from its type. A non-Queryable source (Mongo/Redis) hides the SQL
-    // editor and NL→SQL entirely. (docs/adr/0005)
-    const queryable = source != null && asQueryable(source) !== null;
-    const workbench = options.workbench ?? null;
+    const { connectionService, generator = null, initial = null } = deps;
+    // The live connection, swapped in/out by attach()/disconnect(). The store
+    // owns it but reaches it only through the segregated capability guards
+    // (asQueryable/asIntrospectable), never as a concrete driver. (docs/adr/0002)
+    let active: DataSource | null = null;
 
-    const activeId =
-      options.activeId ?? (source != null ? connectionName ?? 'active' : null);
-
-    // When Root doesn't supply the full connection list (e.g. tests, ad-hoc
-    // sources), synthesize a single root for the active connection.
-    const initialConnections: ConnNode[] =
-      options.connections ??
-      (source != null || connectionName != null
-        ? [
-            {
-              id: activeId ?? 'active',
-              name: connectionName ?? '(connection)',
-              tag: shortTag(dialect),
-              active: source != null,
-            },
-          ]
-        : []);
+    /** The profile of the live connection, if any. */
+    const activeProfile = (): ConnectionProfile | null =>
+      get().profiles.find((p) => p.id === get().activeId) ?? null;
 
     /** Build the flattened tree rows from the current state (pure). */
     const rowsNow = (): TreeRow[] => {
-      const { connections, objects, rootExpanded, expandedCats } = get();
-      return buildTree({ connections, objects, rootExpanded, expandedCats });
+      const { profiles, activeId, objects, rootExpanded, expandedCats } = get();
+      return buildTree({
+        connections: toConnNodes(profiles, activeId),
+        objects,
+        rootExpanded,
+        expandedCats,
+      });
     };
 
     /** Re-clamp the cursor after the visible row count changes. */
@@ -329,7 +306,7 @@ export const createAppStore = (
 
     /** Open an object into the data grid (focus moves to the grid). */
     const openObject = async (ref: ObjectRef): Promise<void> => {
-      if (!source) return;
+      if (!active) return;
       set({
         focus: 'grid',
         gridCol: 0,
@@ -341,7 +318,7 @@ export const createAppStore = (
         structureError: null,
       });
       // Primary-key columns gate editing; a table without one is read-only.
-      const introspectable = asIntrospectable(source);
+      const introspectable = asIntrospectable(active);
       if (introspectable) {
         try {
           const schema = await introspectable.describe(ref);
@@ -359,10 +336,10 @@ export const createAppStore = (
 
     /** Lazily fetch the open object's column schema for the DDL tab (cached). */
     const loadStructure = async (): Promise<void> => {
-      if (!source) return;
+      if (!active) return;
       const { current, structure } = get();
       if (!current || structure) return; // already loaded for this object
-      const introspectable = asIntrospectable(source);
+      const introspectable = asIntrospectable(active);
       if (!introspectable) {
         set({ structureError: 'structure is not available for this source' });
         return;
@@ -377,9 +354,9 @@ export const createAppStore = (
     };
 
     const load = async (ref: ObjectRef, spec: BrowseSpec): Promise<void> => {
-      if (!source) return;
+      if (!active) return;
       set({ loading: true, error: null });
-      const res = await browseTable(source, ref, spec);
+      const res = await browseTable(active, ref, spec);
       if (!res.ok) {
         set({ loading: false, status: 'error', error: res.error.message });
         return;
@@ -431,8 +408,8 @@ export const createAppStore = (
 
     /** Build the table/column catalog once, for schema-aware completion. */
     const buildCatalog = async (): Promise<void> => {
-      if (!source) return;
-      const introspectable = asIntrospectable(source);
+      if (!active) return;
+      const introspectable = asIntrospectable(active);
       if (!introspectable) return;
       try {
         const snapshot = await introspectable.introspect();
@@ -454,13 +431,63 @@ export const createAppStore = (
       }
     };
 
+    /** Load the active connection's objects and seat the cursor on the first. */
+    const loadSchema = async (): Promise<void> => {
+      if (!active) return;
+      const res = await listObjects(active);
+      if (!res.ok) {
+        set({ status: 'error', error: res.error.message });
+        return;
+      }
+      // Expand the first present category and land the cursor on its first
+      // object, so a single Enter browses straight away.
+      const first = firstCategoryKind(res.value);
+      set({
+        status: 'ready',
+        objects: res.value,
+        expandedCats: new Set<ObjectKind>(first ? [first] : []),
+      });
+      set({ treeIndex: firstObjectIndex(rowsNow()) });
+    };
+
+    /** Make `next` the live connection, reset per-connection state, load schema. */
+    const attach = async (next: DataSource, id: string): Promise<void> => {
+      if (active && active !== next) void active.disconnect();
+      active = next;
+      const canQuery = asQueryable(next) !== null;
+      set({
+        activeId: id,
+        status: 'connecting',
+        error: null,
+        queryable: canQuery,
+        nlAvailable: generator !== null && canQuery,
+        // everything below is scoped to one connection — reset on switch
+        objects: [],
+        rootExpanded: true,
+        expandedCats: new Set<ObjectKind>(),
+        treeIndex: 0,
+        focus: 'sidebar',
+        current: null,
+        result: null,
+        mainTab: 'data',
+        structure: null,
+        structureError: null,
+        view: 'browse',
+        queryText: '',
+        queryResult: null,
+        queryError: null,
+        history: [],
+        historyIndex: null,
+        catalog: null,
+      });
+      await loadSchema();
+    };
+
     return {
-      status: source != null ? 'connecting' : 'ready',
-      error: options.initialError ?? null,
-      connectionName,
-      dialectLabel: dialect,
-      connections: initialConnections,
-      activeId,
+      status: 'ready',
+      error: null,
+      profiles: [],
+      activeId: null,
       connForm: null,
       objects: [],
       rootExpanded: true,
@@ -485,7 +512,7 @@ export const createAppStore = (
       pkColumns: [],
       pending: null,
       loading: false,
-      queryable,
+      queryable: false,
       helpOpen: false,
 
       view: 'browse',
@@ -500,7 +527,7 @@ export const createAppStore = (
       catalog: null,
       completions: [],
 
-      nlAvailable: generator !== null && queryable,
+      nlAvailable: false,
       nlMode: false,
       nlDraft: '',
       generating: false,
@@ -508,21 +535,14 @@ export const createAppStore = (
       nlKind: null,
 
       init: async () => {
-        if (!source) {
-          set({ status: 'ready', objects: [] });
-          return;
-        }
-        const res = await listObjects(source);
-        if (!res.ok) {
-          set({ status: 'error', error: res.error.message });
-          return;
-        }
-        // Expand the first present category and land the cursor on its first
-        // object, so a single Enter browses straight away.
-        const first = firstCategoryKind(res.value);
-        const expandedCats = new Set<ObjectKind>(first ? [first] : []);
-        set({ status: 'ready', objects: res.value, expandedCats });
-        set({ treeIndex: firstObjectIndex(rowsNow()) });
+        const saved = await connectionService.list();
+        // An ad-hoc initial profile (e.g. a CLI file) joins the list as a root.
+        const profiles =
+          initial && !saved.some((p) => p.id === initial.id)
+            ? [...saved, initial]
+            : saved;
+        set({ status: 'ready', profiles });
+        if (initial) await get().connectProfile(initial);
       },
 
       toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
@@ -547,7 +567,7 @@ export const createAppStore = (
         if (row.type === 'connection') {
           // Active connection folds; an inactive one connects (switches to it).
           if (row.active) set((s) => ({ rootExpanded: !s.rootExpanded }));
-          else workbench?.connect(row.id);
+          else void get().connect(row.id);
         } else {
           const next = new Set(get().expandedCats);
           if (next.has(row.kind)) next.delete(row.kind);
@@ -563,7 +583,7 @@ export const createAppStore = (
         if (row.type === 'object') {
           await openObject(row.ref);
         } else if (row.type === 'connection') {
-          if (!row.active) workbench?.connect(row.id);
+          if (!row.active) void get().connect(row.id);
           else if (!get().rootExpanded) set({ rootExpanded: true });
         } else if (!get().expandedCats.has(row.kind)) {
           set({ expandedCats: new Set(get().expandedCats).add(row.kind) });
@@ -617,8 +637,53 @@ export const createAppStore = (
         if (next === 'ddl') void loadStructure();
       },
 
-      setConnections: (connections) => {
-        set({ connections });
+      connect: async (id) => {
+        const profile = get().profiles.find((p) => p.id === id);
+        if (profile) await get().connectProfile(profile);
+      },
+
+      connectProfile: async (profile) => {
+        set({ status: 'connecting', error: null });
+        const r = await connectionService.open(profile);
+        if (!r.ok) {
+          set({ status: 'error', error: r.error.message });
+          return;
+        }
+        if (!get().profiles.some((p) => p.id === profile.id)) {
+          set({ profiles: [...get().profiles, profile] });
+        }
+        await attach(r.value, profile.id);
+      },
+
+      disconnect: () => {
+        if (active) void active.disconnect();
+        active = null;
+        set({
+          activeId: null,
+          status: 'ready',
+          queryable: false,
+          nlAvailable: false,
+          objects: [],
+          current: null,
+          result: null,
+          view: 'browse',
+          rootExpanded: true,
+          treeIndex: 0,
+          focus: 'sidebar',
+        });
+        clampTree();
+      },
+
+      saveConnection: async (profile, password) => {
+        await connectionService.save(profile, password);
+        set({ profiles: await connectionService.list() });
+        clampTree();
+      },
+
+      removeConnection: async (id) => {
+        await connectionService.remove(id);
+        if (get().activeId === id) get().disconnect();
+        set({ profiles: await connectionService.list() });
         clampTree();
       },
 
@@ -686,10 +751,6 @@ export const createAppStore = (
           set({ connForm: { ...f, error: 'name is required' } });
           return;
         }
-        if (!workbench) {
-          set({ mode: 'normal', connForm: null });
-          return;
-        }
         const password = val('password') || null;
         const options: Record<string, unknown> = {};
         if (f.driver === 'sqlite') {
@@ -708,7 +769,7 @@ export const createAppStore = (
           options,
         };
         set({ mode: 'normal', connForm: null });
-        await workbench.saveConnection(profile, password);
+        await get().saveConnection(profile, password);
       },
 
       toggleFocus: () =>
@@ -811,8 +872,8 @@ export const createAppStore = (
           pending: {
             message: `UPDATE ${current.name} SET ${column} = '${value}' WHERE ${keyText(key)}`,
             run: async () => {
-              if (!source) return;
-              const r = await updateRow(source, current, key, [
+              if (!active) return;
+              const r = await updateRow(active, current, key, [
                 { column, value },
               ]);
               if (!r.ok) set({ status: 'error', error: r.error.message });
@@ -834,8 +895,8 @@ export const createAppStore = (
           pending: {
             message: `DELETE FROM ${current.name} WHERE ${keyText(key)}`,
             run: async () => {
-              if (!source) return;
-              const r = await deleteRow(source, current, key);
+              if (!active) return;
+              const r = await deleteRow(active, current, key);
               if (!r.ok) set({ status: 'error', error: r.error.message });
               else await reloadKeepingCursor();
             },
@@ -873,12 +934,12 @@ export const createAppStore = (
         }),
 
       executeQuery: async () => {
-        if (!source) return;
+        if (!active) return;
         const { queryText, history } = get();
         const text = queryText.trim();
         if (!text) return;
         set({ loading: true, queryError: null });
-        const r = await runQuery(source, text);
+        const r = await runQuery(active, text);
         if (!r.ok) {
           set({
             loading: false,
@@ -979,6 +1040,8 @@ export const createAppStore = (
               }))
             : [],
         };
+        const profile = activeProfile();
+        const dialect = profile ? dialectLabel(profile.driver) : 'SQL';
         const r = await generateSql(generator, { nl, schema, dialect });
         if (!r.ok) {
           set({ generating: false, queryError: r.error.message });

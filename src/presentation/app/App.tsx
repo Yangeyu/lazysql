@@ -7,7 +7,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useApp as useInkApp, useInput } from 'ink';
 import { useApp, useStoreApi } from './context.ts';
-import { useShell } from './shell.ts';
 import { Sidebar } from '../components/Sidebar.tsx';
 import { DataGrid } from '../components/DataGrid.tsx';
 import { QueryEditor } from '../components/QueryEditor.tsx';
@@ -20,7 +19,7 @@ import {
   type KeyContext,
   type KeyFlags,
 } from '../keymap/keymap.ts';
-import { buildTree } from '../tree/tree.ts';
+import { buildTree, toConnNodes } from '../tree/tree.ts';
 
 const SIDEBAR_WIDTH = 26;
 
@@ -39,12 +38,11 @@ const useTerminalRows = (): number => {
 export const App: React.FC = () => {
   const ink = useInkApp();
   const store = useStoreApi();
-  const shell = useShell();
 
   const status = useApp((s) => s.status);
   const error = useApp((s) => s.error);
-  const connectionName = useApp((s) => s.connectionName);
-  const connections = useApp((s) => s.connections);
+  const profiles = useApp((s) => s.profiles);
+  const activeId = useApp((s) => s.activeId);
   const objects = useApp((s) => s.objects);
   const rootExpanded = useApp((s) => s.rootExpanded);
   const expandedCats = useApp((s) => s.expandedCats);
@@ -188,7 +186,7 @@ export const App: React.FC = () => {
       return;
     }
     if (input === '`') {
-      shell.switchConnection();
+      s.disconnect();
       return;
     }
     if (input === '?') {
@@ -233,9 +231,21 @@ export const App: React.FC = () => {
   const viewportRows = Math.max(3, terminalRows - 9);
   const gridFocused = focus === 'grid';
 
+  // The active connection's display name is derived from the single source of
+  // truth (profiles + activeId) — not stored separately.
+  const connectionName = useMemo(
+    () => profiles.find((p) => p.id === activeId)?.name ?? null,
+    [profiles, activeId],
+  );
   const treeRows = useMemo(
-    () => buildTree({ connections, objects, rootExpanded, expandedCats }),
-    [connections, objects, rootExpanded, expandedCats],
+    () =>
+      buildTree({
+        connections: toConnNodes(profiles, activeId),
+        objects,
+        rootExpanded,
+        expandedCats,
+      }),
+    [profiles, activeId, objects, rootExpanded, expandedCats],
   );
 
   const flags: KeyFlags = { queryable, nlAvailable };

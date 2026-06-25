@@ -9,6 +9,10 @@
  */
 
 import type { ObjectKind, ObjectRef } from '../../domain/datasource/schema.ts';
+import type {
+  ConnectionProfile,
+  DriverId,
+} from '../../domain/connection/ConnectionProfile.ts';
 
 /** One connection shown as a tree root. The active one carries the schema. */
 export interface ConnNode {
@@ -50,15 +54,37 @@ const CATEGORY_ORDER: ReadonlyArray<{ kind: ObjectKind; label: string }> = [
   { kind: 'keyspace', label: 'Keyspaces' },
 ];
 
+/** Human dialect label for a driver, e.g. 'postgres' → 'PostgreSQL'. */
+export const dialectLabel = (driver: DriverId): string =>
+  ({
+    sqlite: 'SQLite',
+    postgres: 'PostgreSQL',
+    mysql: 'MySQL',
+    mongodb: 'MongoDB',
+    redis: 'Redis',
+  })[driver];
+
 /** Short, human driver tag for the connection root (presentation only). */
-export const shortTag = (dialectLabel: string): string =>
+export const shortTag = (label: string): string =>
   ({
     PostgreSQL: 'PG',
     SQLite: 'SQLite',
     MySQL: 'MySQL',
     MongoDB: 'Mongo',
     Redis: 'Redis',
-  })[dialectLabel] ?? dialectLabel;
+  })[label] ?? label;
+
+/** Project saved profiles into sidebar connection roots (the single source). */
+export const toConnNodes = (
+  profiles: ReadonlyArray<ConnectionProfile>,
+  activeId: string | null,
+): ConnNode[] =>
+  profiles.map((p) => ({
+    id: p.id,
+    name: p.name,
+    tag: shortTag(dialectLabel(p.driver)),
+    active: p.id === activeId,
+  }));
 
 export interface TreeInput {
   /** All connections shown as roots, in display order. */

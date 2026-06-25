@@ -47,3 +47,20 @@ test('NL is unavailable (and beginNl is a no-op) without a generator', () => {
   expect(store.getState().nlMode).toBe(false);
   expect(store.getState().queryError).toContain('ANTHROPIC_API_KEY');
 });
+
+test('a non-Queryable source gates off the SQL editor and NL→SQL', () => {
+  // fakeSource has no execute() → not Queryable (like Mongo/Redis).
+  const generator: SqlGenerator = {
+    generate: async () => ({ sql: 'SELECT 1', explanation: '' }),
+  };
+  const store = createAppStore(fakeSource, 'KV', generator, 'Redis');
+
+  expect(store.getState().queryable).toBe(false);
+  // NL→SQL needs the Query capability to run, so it's hidden even with a generator.
+  expect(store.getState().nlAvailable).toBe(false);
+
+  // Pressing `:` (enterQueryView) is inert — the UI never enters a dead SQL view.
+  store.getState().enterQueryView();
+  expect(store.getState().view).toBe('browse');
+  expect(store.getState().error).toContain('does not support SQL');
+});

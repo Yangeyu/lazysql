@@ -52,6 +52,7 @@ export const App: React.FC = () => {
   const pending = useApp((s) => s.pending);
   const loading = useApp((s) => s.loading);
 
+  const queryable = useApp((s) => s.queryable);
   const view = useApp((s) => s.view);
   const queryFocus = useApp((s) => s.queryFocus);
   const queryText = useApp((s) => s.queryText);
@@ -238,6 +239,7 @@ export const App: React.FC = () => {
         error={error}
         connectionName={connectionName}
         view={view}
+        queryable={queryable}
         nlAvailable={nlAvailable}
         current={current}
         total={total}

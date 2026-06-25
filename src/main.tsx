@@ -56,6 +56,22 @@ connections:
   #     port: 3306
   #     user: root
   #     database: mysql
+
+  # - id: local-mongo
+  #   name: Local MongoDB
+  #   driver: mongodb
+  #   options:
+  #     host: localhost
+  #     port: 27017
+  #     database: test
+
+  # - id: local-redis
+  #   name: Local Redis
+  #   driver: redis
+  #   options:
+  #     host: localhost
+  #     port: 6379
+  #     db: 0
 `;
 
 const looksLikeFile = (arg: string): boolean =>

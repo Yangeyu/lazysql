@@ -46,11 +46,18 @@ bun run typecheck  # 严格类型检查
 
 操作：`↑/↓` 移动 · `⏎` 打开表 · `tab` 切换面板 · `n/p` 翻页 · `q` 退出。
 
-PostgreSQL 适配器契约测试需一个可达的 PG 实例（无则自动跳过）：
+适配器契约测试需可达的数据库实例（无则**自动跳过**，不会让无 Docker 的机器失败）：
 
 ```bash
+# PostgreSQL
 docker run -d --name lazysql-pg -e POSTGRES_PASSWORD=lazysql \
   -e POSTGRES_USER=lazysql -e POSTGRES_DB=lazysql -p 55432:5432 postgres:16-alpine
+# MySQL/MariaDB
+docker run -d --name lazysql-mysql -e MARIADB_ROOT_PASSWORD=lazysql -p 33060:3306 mariadb:11
+# MongoDB
+docker run -d --name lazysql-mongo -p 27017:27017 mongo:7
+# Redis
+docker run -d --name lazysql-redis -p 6379:6379 redis:7-alpine
 ```
 
 ## 状态
@@ -93,7 +100,15 @@ Phase 1 核心完成。详见 `docs/ARCHITECTURE.md` §11。
   **默认 Qwen（百炼）** + 可切 **Claude** / 任意 OpenAI 兼容 provider（见下「LLM 配置」与 `adr/0004`）。
 - ⬜ 多行编辑 · 历史持久化 · Schema 管理视图。
 
-当前 **71 项测试全绿**（含 NL→SQL 端口/分类/store 级 + provider 选择 + 全部 TUI 集成）。
+### Phase 6（NoSQL，能力模型的试金石）
+
+- ✅ **MongoDB（文档）+ Redis（键值）适配器** —— 两源均声明 `Browse`+`SchemaIntrospect`+`RowEdit`，
+  **刻意省略 `Query`（非 SQL）与 `Transaction`（无回滚）**；`RowEdit` 靠单文档/单键原子性在无事务下安全。
+  Mongo 走官方 `mongodb` 驱动、`'document'` 形态；Redis 走 **Bun 内置 `RedisClient`（零依赖）**、`'keyvalue'` 形态。
+- ✅ **按能力门控 UI** —— store 由 `asQueryable` 派生 `queryable`，对非 SQL 源自动隐藏 `:`（SQL 编辑器）
+  与 `^G`（NL→SQL）。**领域/用例零改动，改动全落 `adapters/`**——能力模型对非关系数据成立（详见 `adr/0005`）。
+
+当前 **86 项测试全绿**（五引擎 SQLite/PG/MySQL/Mongo/Redis 契约 + NL→SQL/provider + 能力门控 + 全部 TUI 集成）。
 
 ## LLM 配置（NL→SQL）
 

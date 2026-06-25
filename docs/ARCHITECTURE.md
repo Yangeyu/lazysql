@@ -27,6 +27,7 @@
 |--------|------|------|
 | 语言 | **TypeScript (strict)** | LLM/补全生态一等公民；团队熟悉度高 |
 | 运行时 | **Bun**（开发&分发）/ 兼容 Node 22 | `bun build --compile` 出单二进制；保持运行时无关 |
+| 数据源驱动 | `bun:sqlite` · `pg` · `mysql2` · `mongodb` · **Bun 内置 `RedisClient`** | 每引擎一薄驱动，藏在适配器后；Redis 零依赖 |
 | TUI | **Ink (React)** | 组件模型清晰、社区主流。**睁眼选择**：取其生态成熟度，已知性能短板用分页纪律消解（见 `adr/0003`） |
 | 状态 | **Zustand** + slice | 轻量、可测、与 React 渲染解耦 |
 | LLM | **`SqlGenerator` 端口 + provider 适配器** | 端口即 provider 抽象；默认 **Qwen（百炼）**，可切 Claude / 任意 OpenAI 兼容 provider（见 `adr/0004`） |
@@ -282,8 +283,8 @@ src/
         SqlDataSource.ts       # 通用 SQL 适配器
         dialects/              # PostgresDialect · MySqlDialect · SqliteDialect
         drivers/               # pg / mysql2 / better-sqlite3 薄封装
-      mongo/MongoDataSource.ts
-      redis/RedisDataSource.ts
+      mongo/MongoDataSource.ts # 文档源（官方 mongodb 驱动）→ 'document' 形态
+      redis/RedisDataSource.ts # 键值源（Bun 内置 RedisClient）→ 'keyvalue' 形态
       registry.ts              # DataSourceFactory：type → 适配器（OCP 扩展点）
     llm/
       createSqlGenerator.ts           # provider 工厂：env → SqlGenerator（registry 类比）
@@ -365,7 +366,13 @@ src/
 - **Phase 4 · Schema 管理** ⬜：内省视图 + DDL。
 - **Phase 5 · NL→SQL (LLM)** ✅：`SqlGenerator` 出站端口（**端口即 provider 抽象**）。`GenerateSql` 用例：生成→`classify`(read/write/ddl)→`Result`；**绝不执行**。TUI `^G` 进入 NL 提示，生成的 SQL **填入编辑器供审查**，破坏性语句红色 ⚠ 警告，用户自行回车运行。store 级测试验证"填入而不执行"。
   - **多 provider（ADR-0004）** ✅：`createSqlGenerator` 工厂按 env 选 provider。默认 **Qwen（百炼）**——`OpenAiCompatibleSqlGenerator`（一个适配器服务一类 OpenAI 兼容 provider，forced function-calling 出 `{sql, explanation}`，原生 `fetch`，`DASHSCOPE_API_KEY` + `qwen3.7-plus`）；可切 **Claude**（官方 `@anthropic-ai/sdk` strict tool use，`ANTHROPIC_API_KEY` + `claude-opus-4-8`）。`LAZYSQL_LLM_PROVIDER` 显式指定、否则按密钥自动探测；`LAZYSQL_LLM_MODEL`/`LAZYSQL_LLM_BASE_URL` 覆盖。**新增 provider 只动 `adapters/llm/`**——四度兑现 OCP/DIP，且证明端口对两种异构 SDK/线格式都成立。
-- **Phase 6 · NoSQL** ⬜：Mongo + Redis 适配器（**验证能力模型确非 SQL-only**）。
+- **Phase 6 · NoSQL** ✅：**MongoDB（文档）+ Redis（键值）适配器——能力模型的试金石（adr/0005）**。
+  两源均声明 `SchemaIntrospect`+`Browse`+`RowEdit`，刻意**省略 `Query`（非 SQL）与 `Transaction`（无回滚）**；
+  `RowEditable` 靠单文档/单键原子性在**无事务**下保持安全。Mongo 走官方 `mongodb` 驱动、`find().skip().limit()`
+  映射、`'document'` 形态（列取并集、`_id` 在前、ObjectId/Date/嵌套压平）；Redis 走 **Bun 内置 RedisClient**
+  （零依赖）、按 `:` 前缀分组为 keyspace、`'keyvalue'` 形态。**唯一的 `presentation/` 改动**：store 由
+  `asQueryable` 派生 `queryable`，`:`/`^G` 对非 `Query` 源自动隐藏——按能力门控、零 `if (db===…)`。
+  **领域/用例零改动**，改动全落 `adapters/`。两套契约测试（真实 Mongo/Redis，不可达则跳过）。
 - **Phase 7 · 进阶**：SSH 隧道、导入导出、插件化。
 
 ---

@@ -24,7 +24,9 @@ import { FileSecretStore } from './adapters/persistence/FileSecretStore.ts';
 import { KeychainSecretStore } from './adapters/persistence/KeychainSecretStore.ts';
 import { connectionsFile } from './adapters/persistence/paths.ts';
 import { openConnection } from './application/usecases/OpenConnection.ts';
+import { AnthropicSqlGenerator } from './adapters/llm/AnthropicSqlGenerator.ts';
 import type { SecretStore } from './application/ports/SecretStore.ts';
+import type { SqlGenerator } from './application/ports/SqlGenerator.ts';
 import type { ConnectionProfile } from './domain/connection/ConnectionProfile.ts';
 
 const DEFAULT_CONFIG = `# lazysql connections.
@@ -111,8 +113,13 @@ if (arg) {
 const open = (profile: ConnectionProfile) =>
   openConnection(profile, { factory: createDataSource, secrets });
 
+// NL→SQL is enabled only when an API key is present; otherwise it stays off.
+const generator: SqlGenerator | null = AnthropicSqlGenerator.isConfigured()
+  ? new AnthropicSqlGenerator()
+  : null;
+
 const { waitUntilExit } = render(
-  <Root profiles={profiles} open={open} initial={initial} />,
+  <Root profiles={profiles} open={open} initial={initial} generator={generator} />,
 );
 
 await waitUntilExit();

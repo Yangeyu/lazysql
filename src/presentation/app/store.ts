@@ -27,6 +27,12 @@ import { listObjects } from '../../application/usecases/ListObjects.ts';
 import { browseTable } from '../../application/usecases/BrowseTable.ts';
 import { updateRow, deleteRow } from '../../application/usecases/EditRow.ts';
 import { runQuery } from '../../application/usecases/RunQuery.ts';
+import { generateSql } from '../../application/usecases/GenerateSql.ts';
+import type {
+  SqlGenerator,
+  SchemaContext,
+} from '../../application/ports/SqlGenerator.ts';
+import type { StatementKind } from '../../domain/query/classify.ts';
 import {
   complete,
   type SchemaCatalog,
@@ -81,6 +87,14 @@ export interface AppState {
   catalog: SchemaCatalog | null;
   completions: string[];
 
+  // ── NL→SQL ──
+  nlAvailable: boolean;
+  nlMode: boolean;
+  nlDraft: string;
+  generating: boolean;
+  nlExplanation: string | null;
+  nlKind: StatementKind | null;
+
   init: () => Promise<void>;
   selectPrev: () => void;
   selectNext: () => void;
@@ -115,6 +129,10 @@ export interface AppState {
   queryGridUp: () => void;
   queryGridDown: () => void;
   acceptCompletion: () => void;
+  beginNl: () => void;
+  updateNlDraft: (text: string) => void;
+  cancelNl: () => void;
+  generateFromNl: () => Promise<void>;
 }
 
 export type AppStore = StoreApi<AppState>;
@@ -122,6 +140,8 @@ export type AppStore = StoreApi<AppState>;
 export const createAppStore = (
   source: DataSource,
   connectionName: string | null = null,
+  generator: SqlGenerator | null = null,
+  dialect: string = 'SQL',
 ): AppStore =>
   createStore<AppState>((set, get) => {
     const load = async (ref: ObjectRef, spec: BrowseSpec): Promise<void> => {
@@ -233,6 +253,13 @@ export const createAppStore = (
       historyIndex: null,
       catalog: null,
       completions: [],
+
+      nlAvailable: generator !== null,
+      nlMode: false,
+      nlDraft: '',
+      generating: false,
+      nlExplanation: null,
+      nlKind: null,
 
       init: async () => {
         const res = await listObjects(source);
@@ -502,6 +529,52 @@ export const createAppStore = (
         const word = queryText.match(/([A-Za-z_][A-Za-z0-9_]*)$/)?.[1] ?? '';
         const next = queryText.slice(0, queryText.length - word.length) + top;
         set({ queryText: next, completions: completionsFor(next) });
+      },
+
+      // ── NL→SQL ────────────────────────────────────────────────────────────
+
+      beginNl: () => {
+        if (!generator) {
+          set({ queryError: 'set ANTHROPIC_API_KEY to enable AI (NL→SQL)' });
+          return;
+        }
+        set({ nlMode: true, nlDraft: '', queryError: null });
+      },
+
+      updateNlDraft: (text) => set({ nlDraft: text }),
+
+      cancelNl: () => set({ nlMode: false, nlDraft: '' }),
+
+      generateFromNl: async () => {
+        const { nlDraft, catalog } = get();
+        const nl = nlDraft.trim();
+        if (!generator || !nl) {
+          set({ nlMode: false, nlDraft: '' });
+          return;
+        }
+        set({ nlMode: false, nlDraft: '', generating: true, queryError: null });
+        const schema: SchemaContext = {
+          tables: catalog
+            ? catalog.tables.map((t) => ({
+                name: t,
+                columns: catalog.columnsByTable[t] ?? [],
+              }))
+            : [],
+        };
+        const r = await generateSql(generator, { nl, schema, dialect });
+        if (!r.ok) {
+          set({ generating: false, queryError: r.error.message });
+          return;
+        }
+        // Fill the editor for review — NEVER auto-execute (§5.2).
+        set({
+          generating: false,
+          queryText: r.value.sql,
+          nlExplanation: r.value.explanation,
+          nlKind: r.value.kind,
+          completions: [],
+          queryFocus: 'editor',
+        });
       },
     };
   });

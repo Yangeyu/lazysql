@@ -60,6 +60,12 @@ export const App: React.FC = () => {
   const queryElapsedMs = useApp((s) => s.queryElapsedMs);
   const queryGridRow = useApp((s) => s.queryGridRow);
   const completions = useApp((s) => s.completions);
+  const nlAvailable = useApp((s) => s.nlAvailable);
+  const nlMode = useApp((s) => s.nlMode);
+  const nlDraft = useApp((s) => s.nlDraft);
+  const generating = useApp((s) => s.generating);
+  const nlExplanation = useApp((s) => s.nlExplanation);
+  const nlKind = useApp((s) => s.nlKind);
 
   useEffect(() => {
     void store.getState().init();
@@ -74,9 +80,21 @@ export const App: React.FC = () => {
         ink.exit();
         return;
       }
+      // NL→SQL prompt captures all keys until generate/cancel.
+      if (s.nlMode) {
+        if (key.return) void s.generateFromNl();
+        else if (key.escape) s.cancelNl();
+        else if (key.backspace || key.delete)
+          s.updateNlDraft(s.nlDraft.slice(0, -1));
+        else if (input && !key.ctrl && !key.meta)
+          s.updateNlDraft(s.nlDraft + input);
+        return;
+      }
+      if (s.generating) return; // ignore input while the model works
       if (s.queryFocus === 'editor') {
         if (key.escape) s.exitQueryView();
         else if (key.return) void s.executeQuery();
+        else if (key.ctrl && input === 'g') s.beginNl(); // ask the AI
         else if (key.upArrow) s.historyPrev();
         else if (key.downArrow) s.historyNext();
         else if (key.tab) {
@@ -187,7 +205,12 @@ export const App: React.FC = () => {
             gridRow={queryGridRow}
             completions={completions}
             loading={loading}
-            viewportRows={Math.max(3, terminalRows - 12)}
+            nlMode={nlMode}
+            nlDraft={nlDraft}
+            generating={generating}
+            nlExplanation={nlExplanation}
+            nlKind={nlKind}
+            viewportRows={Math.max(3, terminalRows - 13)}
           />
         ) : (
           <Box
@@ -215,6 +238,7 @@ export const App: React.FC = () => {
         error={error}
         connectionName={connectionName}
         view={view}
+        nlAvailable={nlAvailable}
         current={current}
         total={total}
         page={page}

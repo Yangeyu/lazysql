@@ -15,6 +15,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.106.0",
     "ink": "^5.1.0",
     "mysql2": "^3.22.5",
     "pg": "^8.22.0",

@@ -13,10 +13,14 @@ import { ShellContext, type Shell } from './shell.ts';
 import { createAppStore, type AppStore } from './store.ts';
 import { App } from './App.tsx';
 import { ConnectionPicker } from '../components/ConnectionPicker.tsx';
-import type { ConnectionProfile } from '../../domain/connection/ConnectionProfile.ts';
+import type {
+  ConnectionProfile,
+  DriverId,
+} from '../../domain/connection/ConnectionProfile.ts';
 import type { DataSource } from '../../domain/datasource/DataSource.ts';
 import type { ConnectionError } from '../../domain/errors/errors.ts';
 import type { Result } from '../../shared/Result.ts';
+import type { SqlGenerator } from '../../application/ports/SqlGenerator.ts';
 
 interface Props {
   profiles: ConnectionProfile[];
@@ -25,9 +29,24 @@ interface Props {
   ) => Promise<Result<DataSource, ConnectionError>>;
   /** When set (e.g. from a CLI arg), connect immediately and skip the picker. */
   initial?: ConnectionProfile | null;
+  /** NL→SQL generator, or null when no API key is configured. */
+  generator?: SqlGenerator | null;
 }
 
-export const Root: React.FC<Props> = ({ profiles, open, initial }) => {
+const DIALECT_LABEL: Record<DriverId, string> = {
+  sqlite: 'SQLite',
+  postgres: 'PostgreSQL',
+  mysql: 'MySQL',
+  mongodb: 'MongoDB',
+  redis: 'Redis',
+};
+
+export const Root: React.FC<Props> = ({
+  profiles,
+  open,
+  initial,
+  generator = null,
+}) => {
   const ink = useInkApp();
   const [store, setStore] = useState<AppStore | null>(null);
   const [index, setIndex] = useState(0);
@@ -42,13 +61,20 @@ export const Root: React.FC<Props> = ({ profiles, open, initial }) => {
       const result = await open(profile);
       if (result.ok) {
         sourceRef.current = result.value;
-        setStore(createAppStore(result.value, profile.name));
+        setStore(
+          createAppStore(
+            result.value,
+            profile.name,
+            generator,
+            DIALECT_LABEL[profile.driver],
+          ),
+        );
       } else {
         setError(result.error.message);
       }
       setConnecting(false);
     },
-    [open],
+    [open, generator],
   );
 
   // Auto-open when launched with an explicit connection.

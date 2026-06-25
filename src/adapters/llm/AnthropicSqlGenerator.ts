@@ -1,8 +1,8 @@
 /**
  * SqlGenerator backed by Claude via the official @anthropic-ai/sdk. Uses strict
  * tool use to force a typed { sql, explanation } result — no fragile parsing of
- * free-form text. This is the only module that imports the LLM SDK; swapping in
- * another provider is a new adapter behind the SqlGenerator port. (DIP)
+ * free-form text. One of several adapters behind the SqlGenerator port; the
+ * provider is chosen by createSqlGenerator. (DIP — docs/ARCHITECTURE.md §5.1)
  *
  * Model defaults to claude-opus-4-8; override with LAZYSQL_LLM_MODEL.
  * Requires ANTHROPIC_API_KEY (or an `ant auth login` profile).
@@ -14,28 +14,21 @@ import type {
   GenerateInput,
   GeneratedSql,
 } from '../../application/ports/SqlGenerator.ts';
+import { buildSystemPrompt, buildUserPrompt } from './prompt.ts';
 
-const MODEL = process.env.LAZYSQL_LLM_MODEL ?? 'claude-opus-4-8';
-
-const SYSTEM = (dialect: string): string =>
-  `You are a SQL expert for ${dialect}. Given a database schema and a request in
-natural language, produce a single correct, runnable ${dialect} SQL statement.
-Rules:
-- Use only tables and columns present in the provided schema.
-- Prefer a read-only SELECT unless the request clearly asks to modify data.
-- Do not wrap the SQL in markdown fences.
-- Keep the explanation to one or two sentences.`;
-
-const renderSchema = (input: GenerateInput): string =>
-  input.schema.tables
-    .map((t) => `${t.name}(${t.columns.join(', ')})`)
-    .join('\n') || '(no tables)';
+const DEFAULT_MODEL = 'claude-opus-4-8';
 
 export class AnthropicSqlGenerator implements SqlGenerator {
+  /** Stable id for diagnostics / provider selection. */
+  readonly provider = 'anthropic';
+  readonly model: string;
   private readonly client: Anthropic;
 
-  constructor(apiKey?: string) {
-    this.client = apiKey ? new Anthropic({ apiKey }) : new Anthropic();
+  constructor(opts: { apiKey?: string; model?: string } = {}) {
+    this.client = opts.apiKey
+      ? new Anthropic({ apiKey: opts.apiKey })
+      : new Anthropic();
+    this.model = opts.model ?? process.env.LAZYSQL_LLM_MODEL ?? DEFAULT_MODEL;
   }
 
   /** True when an API key is available in the environment. */
@@ -45,9 +38,9 @@ export class AnthropicSqlGenerator implements SqlGenerator {
 
   async generate(input: GenerateInput): Promise<GeneratedSql> {
     const response = await this.client.messages.create({
-      model: MODEL,
+      model: this.model,
       max_tokens: 2000,
-      system: SYSTEM(input.dialect),
+      system: buildSystemPrompt(input.dialect),
       tools: [
         {
           name: 'emit_sql',
@@ -68,12 +61,7 @@ export class AnthropicSqlGenerator implements SqlGenerator {
         },
       ],
       tool_choice: { type: 'tool', name: 'emit_sql' },
-      messages: [
-        {
-          role: 'user',
-          content: `Schema:\n${renderSchema(input)}\n\nRequest: ${input.nl}`,
-        },
-      ],
+      messages: [{ role: 'user', content: buildUserPrompt(input) }],
     });
 
     const block = response.content.find((b) => b.type === 'tool_use');

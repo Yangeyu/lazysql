@@ -24,7 +24,7 @@ import { FileSecretStore } from './adapters/persistence/FileSecretStore.ts';
 import { KeychainSecretStore } from './adapters/persistence/KeychainSecretStore.ts';
 import { connectionsFile } from './adapters/persistence/paths.ts';
 import { openConnection } from './application/usecases/OpenConnection.ts';
-import { AnthropicSqlGenerator } from './adapters/llm/AnthropicSqlGenerator.ts';
+import { createSqlGenerator } from './adapters/llm/createSqlGenerator.ts';
 import type { SecretStore } from './application/ports/SecretStore.ts';
 import type { SqlGenerator } from './application/ports/SqlGenerator.ts';
 import type { ConnectionProfile } from './domain/connection/ConnectionProfile.ts';
@@ -113,10 +113,9 @@ if (arg) {
 const open = (profile: ConnectionProfile) =>
   openConnection(profile, { factory: createDataSource, secrets });
 
-// NL→SQL is enabled only when an API key is present; otherwise it stays off.
-const generator: SqlGenerator | null = AnthropicSqlGenerator.isConfigured()
-  ? new AnthropicSqlGenerator()
-  : null;
+// NL→SQL is enabled only when a provider is configured; otherwise it stays off.
+// Provider is picked by createSqlGenerator (LAZYSQL_LLM_PROVIDER, else by key).
+const generator: SqlGenerator | null = createSqlGenerator();
 
 const { waitUntilExit } = render(
   <Root profiles={profiles} open={open} initial={initial} generator={generator} />,

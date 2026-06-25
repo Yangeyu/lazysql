@@ -18,7 +18,7 @@
 
 ## 技术栈
 
-`TypeScript(strict)` · `Bun` · `Ink (TUI)` · `Vercel AI SDK (LLM)` · `Zustand`
+`TypeScript(strict)` · `Bun` · `Ink (TUI)` · `LLM: Qwen(百炼) / Claude（端口可切）` · `Zustand`
 
 ## 架构
 
@@ -88,9 +88,31 @@ Phase 1 核心完成。详见 `docs/ARCHITECTURE.md` §11。
   会话内历史 `↑/↓`，`tab` 在编辑器/结果间切换，`esc` 返回浏览。
 - ✅ **schema 感知补全** —— 纯 tokenizer 引擎，按上下文给 表名 / 列名（按 FROM 作用域）/
   关键字，`Tab` 接受首候选。无新依赖。
-- ✅ **NL→SQL（LLM）** —— `^G` 输入自然语言 → Claude 生成 SQL **填入编辑器供审查**
+- ✅ **NL→SQL（LLM）** —— `^G` 输入自然语言 → LLM 生成 SQL **填入编辑器供审查**
   （绝不自动执行），破坏性语句红色 ⚠ 警告。`SqlGenerator` 端口即 provider 抽象，
-  默认官方 `@anthropic-ai/sdk` + `claude-opus-4-8`；设 `ANTHROPIC_API_KEY` 启用。
+  **默认 Qwen（百炼）** + 可切 **Claude** / 任意 OpenAI 兼容 provider（见下「LLM 配置」与 `adr/0004`）。
 - ⬜ 多行编辑 · 历史持久化 · Schema 管理视图。
 
-当前 **63 项测试全绿**（含 NL→SQL 端口/分类/store 级测试 + 全部 TUI 集成）。
+当前 **71 项测试全绿**（含 NL→SQL 端口/分类/store 级 + provider 选择 + 全部 TUI 集成）。
+
+## LLM 配置（NL→SQL）
+
+provider 经 `SqlGenerator` 端口隔离，由 `createSqlGenerator` 按环境变量装配——不配则 `^G` 静默关闭。
+
+| 变量 | 作用 | 默认 |
+|------|------|------|
+| `LAZYSQL_LLM_PROVIDER` | 显式选 provider：`bailian`(Qwen) / `anthropic`(Claude) | 按密钥自动探测（有 `DASHSCOPE_API_KEY` 优先 Qwen） |
+| `DASHSCOPE_API_KEY` | 百炼（Qwen）密钥 | —— |
+| `ANTHROPIC_API_KEY` | Claude 密钥 | —— |
+| `LAZYSQL_LLM_MODEL` | 覆盖模型 id | Qwen `qwen3.7-plus` / Claude `claude-opus-4-8` |
+| `LAZYSQL_LLM_BASE_URL` | 覆盖 base URL（如切百炼 `-intl` 海外节点） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+
+```bash
+# 默认（百炼 Qwen）
+export DASHSCOPE_API_KEY=sk-xxx
+bun start
+
+# 切回 Claude
+export ANTHROPIC_API_KEY=sk-ant-xxx
+LAZYSQL_LLM_PROVIDER=anthropic bun start
+```

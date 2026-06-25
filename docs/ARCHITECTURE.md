@@ -29,7 +29,7 @@
 | 运行时 | **Bun**（开发&分发）/ 兼容 Node 22 | `bun build --compile` 出单二进制；保持运行时无关 |
 | TUI | **Ink (React)** | 组件模型清晰、社区主流。**睁眼选择**：取其生态成熟度，已知性能短板用分页纪律消解（见 `adr/0003`） |
 | 状态 | **Zustand** + slice | 轻量、可测、与 React 渲染解耦 |
-| LLM | **Vercel AI SDK (`ai`)** | provider 无关，Claude/OpenAI/Ollama 统一接口、原生流式与 tool-use |
+| LLM | **`SqlGenerator` 端口 + provider 适配器** | 端口即 provider 抽象；默认 **Qwen（百炼）**，可切 Claude / 任意 OpenAI 兼容 provider（见 `adr/0004`） |
 | SQL 解析/补全 | **node-sql-parser** | AST 驱动的 schema 感知补全与校验 |
 | 行编辑 DML 生成 | **Kysely**（仅内部，参数化） | 防注入地生成 UPDATE/INSERT，不暴露给用户 |
 | 密钥 | **OS Keychain**（keytar/`security`/libsecret） | 绝不明文落盘 |
@@ -163,14 +163,16 @@ interface SqlGenerator {
 用户输入自然语言
    │
    ▼ ① 收集相关 schema（按表名/关键词裁剪，控制 token）
-   ▼ ② SqlGenerator.generate() —— Vercel AI SDK 调 Claude
+   ▼ ② SqlGenerator.generate() —— 经 provider 适配器（默认 Qwen/百炼，可切 Claude）
    ▼ ③ 静态分析生成的 SQL（node-sql-parser）：判定读/写/DDL、标记破坏性
    ▼ ④ 【强制】在编辑器中展示 SQL + 解释，等待用户确认
    ▼ ⑤ 写操作 → 先 EXPLAIN/dry-run，二次确认
    ▼ ⑥ 执行 → 结果回灌网格
 ```
 
-- Provider 无关：默认 **Claude**，可切 OpenAI / Ollama（本地）。
+- Provider 无关：`SqlGenerator` 端口即抽象，`createSqlGenerator` 按 env 选 provider。
+  默认 **Qwen（百炼）**（配 `DASHSCOPE_API_KEY`），可切 **Claude** 或任意 OpenAI 兼容 provider
+  （DeepSeek / Moonshot / 本地 Ollama）—— 新增只动 `adapters/llm/`，见 `adr/0004`。
 - **只读优先**：默认生成 `SELECT`，写/DDL 需显式开启 + 二次确认。
 
 ### 5.3 语法补全（与 LLM 解耦，独立引擎）
@@ -284,8 +286,11 @@ src/
       redis/RedisDataSource.ts
       registry.ts              # DataSourceFactory：type → 适配器（OCP 扩展点）
     llm/
-      VercelAiSqlGenerator.ts
-      providers/               # anthropic · openai · ollama 配置
+      AnthropicSqlGenerator.ts        # Claude，官方 @anthropic-ai/sdk
+      OpenAiCompatibleSqlGenerator.ts # 一类 provider：Bailian(Qwen)/DeepSeek/Ollama…
+      providers.ts                    # OpenAI 兼容 preset 注册表（OCP 扩展点）
+      createSqlGenerator.ts           # provider 工厂：env → SqlGenerator
+      prompt.ts                       # 跨 provider 共享的 system/user prompt
     completion/SchemaAwareCompleter.ts
     persistence/
       YamlConnectionRepository.ts
@@ -357,7 +362,8 @@ src/
 - **Phase 2 · 数据编辑** ✅：启用 `RowEditable`/`Transactional` 能力。参数化 DML（`dml.ts`，**拒绝无 WHERE 的写**）；每次写入跑在真事务里，`affected≠1 → 回滚`（防误改多行）；TUI `e` 编辑单元格、`d` 删除行，均经**二次确认**展示精确语句后执行。三引擎适配器测试覆盖写入与回滚守卫。Insert 已在适配器层（无 UI 表单，留作后续）。
 - **Phase 3 · 查询编辑器** ✅：第二个主视图(`view: browse | query`)。经 `Queryable` 执行自由 SQL、复用 `DataGrid` 渲染结果、会话内历史(`↑/↓`)。**schema 感知补全**——纯 tokenizer 引擎(`sqlCompleter.ts`，无解析器、对半成品 SQL 鲁棒):按前置关键字给 表名/列名(按 FROM 子句作用域)/关键字,`Tab` 接受。`:` 进入、`esc` 返回。
 - **Phase 4 · Schema 管理** ⬜：内省视图 + DDL。
-- **Phase 5 · NL→SQL (LLM)** ✅：`SqlGenerator` 出站端口（**端口即 provider 抽象**——默认适配器用官方 `@anthropic-ai/sdk` strict tool use 出 `{sql, explanation}`，默认 `claude-opus-4-8`，`ANTHROPIC_API_KEY` 缺失则功能关闭）。`GenerateSql` 用例：生成→`classify`(read/write/ddl)→`Result`；**绝不执行**。TUI `^G` 进入 NL 提示，生成的 SQL **填入编辑器供审查**，破坏性语句红色 ⚠ 警告，用户自行回车运行。store 级测试验证"填入而不执行"。
+- **Phase 5 · NL→SQL (LLM)** ✅：`SqlGenerator` 出站端口（**端口即 provider 抽象**）。`GenerateSql` 用例：生成→`classify`(read/write/ddl)→`Result`；**绝不执行**。TUI `^G` 进入 NL 提示，生成的 SQL **填入编辑器供审查**，破坏性语句红色 ⚠ 警告，用户自行回车运行。store 级测试验证"填入而不执行"。
+  - **多 provider（ADR-0004）** ✅：`createSqlGenerator` 工厂按 env 选 provider。默认 **Qwen（百炼）**——`OpenAiCompatibleSqlGenerator`（一个适配器服务一类 OpenAI 兼容 provider，forced function-calling 出 `{sql, explanation}`，原生 `fetch`，`DASHSCOPE_API_KEY` + `qwen3.7-plus`）；可切 **Claude**（官方 `@anthropic-ai/sdk` strict tool use，`ANTHROPIC_API_KEY` + `claude-opus-4-8`）。`LAZYSQL_LLM_PROVIDER` 显式指定、否则按密钥自动探测；`LAZYSQL_LLM_MODEL`/`LAZYSQL_LLM_BASE_URL` 覆盖。**新增 provider 只动 `adapters/llm/`**——四度兑现 OCP/DIP，且证明端口对两种异构 SDK/线格式都成立。
 - **Phase 6 · NoSQL** ⬜：Mongo + Redis 适配器（**验证能力模型确非 SQL-only**）。
 - **Phase 7 · 进阶**：SSH 隧道、导入导出、插件化。
 

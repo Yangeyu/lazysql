@@ -88,6 +88,9 @@ Phase 1 核心完成。详见 `docs/ARCHITECTURE.md` §11。
   会话内历史 `↑/↓`，`tab` 在编辑器/结果间切换，`esc` 返回浏览。
 - ✅ **schema 感知补全** —— 纯 tokenizer 引擎，按上下文给 表名 / 列名（按 FROM 作用域）/
   关键字，`Tab` 接受首候选。无新依赖。
-- ⬜ NL→SQL（LLM，下一步）· 多行编辑 · 历史持久化。
+- ✅ **NL→SQL（LLM）** —— `^G` 输入自然语言 → Claude 生成 SQL **填入编辑器供审查**
+  （绝不自动执行），破坏性语句红色 ⚠ 警告。`SqlGenerator` 端口即 provider 抽象，
+  默认官方 `@anthropic-ai/sdk` + `claude-opus-4-8`；设 `ANTHROPIC_API_KEY` 启用。
+- ⬜ 多行编辑 · 历史持久化 · Schema 管理视图。
 
-当前 **53 项测试全绿**（含补全单元测试 + 查询编辑器 TUI）。
+当前 **63 项测试全绿**（含 NL→SQL 端口/分类/store 级测试 + 全部 TUI 集成）。

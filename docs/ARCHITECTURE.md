@@ -356,9 +356,9 @@ src/
   - ⬜ in-TUI「新增连接」表单(当前经编辑 `connections.yml`) · Linux/Windows Keychain 后端。
 - **Phase 2 · 数据编辑** ✅：启用 `RowEditable`/`Transactional` 能力。参数化 DML（`dml.ts`，**拒绝无 WHERE 的写**）；每次写入跑在真事务里，`affected≠1 → 回滚`（防误改多行）；TUI `e` 编辑单元格、`d` 删除行，均经**二次确认**展示精确语句后执行。三引擎适配器测试覆盖写入与回滚守卫。Insert 已在适配器层（无 UI 表单，留作后续）。
 - **Phase 3 · 查询编辑器** ✅：第二个主视图(`view: browse | query`)。经 `Queryable` 执行自由 SQL、复用 `DataGrid` 渲染结果、会话内历史(`↑/↓`)。**schema 感知补全**——纯 tokenizer 引擎(`sqlCompleter.ts`，无解析器、对半成品 SQL 鲁棒):按前置关键字给 表名/列名(按 FROM 子句作用域)/关键字,`Tab` 接受。`:` 进入、`esc` 返回。
-- **Phase 4 · Schema 管理**：内省视图 + DDL。
-- **Phase 5 · NL→SQL (LLM)**：schema 上下文生成 + 审查/确认链路 + provider 配置。
-- **Phase 6 · NoSQL**：Mongo + Redis 适配器（**验证能力模型确非 SQL-only**）。
+- **Phase 4 · Schema 管理** ⬜：内省视图 + DDL。
+- **Phase 5 · NL→SQL (LLM)** ✅：`SqlGenerator` 出站端口（**端口即 provider 抽象**——默认适配器用官方 `@anthropic-ai/sdk` strict tool use 出 `{sql, explanation}`，默认 `claude-opus-4-8`，`ANTHROPIC_API_KEY` 缺失则功能关闭）。`GenerateSql` 用例：生成→`classify`(read/write/ddl)→`Result`；**绝不执行**。TUI `^G` 进入 NL 提示，生成的 SQL **填入编辑器供审查**，破坏性语句红色 ⚠ 警告，用户自行回车运行。store 级测试验证"填入而不执行"。
+- **Phase 6 · NoSQL** ⬜：Mongo + Redis 适配器（**验证能力模型确非 SQL-only**）。
 - **Phase 7 · 进阶**：SSH 隧道、导入导出、插件化。
 
 ---

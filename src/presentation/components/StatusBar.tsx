@@ -14,6 +14,7 @@ interface Props {
   error: string | null;
   connectionName: string | null;
   view: View;
+  nlAvailable: boolean;
   current: ObjectRef | null;
   total: number;
   page: Page;
@@ -41,6 +42,7 @@ const StatusBarImpl: React.FC<Props> = ({
   error,
   connectionName,
   view,
+  nlAvailable,
   current,
   total,
   page,
@@ -133,7 +135,8 @@ const StatusBarImpl: React.FC<Props> = ({
           <Text color="magenta">SQL query</Text>
         </Box>
         <Text dimColor>
-          ⏎ run · tab editor/result · ↑/↓ history · esc browse · ^C quit
+          ⏎ run · tab editor/result · ↑/↓ history
+          {nlAvailable ? ' · ^G ask AI' : ''} · esc browse · ^C quit
         </Text>
       </Box>
     );

@@ -72,5 +72,14 @@ docker run -d --name lazysql-pg -e POSTGRES_PASSWORD=lazysql \
     `LAZYSQL_SECRETS=keychain` 开启。
   - ⬜ in-TUI「新增连接」表单（当前经编辑 `connections.yml` 添加）· Linux/Windows Keychain 后端。
 
-Phase 1 核心完成。详见 `docs/ARCHITECTURE.md` §11。当前 **33 项测试全绿**
-（SQLite / 真实 PG / 真实 MySQL / 持久化 / Keychain / 无头 TUI 含连接选择器）。
+Phase 1 核心完成。详见 `docs/ARCHITECTURE.md` §11。
+
+### Phase 2（数据编辑，进行中）
+
+- ✅ **行编辑（RowEditable + Transactional）** —— 参数化 DML（拒绝无 WHERE 的写）；
+  每次写入跑在真事务里，`affected≠1 → 自动回滚`（防误改多行）。三引擎适配器测试覆盖。
+- ✅ **TUI 编辑 + 二次确认** —— grid 内 `e` 编辑单元格、`d` 删除行；提交前展示精确
+  SQL 语句，`y` 应用 / `n` 取消。无主键的表自动只读。
+- ⬜ in-TUI「新增行」表单（Insert 已在适配器层）。
+
+当前 **45 项测试全绿**（SQLite / 真实 PG / 真实 MySQL / 持久化 / Keychain / 无头 TUI 含编辑流程）。

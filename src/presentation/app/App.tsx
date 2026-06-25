@@ -47,6 +47,8 @@ export const App: React.FC = () => {
   const filter = useApp((s) => s.filter);
   const mode = useApp((s) => s.mode);
   const filterDraft = useApp((s) => s.filterDraft);
+  const editDraft = useApp((s) => s.editDraft);
+  const pending = useApp((s) => s.pending);
   const loading = useApp((s) => s.loading);
 
   useEffect(() => {
@@ -64,6 +66,24 @@ export const App: React.FC = () => {
         s.updateFilterDraft(s.filterDraft.slice(0, -1));
       else if (input && !key.ctrl && !key.meta)
         s.updateFilterDraft(s.filterDraft + input);
+      return;
+    }
+
+    // Cell-edit input mode: type a new value, Enter → confirm, Esc → cancel.
+    if (s.mode === 'edit') {
+      if (key.return) s.submitEdit();
+      else if (key.escape) s.cancelEdit();
+      else if (key.backspace || key.delete)
+        s.updateEditDraft(s.editDraft.slice(0, -1));
+      else if (input && !key.ctrl && !key.meta)
+        s.updateEditDraft(s.editDraft + input);
+      return;
+    }
+
+    // Confirmation: y runs the pending write, n/Esc cancels.
+    if (s.mode === 'confirm') {
+      if (input === 'y' || input === 'Y') void s.confirmPending();
+      else if (input === 'n' || input === 'N' || key.escape) s.cancelPending();
       return;
     }
 
@@ -90,6 +110,8 @@ export const App: React.FC = () => {
       else if (key.rightArrow || input === 'l') s.gridRight();
       else if (input === 's') void s.applySort();
       else if (input === '/') s.beginFilter();
+      else if (input === 'e') s.beginEdit();
+      else if (input === 'd') s.beginDelete();
       else if (input === 'n') void s.pageNext();
       else if (input === 'p') void s.pagePrev();
     }
@@ -144,6 +166,9 @@ export const App: React.FC = () => {
         mode={mode}
         filterDraft={filterDraft}
         filterColumn={result?.columns[gridCol]?.name ?? null}
+        editDraft={editDraft}
+        editColumn={result?.columns[gridCol]?.name ?? null}
+        pendingMessage={pending?.message ?? null}
       />
     </Box>
   );

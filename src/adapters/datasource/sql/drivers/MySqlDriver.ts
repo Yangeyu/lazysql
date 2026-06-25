@@ -7,7 +7,7 @@
 import { createPool } from 'mysql2/promise';
 import type { Pool, FieldPacket } from 'mysql2/promise';
 import type { PoolOptions } from 'mysql2';
-import type { SqlDriver, RawResult } from '../Driver.ts';
+import type { SqlDriver, RawResult, RunFn } from '../Driver.ts';
 import { ConnectionError } from '../../../../domain/errors/errors.ts';
 
 export class MySqlDriver implements SqlDriver {
@@ -49,14 +49,30 @@ export class MySqlDriver implements SqlDriver {
       values: params as unknown[],
       rowsAsArray: true,
     });
-    // SELECT → array of positional rows + field metadata.
-    if (Array.isArray(result)) {
-      const columns = ((fields ?? []) as FieldPacket[]).map((f) => f.name);
-      return { columns, rows: result as unknown[][] };
+    return toRaw(result, fields);
+  }
+
+  async transaction<T>(fn: (run: RunFn) => Promise<T>): Promise<T> {
+    const conn = await this.requirePool().getConnection();
+    const run: RunFn = async (text, params) => {
+      const [result, fields] = await conn.query({
+        sql: text,
+        values: params as unknown[],
+        rowsAsArray: true,
+      });
+      return toRaw(result, fields);
+    };
+    try {
+      await conn.beginTransaction();
+      const out = await fn(run);
+      await conn.commit();
+      return out;
+    } catch (e) {
+      await conn.rollback().catch(() => {});
+      throw e;
+    } finally {
+      conn.release();
     }
-    // INSERT/UPDATE/DDL → a ResultSetHeader carrying affectedRows.
-    const header = result as { affectedRows?: number };
-    return { columns: [], rows: [], affected: header.affectedRows };
   }
 
   private requirePool(): Pool {
@@ -64,3 +80,13 @@ export class MySqlDriver implements SqlDriver {
     return this.pool;
   }
 }
+
+/** Map a mysql2 result into RawResult: SELECT → rows, write → affectedRows. */
+const toRaw = (result: unknown, fields: FieldPacket[] | undefined): RawResult => {
+  if (Array.isArray(result)) {
+    const columns = ((fields ?? []) as FieldPacket[]).map((f) => f.name);
+    return { columns, rows: result as unknown[][] };
+  }
+  const header = result as { affectedRows?: number };
+  return { columns: [], rows: [], affected: header.affectedRows };
+};

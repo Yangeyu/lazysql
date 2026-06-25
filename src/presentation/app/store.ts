@@ -6,8 +6,12 @@
  */
 
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import type { DataSource } from '../../domain/datasource/DataSource.ts';
+import {
+  asIntrospectable,
+  type DataSource,
+} from '../../domain/datasource/DataSource.ts';
 import type { ObjectRef } from '../../domain/datasource/schema.ts';
+import type { RowKey, FieldValue } from '../../domain/datasource/edit.ts';
 import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
 import {
   firstPage,
@@ -21,12 +25,19 @@ import {
 } from '../../domain/query/Query.ts';
 import { listObjects } from '../../application/usecases/ListObjects.ts';
 import { browseTable } from '../../application/usecases/BrowseTable.ts';
+import { updateRow, deleteRow } from '../../application/usecases/EditRow.ts';
 
 export const PAGE_SIZE = 100;
 
 export type Focus = 'sidebar' | 'grid';
 export type Status = 'connecting' | 'ready' | 'error';
-export type Mode = 'normal' | 'filter';
+export type Mode = 'normal' | 'filter' | 'edit' | 'confirm';
+
+/** A confirmed, ready-to-run action awaiting the user's y/n. */
+export interface Pending {
+  readonly message: string;
+  readonly run: () => Promise<void>;
+}
 
 export interface AppState {
   status: Status;
@@ -45,6 +56,9 @@ export interface AppState {
   gridCol: number;
   mode: Mode;
   filterDraft: string;
+  editDraft: string;
+  pkColumns: string[];
+  pending: Pending | null;
   loading: boolean;
 
   init: () => Promise<void>;
@@ -63,6 +77,13 @@ export interface AppState {
   updateFilterDraft: (text: string) => void;
   cancelFilter: () => void;
   commitFilter: () => Promise<void>;
+  beginEdit: () => void;
+  updateEditDraft: (text: string) => void;
+  cancelEdit: () => void;
+  submitEdit: () => void;
+  beginDelete: () => void;
+  confirmPending: () => Promise<void>;
+  cancelPending: () => void;
 }
 
 export type AppStore = StoreApi<AppState>;
@@ -91,6 +112,33 @@ export const createAppStore = (
       });
     };
 
+    /** Build the primary-key locator for the row under the cursor. */
+    const currentRowKey = (): RowKey | null => {
+      const { result, gridRow, pkColumns } = get();
+      if (!result || pkColumns.length === 0) return null;
+      const row = result.rows[gridRow];
+      if (!row) return null;
+      const key: FieldValue[] = [];
+      for (const name of pkColumns) {
+        const i = result.columns.findIndex((c) => c.name === name);
+        if (i < 0) return null;
+        key.push({ column: name, value: row[i] ?? null });
+      }
+      return key;
+    };
+
+    /** Re-fetch the current window after a write, keeping the cursor in range. */
+    const reloadKeepingCursor = async (): Promise<void> => {
+      const { current, page, sort, filter, gridRow } = get();
+      if (!current) return;
+      await load(current, { page, sort, filter });
+      const len = get().result?.rows.length ?? 0;
+      set({ gridRow: Math.min(gridRow, Math.max(0, len - 1)) });
+    };
+
+    const keyText = (key: RowKey): string =>
+      key.map((k) => `${k.column}=${String(k.value)}`).join(' AND ');
+
     return {
       status: 'connecting',
       error: null,
@@ -108,6 +156,9 @@ export const createAppStore = (
       gridCol: 0,
       mode: 'normal',
       filterDraft: '',
+      editDraft: '',
+      pkColumns: [],
+      pending: null,
       loading: false,
 
       init: async () => {
@@ -131,7 +182,21 @@ export const createAppStore = (
         const { objects, selectedIndex } = get();
         const ref = objects[selectedIndex];
         if (!ref) return;
-        set({ focus: 'grid', gridCol: 0, sort: null, filter: null });
+        set({ focus: 'grid', gridCol: 0, sort: null, filter: null, pkColumns: [] });
+        // Primary-key columns gate editing; a table without one is read-only.
+        const introspectable = asIntrospectable(source);
+        if (introspectable) {
+          try {
+            const schema = await introspectable.describe(ref);
+            set({
+              pkColumns: schema.columns
+                .filter((c) => c.isPrimaryKey)
+                .map((c) => c.name),
+            });
+          } catch {
+            /* leave pkColumns empty → editing disabled for this table */
+          }
+        }
         await load(ref, { page: firstPage(PAGE_SIZE), sort: null, filter: null });
       },
 
@@ -203,5 +268,75 @@ export const createAppStore = (
           : null;
         await load(current, { page: firstPage(PAGE_SIZE), sort, filter });
       },
+
+      beginEdit: () => {
+        const { result, gridRow, gridCol, pkColumns } = get();
+        const column = result?.columns[gridCol]?.name;
+        if (!result || !column) return;
+        if (pkColumns.length === 0) {
+          set({ error: 'table has no primary key — editing disabled' });
+          return;
+        }
+        const cell = result.rows[gridRow]?.[gridCol];
+        set({ mode: 'edit', error: null, editDraft: cell == null ? '' : String(cell) });
+      },
+
+      updateEditDraft: (text) => set({ editDraft: text }),
+
+      cancelEdit: () => set({ mode: 'normal', editDraft: '' }),
+
+      submitEdit: () => {
+        const { current, result, gridCol, editDraft } = get();
+        const column = result?.columns[gridCol]?.name;
+        const key = currentRowKey();
+        if (!current || !column || !key) {
+          set({ mode: 'normal', editDraft: '' });
+          return;
+        }
+        const value = editDraft;
+        set({
+          mode: 'confirm',
+          editDraft: '',
+          pending: {
+            message: `UPDATE ${current.name} SET ${column} = '${value}' WHERE ${keyText(key)}`,
+            run: async () => {
+              const r = await updateRow(source, current, key, [
+                { column, value },
+              ]);
+              if (!r.ok) set({ status: 'error', error: r.error.message });
+              else await reloadKeepingCursor();
+            },
+          },
+        });
+      },
+
+      beginDelete: () => {
+        const { current } = get();
+        const key = currentRowKey();
+        if (!current || !key) {
+          set({ error: 'table has no primary key — cannot delete' });
+          return;
+        }
+        set({
+          mode: 'confirm',
+          pending: {
+            message: `DELETE FROM ${current.name} WHERE ${keyText(key)}`,
+            run: async () => {
+              const r = await deleteRow(source, current, key);
+              if (!r.ok) set({ status: 'error', error: r.error.message });
+              else await reloadKeepingCursor();
+            },
+          },
+        });
+      },
+
+      confirmPending: async () => {
+        const { pending } = get();
+        set({ mode: 'normal' });
+        if (pending) await pending.run();
+        set({ pending: null });
+      },
+
+      cancelPending: () => set({ mode: 'normal', pending: null }),
     };
   });

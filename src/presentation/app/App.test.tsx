@@ -125,3 +125,39 @@ test('filtering a column narrows the grid via the input mode', async () => {
   expect(frame).toContain('label~25'); // active-filter summary
   unmount();
 });
+
+test('editing a cell updates it after confirmation', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  stdin.write('\r'); // open widget → grid, gridCol 0 (id)
+  await tick();
+  stdin.write('l'); // → label column
+  await tick();
+  stdin.write('e'); // edit → draft prefilled "w1"
+  await tick();
+  stdin.write('Z'); // draft "w1Z"
+  await tick();
+  stdin.write('\r'); // submit → confirm
+  await tick();
+  expect(lastFrame() ?? '').toContain('confirm'); // confirmation footer
+
+  stdin.write('y'); // apply the update
+  await tick(160);
+  expect(lastFrame() ?? '').toContain('w1Z'); // grid reflects the write
+  unmount();
+});
+
+test('deleting a row removes it after confirmation', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  stdin.write('\r'); // open widget (25 rows after the edit test)
+  await tick();
+  stdin.write('d'); // delete row under cursor → confirm
+  await tick();
+  expect(lastFrame() ?? '').toContain('DELETE');
+
+  stdin.write('y'); // apply the delete
+  await tick(160);
+  expect(lastFrame() ?? '').toContain('of 24 rows'); // one fewer row
+  unmount();
+});

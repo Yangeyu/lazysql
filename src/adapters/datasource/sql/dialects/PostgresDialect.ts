@@ -19,8 +19,10 @@ import type {
   ObjectRef,
   ColumnDef,
 } from '../../../../domain/datasource/schema.ts';
+import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
 import type { RawResult } from '../Driver.ts';
 import { buildWhere } from '../whereBuilder.ts';
+import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
 
 const DEFAULT_SCHEMA = 'public';
 
@@ -111,5 +113,20 @@ export class PostgresDialect implements Dialect {
       `SELECT count(*) AS n FROM ${qualify(ref)}${where.clause}`,
       where.params,
     );
+  }
+
+  insertQuery(ref: ObjectRef, row: RowPatch): Query {
+    const dml = buildInsert(qualify(ref), row, quoteIdent, ph);
+    return sql(dml.text, dml.params);
+  }
+
+  updateQuery(ref: ObjectRef, key: RowKey, patch: RowPatch): Query {
+    const dml = buildUpdate(qualify(ref), patch, key, quoteIdent, ph);
+    return sql(dml.text, dml.params);
+  }
+
+  deleteQuery(ref: ObjectRef, key: RowKey): Query {
+    const dml = buildDelete(qualify(ref), key, quoteIdent, ph);
+    return sql(dml.text, dml.params);
   }
 }

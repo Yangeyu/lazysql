@@ -11,6 +11,7 @@ import type {
   ObjectRef,
   ColumnDef,
 } from '../../../domain/datasource/schema.ts';
+import type { RowKey, RowPatch } from '../../../domain/datasource/edit.ts';
 import type { RawResult } from './Driver.ts';
 
 export interface Dialect {
@@ -30,4 +31,9 @@ export interface Dialect {
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query;
   /** Query counting an object's rows under the same optional filter. */
   countQuery(ref: ObjectRef, filter?: Filter | null): Query;
+
+  /** Parameterized DML — every value bound, never a write without a key. */
+  insertQuery(ref: ObjectRef, row: RowPatch): Query;
+  updateQuery(ref: ObjectRef, key: RowKey, patch: RowPatch): Query;
+  deleteQuery(ref: ObjectRef, key: RowKey): Query;
 }

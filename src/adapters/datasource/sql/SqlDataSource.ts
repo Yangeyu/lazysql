@@ -11,6 +11,9 @@ import type {
   Queryable,
   SchemaIntrospectable,
   Browsable,
+  RowEditable,
+  Transactional,
+  Tx,
   SourceId,
 } from '../../../domain/datasource/DataSource.ts';
 import {
@@ -26,6 +29,11 @@ import type {
   ObjectSchema,
   ObjectRef,
 } from '../../../domain/datasource/schema.ts';
+import type {
+  RowKey,
+  RowPatch,
+  EditResult,
+} from '../../../domain/datasource/edit.ts';
 import type { Query, BrowseSpec, Filter } from '../../../domain/query/Query.ts';
 import { ConnectionError, QueryError } from '../../../domain/errors/errors.ts';
 import { ok, err, type Result } from '../../../shared/Result.ts';
@@ -33,7 +41,13 @@ import type { SqlDriver, RawResult } from './Driver.ts';
 import type { Dialect } from './Dialect.ts';
 
 export class SqlDataSource
-  implements DataSource, Queryable, SchemaIntrospectable, Browsable
+  implements
+    DataSource,
+    Queryable,
+    SchemaIntrospectable,
+    Browsable,
+    RowEditable,
+    Transactional
 {
   constructor(
     readonly id: SourceId,
@@ -68,6 +82,8 @@ export class SqlDataSource
       Capability.Query,
       Capability.SchemaIntrospect,
       Capability.Browse,
+      Capability.RowEdit,
+      Capability.Transaction,
     ]);
   }
 
@@ -113,6 +129,47 @@ export class SqlDataSource
     throwIfAborted(signal);
     const raw = await this.runQuery(this.dialect.countQuery(ref, filter));
     return Number(raw.rows[0]?.[0] ?? 0);
+  }
+
+  // ── Transactional ─────────────────────────────────────────────────────────
+
+  transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return this.driver.transaction(async (run) => {
+      const tx: Tx = {
+        execute: async (query) =>
+          toResultSet(await run(query.text, query.params ?? [])),
+      };
+      return fn(tx);
+    });
+  }
+
+  // ── RowEditable ───────────────────────────────────────────────────────────
+
+  insert(ref: ObjectRef, row: RowPatch): Promise<EditResult> {
+    return this.writeOne(this.dialect.insertQuery(ref, row), 'insert');
+  }
+
+  update(ref: ObjectRef, key: RowKey, patch: RowPatch): Promise<EditResult> {
+    return this.writeOne(this.dialect.updateQuery(ref, key, patch), 'update');
+  }
+
+  delete(ref: ObjectRef, key: RowKey): Promise<EditResult> {
+    return this.writeOne(this.dialect.deleteQuery(ref, key), 'delete');
+  }
+
+  /** Run a single-row write in a transaction; roll back unless it affects 1 row.
+   *  This is the safety guard: a write that would hit 0 or many rows is undone. */
+  private writeOne(query: Query, op: string): Promise<EditResult> {
+    return this.transaction(async (tx) => {
+      const rs = await tx.execute(query);
+      const affected = rs.affected ?? 0;
+      if (affected !== 1) {
+        throw new QueryError(
+          `${op} affected ${affected} rows (expected 1); rolled back`,
+        );
+      }
+      return { affected };
+    });
   }
 
   // ── internals ───────────────────────────────────────────────────────────

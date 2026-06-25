@@ -17,6 +17,7 @@ import type { DataSource } from '../../../domain/datasource/DataSource.ts';
 import {
   asIntrospectable,
   asQueryable,
+  asRowEditable,
 } from '../../../domain/datasource/DataSource.ts';
 import { Capability } from '../../../domain/datasource/capabilities.ts';
 import { listObjects } from '../../../application/usecases/ListObjects.ts';
@@ -123,4 +124,49 @@ myTest('contains filter narrows rows and count (bound value)', async () => {
   );
   expect(result.total).toBe(1);
   expect(result.rows.rows[0]?.[1]).toBe('w25');
+});
+
+const myValueAt = async (id: number, column: string): Promise<unknown> => {
+  const rs = await asQueryable(source)!.execute(
+    sql(`SELECT ${column} FROM widget WHERE id = ?`, [id]),
+  );
+  return rs.rows[0]?.[0] ?? null;
+};
+
+myTest('update writes one row in a transaction', async () => {
+  const r = await asRowEditable(source)!.update(
+    widget,
+    [{ column: 'id', value: 1 }],
+    [{ column: 'label', value: 'updated-1' }],
+  );
+  expect(r.affected).toBe(1);
+  expect(await myValueAt(1, 'label')).toBe('updated-1');
+});
+
+myTest('non-matching update rolls back (0 rows)', async () => {
+  await expect(
+    asRowEditable(source)!.update(
+      widget,
+      [{ column: 'id', value: 99999 }],
+      [{ column: 'label', value: 'nope' }],
+    ),
+  ).rejects.toThrow(/affected 0/);
+});
+
+myTest('insert then delete round-trips a row', async () => {
+  const ins = await asRowEditable(source)!.insert(widget, [
+    { column: 'label', value: 'temp' },
+    { column: 'qty', value: 999 },
+  ]);
+  expect(ins.affected).toBe(1);
+
+  const created = await asQueryable(source)!.execute(
+    sql('SELECT id FROM widget WHERE qty = ?', [999]),
+  );
+  const id = Number(created.rows[0]?.[0]);
+  const del = await asRowEditable(source)!.delete(widget, [
+    { column: 'id', value: id },
+  ]);
+  expect(del.affected).toBe(1);
+  expect(await myValueAt(id, 'label')).toBeNull();
 });

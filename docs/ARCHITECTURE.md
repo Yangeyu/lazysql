@@ -354,7 +354,7 @@ src/
   - ✅ 连接管理：`ConnectionRepository`/`SecretStore`/`DataSourceFactory` 三个出站端口；`YamlConnectionRepository`(`connections.yml`，无密码，可手编) + `FileSecretStore`(`secrets.json`，`chmod 600`)。`OpenConnection` 用例解析密钥并合并进 options 后连接。**in-TUI 连接选择器**(`Root` 组件管理 选择器↔浏览 阶段机) + 会话内切换(``` ` ``` 键经 `ShellContext`)；组合根无 arg 进选择器、带名称/文件直连、首次运行写起始配置。
   - ✅ `KeychainSecretStore`：`SecretStore` 的第二实现(macOS `security` CLI，零 native 依赖)，`LAZYSQL_SECRETS=keychain` 开启。**新增引擎/密钥后端只动 `adapters/`，端口之上零改动**——三度兑现 OCP/DIP。
   - ⬜ in-TUI「新增连接」表单(当前经编辑 `connections.yml`) · Linux/Windows Keychain 后端。
-- **Phase 2 · 数据编辑**：行级 CRUD + 事务安全 + 二次确认。
+- **Phase 2 · 数据编辑** ✅：启用 `RowEditable`/`Transactional` 能力。参数化 DML（`dml.ts`，**拒绝无 WHERE 的写**）；每次写入跑在真事务里，`affected≠1 → 回滚`（防误改多行）；TUI `e` 编辑单元格、`d` 删除行，均经**二次确认**展示精确语句后执行。三引擎适配器测试覆盖写入与回滚守卫。Insert 已在适配器层（无 UI 表单，留作后续）。
 - **Phase 3 · 查询编辑器**：执行 SQL + 结果网格 + 历史 + **schema 感知补全**。
 - **Phase 4 · Schema 管理**：内省视图 + DDL。
 - **Phase 5 · NL→SQL (LLM)**：schema 上下文生成 + 审查/确认链路 + provider 配置。

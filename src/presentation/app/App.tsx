@@ -11,6 +11,7 @@ import { useShell } from './shell.ts';
 import { Sidebar } from '../components/Sidebar.tsx';
 import { DataGrid } from '../components/DataGrid.tsx';
 import { QueryEditor } from '../components/QueryEditor.tsx';
+import { StructureView } from '../components/StructureView.tsx';
 import { StatusBar } from '../components/StatusBar.tsx';
 import { HelpOverlay } from '../components/HelpOverlay.tsx';
 import {
@@ -49,6 +50,10 @@ export const App: React.FC = () => {
   const treeIndex = useApp((s) => s.treeIndex);
   const focus = useApp((s) => s.focus);
   const current = useApp((s) => s.current);
+  const mainTab = useApp((s) => s.mainTab);
+  const structure = useApp((s) => s.structure);
+  const structureLoading = useApp((s) => s.structureLoading);
+  const structureError = useApp((s) => s.structureError);
   const result = useApp((s) => s.result);
   const total = useApp((s) => s.total);
   const page = useApp((s) => s.page);
@@ -189,8 +194,13 @@ export const App: React.FC = () => {
       else if (key.return || input === ' ') void s.treeToggle();
       else if (key.rightArrow || input === 'l') void s.treeExpand();
       else if (key.leftArrow || input === 'h') s.treeCollapse();
+      else if (input === 'D') void s.treeShowDdl();
     } else {
-      if (key.upArrow || input === 'k') s.gridUp();
+      // Data-grid focus. `D` flips between the Data and DDL faces; the DDL face
+      // is read-only, so it ignores the row/edit keys.
+      if (input === 'D') s.toggleMainTab();
+      else if (s.mainTab === 'ddl') return;
+      else if (key.upArrow || input === 'k') s.gridUp();
       else if (key.downArrow || input === 'j') s.gridDown();
       else if (key.leftArrow || input === 'h') s.gridLeft();
       else if (key.rightArrow || input === 'l') s.gridRight();
@@ -282,16 +292,42 @@ export const App: React.FC = () => {
             borderColor={gridFocused ? 'cyan' : 'gray'}
             paddingX={1}
           >
-            <DataGrid
-              result={result}
-              cursor={gridRow}
-              selectedCol={gridCol}
-              sort={sort}
-              loading={loading}
-              hasTable={current !== null}
-              viewportRows={viewportRows}
-              focused={gridFocused}
-            />
+            {current ? (
+              <Box>
+                <Text
+                  inverse={mainTab === 'data'}
+                  color={mainTab === 'data' ? 'cyan' : undefined}
+                >
+                  {' Data '}
+                </Text>
+                <Text dimColor>│</Text>
+                <Text
+                  inverse={mainTab === 'ddl'}
+                  color={mainTab === 'ddl' ? 'cyan' : undefined}
+                >
+                  {' DDL '}
+                </Text>
+              </Box>
+            ) : null}
+            {mainTab === 'ddl' ? (
+              <StructureView
+                structure={structure}
+                loading={structureLoading}
+                error={structureError}
+                hasTable={current !== null}
+              />
+            ) : (
+              <DataGrid
+                result={result}
+                cursor={gridRow}
+                selectedCol={gridCol}
+                sort={sort}
+                loading={loading}
+                hasTable={current !== null}
+                viewportRows={current ? viewportRows - 1 : viewportRows}
+                focused={gridFocused}
+              />
+            )}
             </Box>
           )}
         </Box>

@@ -178,6 +178,24 @@ test('deleting a row removes it after confirmation', async () => {
   unmount();
 });
 
+test('D flips the open object between the Data and DDL tabs', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  stdin.write('\r'); // open widget into the grid
+  await tick();
+  stdin.write('D'); // flip to the DDL/structure tab
+  await tick(140); // describe() resolves
+  const frame = lastFrame() ?? '';
+  expect(frame).toContain('DDL'); // tab label
+  expect(frame).toContain('CREATE TABLE widget'); // synthesized DDL
+  expect(frame).toContain('label'); // a column name
+
+  stdin.write('D'); // flip back to Data
+  await tick();
+  expect(lastFrame() ?? '').toContain('w1'); // grid data is shown again
+  unmount();
+});
+
 test('the SQL editor runs a typed query and shows the result', async () => {
   const { lastFrame, stdin, unmount } = renderApp();
   await tick();

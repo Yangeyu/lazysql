@@ -11,7 +11,11 @@ import {
   asQueryable,
   type DataSource,
 } from '../../domain/datasource/DataSource.ts';
-import type { ObjectKind, ObjectRef } from '../../domain/datasource/schema.ts';
+import type {
+  ObjectKind,
+  ObjectRef,
+  ObjectSchema,
+} from '../../domain/datasource/schema.ts';
 import type { RowKey, FieldValue } from '../../domain/datasource/edit.ts';
 import {
   buildTree,
@@ -53,6 +57,8 @@ export type Status = 'connecting' | 'ready' | 'error';
 export type Mode = 'normal' | 'filter' | 'edit' | 'confirm';
 export type View = 'browse' | 'query';
 export type QueryFocus = 'editor' | 'result';
+/** Which face of the main pane is showing for an open object. */
+export type MainTab = 'data' | 'ddl';
 
 /** A confirmed, ready-to-run action awaiting the user's y/n. */
 export interface Pending {
@@ -76,6 +82,11 @@ export interface AppState {
   treeIndex: number;
   focus: Focus;
   current: ObjectRef | null;
+  // ── main pane (data │ ddl) ──
+  mainTab: MainTab;
+  structure: ObjectSchema | null;
+  structureLoading: boolean;
+  structureError: string | null;
   result: ResultSet | null;
   page: Page;
   sort: Sort | null;
@@ -127,6 +138,10 @@ export interface AppState {
   treeExpand: () => Promise<void>;
   /** ←/h: collapse a container, or jump from an object to its category. */
   treeCollapse: () => void;
+  /** →/D from the sidebar on an object: open it showing its DDL/structure. */
+  treeShowDdl: () => Promise<void>;
+  setMainTab: (tab: MainTab) => void;
+  toggleMainTab: () => void;
   toggleFocus: () => void;
   gridUp: () => void;
   gridDown: () => void;
@@ -201,7 +216,16 @@ export const createAppStore = (
 
     /** Open an object into the data grid (focus moves to the grid). */
     const openObject = async (ref: ObjectRef): Promise<void> => {
-      set({ focus: 'grid', gridCol: 0, sort: null, filter: null, pkColumns: [] });
+      set({
+        focus: 'grid',
+        gridCol: 0,
+        sort: null,
+        filter: null,
+        pkColumns: [],
+        mainTab: 'data',
+        structure: null,
+        structureError: null,
+      });
       // Primary-key columns gate editing; a table without one is read-only.
       const introspectable = asIntrospectable(source);
       if (introspectable) {
@@ -217,6 +241,24 @@ export const createAppStore = (
         }
       }
       await load(ref, { page: firstPage(PAGE_SIZE), sort: null, filter: null });
+    };
+
+    /** Lazily fetch the open object's column schema for the DDL tab (cached). */
+    const loadStructure = async (): Promise<void> => {
+      const { current, structure } = get();
+      if (!current || structure) return; // already loaded for this object
+      const introspectable = asIntrospectable(source);
+      if (!introspectable) {
+        set({ structureError: 'structure is not available for this source' });
+        return;
+      }
+      set({ structureLoading: true, structureError: null });
+      try {
+        const schema = await introspectable.describe(current);
+        set({ structure: schema, structureLoading: false });
+      } catch (e) {
+        set({ structureLoading: false, structureError: (e as Error).message });
+      }
     };
 
     const load = async (ref: ObjectRef, spec: BrowseSpec): Promise<void> => {
@@ -306,6 +348,10 @@ export const createAppStore = (
       treeIndex: 0,
       focus: 'sidebar',
       current: null,
+      mainTab: 'data',
+      structure: null,
+      structureLoading: false,
+      structureError: null,
       result: null,
       page: firstPage(PAGE_SIZE),
       sort: null,
@@ -421,6 +467,25 @@ export const createAppStore = (
           set({ rootExpanded: false });
           clampTree();
         }
+      },
+
+      treeShowDdl: async () => {
+        const row = rowsNow()[get().treeIndex];
+        if (!row || row.type !== 'object') return;
+        await openObject(row.ref);
+        set({ mainTab: 'ddl' });
+        await loadStructure();
+      },
+
+      setMainTab: (tab) => {
+        set({ mainTab: tab });
+        if (tab === 'ddl') void loadStructure();
+      },
+
+      toggleMainTab: () => {
+        const next = get().mainTab === 'data' ? 'ddl' : 'data';
+        set({ mainTab: next });
+        if (next === 'ddl') void loadStructure();
       },
 
       toggleFocus: () =>

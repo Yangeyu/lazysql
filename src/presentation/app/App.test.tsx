@@ -181,6 +181,24 @@ test('the SQL editor runs a typed query and shows the result', async () => {
   unmount();
 });
 
+test('? opens the keybindings help overlay and toggles it off again', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  stdin.write('?'); // open help
+  await tick();
+  const frame = lastFrame() ?? '';
+  expect(frame).toContain('Keybindings');
+  expect(frame).toContain('Global'); // global group is listed
+  expect(frame).toContain('Move the selection'); // sidebar binding description
+
+  stdin.write('?'); // close help
+  await tick();
+  const after = lastFrame() ?? '';
+  expect(after).not.toContain('Keybindings');
+  expect(after).toContain('widget'); // back to the object list
+  unmount();
+});
+
 test('schema-aware completion completes a table name on Tab', async () => {
   const { lastFrame, stdin, unmount } = renderApp();
   await tick();

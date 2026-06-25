@@ -76,6 +76,8 @@ export interface AppState {
   loading: boolean;
   /** Whether this source speaks SQL (Query capability) — gates the `:` editor. */
   queryable: boolean;
+  /** Whether the `?` help overlay is showing. */
+  helpOpen: boolean;
 
   // ── query editor ──
   view: View;
@@ -99,6 +101,7 @@ export interface AppState {
   nlKind: StatementKind | null;
 
   init: () => Promise<void>;
+  toggleHelp: () => void;
   selectPrev: () => void;
   selectNext: () => void;
   openSelected: () => Promise<void>;
@@ -250,6 +253,7 @@ export const createAppStore = (
       pending: null,
       loading: false,
       queryable,
+      helpOpen: false,
 
       view: 'browse',
       queryFocus: 'editor',
@@ -278,6 +282,8 @@ export const createAppStore = (
         }
         set({ status: 'ready', objects: res.value });
       },
+
+      toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
 
       selectPrev: () =>
         set((s) => ({ selectedIndex: Math.max(0, s.selectedIndex - 1) })),

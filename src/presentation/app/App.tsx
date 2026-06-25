@@ -12,6 +12,12 @@ import { Sidebar } from '../components/Sidebar.tsx';
 import { DataGrid } from '../components/DataGrid.tsx';
 import { QueryEditor } from '../components/QueryEditor.tsx';
 import { StatusBar } from '../components/StatusBar.tsx';
+import { HelpOverlay } from '../components/HelpOverlay.tsx';
+import {
+  helpGroups,
+  type KeyContext,
+  type KeyFlags,
+} from '../keymap/keymap.ts';
 
 const SIDEBAR_WIDTH = 26;
 
@@ -53,6 +59,7 @@ export const App: React.FC = () => {
   const loading = useApp((s) => s.loading);
 
   const queryable = useApp((s) => s.queryable);
+  const helpOpen = useApp((s) => s.helpOpen);
   const view = useApp((s) => s.view);
   const queryFocus = useApp((s) => s.queryFocus);
   const queryText = useApp((s) => s.queryText);
@@ -74,6 +81,13 @@ export const App: React.FC = () => {
 
   useInput((input, key) => {
     const s = store.getState();
+
+    // Help overlay owns all input while open: ? or Esc closes, ^C still quits.
+    if (s.helpOpen) {
+      if (key.ctrl && input === 'c') ink.exit();
+      else if (input === '?' || key.escape) s.toggleHelp();
+      return;
+    }
 
     // Query editor view owns all input while active.
     if (s.view === 'query') {
@@ -108,6 +122,7 @@ export const App: React.FC = () => {
           s.updateQueryText(s.queryText + input);
       } else {
         if (key.escape) s.exitQueryView();
+        else if (input === '?') s.toggleHelp();
         else if (key.tab) s.toggleQueryFocus();
         else if (key.upArrow || input === 'k') s.queryGridUp();
         else if (key.downArrow || input === 'j') s.queryGridDown();
@@ -152,6 +167,10 @@ export const App: React.FC = () => {
       shell.switchConnection();
       return;
     }
+    if (input === '?') {
+      s.toggleHelp();
+      return;
+    }
     if (input === ':') {
       s.enterQueryView();
       return;
@@ -182,20 +201,41 @@ export const App: React.FC = () => {
   const viewportRows = Math.max(3, terminalRows - 9);
   const gridFocused = focus === 'grid';
 
+  const flags: KeyFlags = { queryable, nlAvailable };
+  const context: KeyContext =
+    mode === 'filter'
+      ? 'filter'
+      : mode === 'edit'
+        ? 'edit'
+        : mode === 'confirm'
+          ? 'confirm'
+          : view === 'query'
+            ? nlMode
+              ? 'nl'
+              : queryFocus === 'editor'
+                ? 'editor'
+                : 'result'
+            : focus === 'sidebar'
+              ? 'sidebar'
+              : 'grid';
+
   if (status === 'connecting') {
     return <Text color="yellow">Connecting…</Text>;
   }
 
   return (
     <Box flexDirection="column">
-      <Box flexDirection="row" gap={1}>
-        <Sidebar
-          objects={objects}
-          selectedIndex={selectedIndex}
-          focused={focus === 'sidebar'}
-          width={SIDEBAR_WIDTH}
-        />
-        {view === 'query' ? (
+      {helpOpen ? (
+        <HelpOverlay groups={helpGroups(context, flags)} />
+      ) : (
+        <Box flexDirection="row" gap={1}>
+          <Sidebar
+            objects={objects}
+            selectedIndex={selectedIndex}
+            focused={focus === 'sidebar'}
+            width={SIDEBAR_WIDTH}
+          />
+          {view === 'query' ? (
           <QueryEditor
             queryText={queryText}
             editorFocused={queryFocus === 'editor'}
@@ -231,21 +271,21 @@ export const App: React.FC = () => {
               viewportRows={viewportRows}
               focused={gridFocused}
             />
-          </Box>
-        )}
-      </Box>
+            </Box>
+          )}
+        </Box>
+      )}
       <StatusBar
         status={status}
         error={error}
         connectionName={connectionName}
         view={view}
-        queryable={queryable}
-        nlAvailable={nlAvailable}
+        context={context}
+        flags={flags}
         current={current}
         total={total}
         page={page}
         rowsInPage={result?.rows.length ?? 0}
-        focus={focus}
         filter={filter}
         mode={mode}
         filterDraft={filterDraft}

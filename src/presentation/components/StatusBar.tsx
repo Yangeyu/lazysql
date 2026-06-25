@@ -1,26 +1,28 @@
 /**
  * StatusBar — context line (current object, page window, totals) plus a compact,
  * context-aware keybinding hint. Mirrors lazygit's always-present status footer.
+ * The hint line is rendered from the keymap registry (footerHints) so it never
+ * drifts from the `?` overlay or the actual bindings.
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
 import type { ObjectRef } from '../../domain/datasource/schema.ts';
 import type { Page, Filter } from '../../domain/query/Query.ts';
-import type { Focus, Mode, View } from '../app/store.ts';
+import type { Mode, View } from '../app/store.ts';
+import { footerHints, type KeyContext, type KeyFlags } from '../keymap/keymap.ts';
 
 interface Props {
   status: string;
   error: string | null;
   connectionName: string | null;
   view: View;
-  queryable: boolean;
-  nlAvailable: boolean;
+  context: KeyContext;
+  flags: KeyFlags;
   current: ObjectRef | null;
   total: number;
   page: Page;
   rowsInPage: number;
-  focus: Focus;
   filter: Filter | null;
   mode: Mode;
   filterDraft: string;
@@ -43,13 +45,12 @@ const StatusBarImpl: React.FC<Props> = ({
   error,
   connectionName,
   view,
-  queryable,
-  nlAvailable,
+  context,
+  flags,
   current,
   total,
   page,
   rowsInPage,
-  focus,
   filter,
   mode,
   filterDraft,
@@ -61,6 +62,7 @@ const StatusBarImpl: React.FC<Props> = ({
   const from = total === 0 ? 0 : page.offset + 1;
   const to = page.offset + rowsInPage;
   const active = filterSummary(filter);
+  const hints = <Text dimColor>{footerHints(context, flags)}</Text>;
 
   // Cell-edit input mode: show the value being typed.
   if (mode === 'edit') {
@@ -77,7 +79,7 @@ const StatusBarImpl: React.FC<Props> = ({
             <Text>▌</Text>
           </Text>
         </Box>
-        <Text dimColor>⏎ review · esc cancel</Text>
+        {hints}
       </Box>
     );
   }
@@ -95,7 +97,7 @@ const StatusBarImpl: React.FC<Props> = ({
             {pendingMessage}
           </Text>
         </Box>
-        <Text dimColor>y apply · n cancel</Text>
+        {hints}
       </Box>
     );
   }
@@ -115,7 +117,7 @@ const StatusBarImpl: React.FC<Props> = ({
             <Text>▌</Text>
           </Text>
         </Box>
-        <Text dimColor>⏎ apply · esc cancel · (empty clears)</Text>
+        {hints}
       </Box>
     );
   }
@@ -136,19 +138,10 @@ const StatusBarImpl: React.FC<Props> = ({
           ) : null}
           <Text color="magenta">SQL query</Text>
         </Box>
-        <Text dimColor>
-          ⏎ run · tab editor/result · ↑/↓ history
-          {nlAvailable ? ' · ^G ask AI' : ''} · esc browse · ^C quit
-        </Text>
+        {hints}
       </Box>
     );
   }
-
-  const sqlHint = queryable ? ' · : sql' : '';
-  const hints =
-    focus === 'sidebar'
-      ? `↑/↓ select · ⏎ open · tab grid · \` conn${sqlHint} · q quit`
-      : `↑/↓ row · ←/→ col · s sort · / filter · e edit · d del · n/p page · \` conn · q quit`;
 
   return (
     <Box flexDirection="column">
@@ -175,7 +168,7 @@ const StatusBarImpl: React.FC<Props> = ({
           <Text dimColor>{status}</Text>
         )}
       </Box>
-      <Text dimColor>{hints}</Text>
+      {hints}
     </Box>
   );
 };

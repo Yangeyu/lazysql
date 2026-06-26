@@ -58,7 +58,8 @@ import {
 
 export const PAGE_SIZE = 100;
 
-export type Focus = 'sidebar' | 'grid';
+/** The three persistent panes the cursor can occupy (lazygit-style). */
+export type Focus = 'sidebar' | 'editor' | 'grid';
 export type Status = 'connecting' | 'ready' | 'error';
 export type Mode = 'normal' | 'filter' | 'edit' | 'confirm' | 'connform';
 
@@ -88,8 +89,13 @@ export interface AppStoreDeps {
   /** Profile to connect to on init (e.g. a CLI arg); also shown as a root. */
   initial?: ConnectionProfile | null;
 }
-export type View = 'browse' | 'query';
-export type QueryFocus = 'editor' | 'result';
+/**
+ * What the single results grid is currently showing. ONE grid, ONE result —
+ * 'browse' is a table-backed, editable/paginated view; 'query' is a read-only
+ * SQL result. This discriminator replaces the old parallel `result`/`queryResult`
+ * (+ their own cursors) state, so the two can never drift or both be "current".
+ */
+export type SurfaceKind = 'browse' | 'query';
 /** Which face of the main pane is showing for an open object. */
 export type MainTab = 'data' | 'ddl';
 
@@ -107,8 +113,8 @@ export interface CellInspect {
   readonly offset: number;
 }
 
-/** The two clickable panes a mouse press can focus. */
-export type Region = 'sidebar' | 'grid';
+/** The clickable panes a mouse press can focus (same set as Focus). */
+export type Region = Focus;
 
 export interface AppState {
   status: Status;
@@ -129,6 +135,9 @@ export interface AppState {
   treeIndex: number;
   focus: Focus;
   current: ObjectRef | null;
+  // ── results grid (the single bottom-right surface) ──
+  /** Whether the grid is showing a browsed table or a read-only query result. */
+  surface: SurfaceKind;
   // ── main pane (data │ ddl) ──
   mainTab: MainTab;
   structure: ObjectSchema | null;
@@ -155,13 +164,11 @@ export interface AppState {
   cellView: CellInspect | null;
 
   // ── query editor ──
-  view: View;
-  queryFocus: QueryFocus;
+  /** Editor input text. The result of running it lands in the shared grid
+   *  (`result`, surface 'query'); there is no separate query result slice. */
   queryText: string;
-  queryResult: ResultSet | null;
   queryError: string | null;
   queryElapsedMs: number | null;
-  queryGridRow: number;
   history: string[];
   historyIndex: number | null;
   catalog: SchemaCatalog | null;
@@ -219,7 +226,10 @@ export interface AppState {
   connFormCycleDriver: (dir: 1 | -1) => void;
   connFormSubmit: () => Promise<void>;
   connFormCancel: () => void;
-  toggleFocus: () => void;
+  /** Move focus to a pane (`:`/Esc/click); gates the editor on `queryable`. */
+  focusPane: (target: Focus) => void;
+  /** Tab: cycle focus across the available panes. */
+  cycleFocus: () => void;
   gridUp: () => void;
   gridDown: () => void;
   gridLeft: () => void;
@@ -239,15 +249,10 @@ export interface AppState {
   confirmPending: () => Promise<void>;
   cancelPending: () => void;
 
-  enterQueryView: () => void;
-  exitQueryView: () => void;
   updateQueryText: (text: string) => void;
   executeQuery: () => Promise<void>;
   historyPrev: () => void;
   historyNext: () => void;
-  toggleQueryFocus: () => void;
-  queryGridUp: () => void;
-  queryGridDown: () => void;
   acceptCompletion: () => void;
   beginNl: () => void;
   updateNlDraft: (text: string) => void;
@@ -343,6 +348,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       if (!active) return;
       set({
         focus: 'grid',
+        surface: 'browse',
         gridCol: 0,
         sort: null,
         filter: null,
@@ -502,14 +508,15 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         treeIndex: 0,
         focus: 'sidebar',
         current: null,
+        surface: 'browse',
         result: null,
+        gridRow: 0,
+        gridCol: 0,
         mainTab: 'data',
         structure: null,
         structureError: null,
         cellView: null,
-        view: 'browse',
         queryText: '',
-        queryResult: null,
         queryError: null,
         history: [],
         historyIndex: null,
@@ -530,6 +537,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       treeIndex: 0,
       focus: 'sidebar',
       current: null,
+      surface: 'browse',
       mainTab: 'data',
       structure: null,
       structureLoading: false,
@@ -551,13 +559,9 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       helpOpen: false,
       cellView: null,
 
-      view: 'browse',
-      queryFocus: 'editor',
       queryText: '',
-      queryResult: null,
       queryError: null,
       queryElapsedMs: null,
-      queryGridRow: 0,
       history: [],
       historyIndex: null,
       catalog: null,
@@ -583,14 +587,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
 
-      focusRegion: (region) =>
-        set((s) =>
-          region === 'sidebar'
-            ? { focus: 'sidebar', view: 'browse' }
-            : s.view === 'query'
-              ? { queryFocus: 'result' }
-              : { focus: 'grid' },
-        ),
+      focusRegion: (region) => get().focusPane(region),
 
       openCell: () => {
         const { result, gridRow, gridCol } = get();
@@ -727,9 +724,9 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           nlAvailable: false,
           objects: [],
           current: null,
+          surface: 'browse',
           result: null,
           cellView: null,
-          view: 'browse',
           rootExpanded: true,
           treeIndex: 0,
           focus: 'sidebar',
@@ -861,8 +858,29 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         await get().saveConnection(profile, password);
       },
 
-      toggleFocus: () =>
-        set((s) => ({ focus: s.focus === 'sidebar' ? 'grid' : 'sidebar' })),
+      focusPane: (target) => {
+        if (target === 'editor') {
+          // The editor pane only exists for SQL-speaking sources.
+          if (!get().queryable) {
+            set({ error: 'This source does not support SQL queries.' });
+            return;
+          }
+          if (!get().catalog) void buildCatalog();
+          set({ focus: 'editor', error: null });
+          return;
+        }
+        set({ focus: target });
+      },
+
+      cycleFocus: () =>
+        set((s) => {
+          // The editor is in the cycle only when the source speaks SQL.
+          const order: Focus[] = s.queryable
+            ? ['sidebar', 'editor', 'grid']
+            : ['sidebar', 'grid'];
+          const i = order.indexOf(s.focus);
+          return { focus: order[(i + 1) % order.length]! };
+        }),
 
       gridUp: () => set((s) => ({ gridRow: Math.max(0, s.gridRow - 1) })),
 
@@ -1004,17 +1022,6 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       // ── query editor ──────────────────────────────────────────────────────
 
-      enterQueryView: () => {
-        if (!get().queryable) {
-          set({ error: 'This source does not support SQL queries.' });
-          return;
-        }
-        set({ view: 'query', queryFocus: 'editor', error: null });
-        if (!get().catalog) void buildCatalog();
-      },
-
-      exitQueryView: () => set({ view: 'browse' }),
-
       updateQueryText: (text) =>
         set({
           queryText: text,
@@ -1030,21 +1037,26 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         set({ loading: true, queryError: null });
         const r = await runQuery(active, text);
         if (!r.ok) {
-          set({
-            loading: false,
-            queryError: r.error.message,
-            queryResult: null,
-            queryElapsedMs: null,
-          });
+          set({ loading: false, queryError: r.error.message, queryElapsedMs: null });
           return;
         }
+        // The result takes over the shared grid as a read-only 'query' surface.
+        // The browsed table is dropped (current=null) so its row ops can't fire
+        // on a query result; re-selecting it in the sidebar returns to browse.
         set({
           loading: false,
-          queryResult: r.value.result,
+          surface: 'query',
+          current: null,
+          pkColumns: [],
+          result: r.value.result,
+          total: r.value.result.rows.length,
           queryElapsedMs: r.value.elapsedMs,
           queryError: null,
-          queryGridRow: 0,
-          queryFocus: 'result',
+          gridRow: 0,
+          gridCol: 0,
+          mainTab: 'data',
+          structure: null,
+          focus: 'grid',
           // record in history, skipping an immediate duplicate
           history:
             history[history.length - 1] === text ? history : [...history, text],
@@ -1074,21 +1086,6 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         const text = history[idx] ?? '';
         set({ historyIndex: idx, queryText: text, completions: [] });
       },
-
-      toggleQueryFocus: () =>
-        set((s) => ({
-          queryFocus: s.queryFocus === 'editor' ? 'result' : 'editor',
-        })),
-
-      queryGridUp: () => set((s) => ({ queryGridRow: Math.max(0, s.queryGridRow - 1) })),
-
-      queryGridDown: () =>
-        set((s) => ({
-          queryGridRow: Math.min(
-            Math.max(0, (s.queryResult?.rows.length ?? 1) - 1),
-            s.queryGridRow + 1,
-          ),
-        })),
 
       acceptCompletion: () => {
         const { queryText, completions } = get();
@@ -1143,7 +1140,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           nlExplanation: r.value.explanation,
           nlKind: r.value.kind,
           completions: [],
-          queryFocus: 'editor',
+          focus: 'editor',
         });
       },
     };

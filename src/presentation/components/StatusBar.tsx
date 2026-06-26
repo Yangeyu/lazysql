@@ -9,7 +9,7 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { Mode, View } from '../app/store.ts';
+import type { Mode } from '../app/store.ts';
 import { footerHints, type KeyContext, type KeyFlags } from '../keymap/keymap.ts';
 import { theme } from '../theme/theme.ts';
 
@@ -17,7 +17,6 @@ interface Props {
   width: number;
   status: string;
   error: string | null;
-  view: View;
   context: KeyContext;
   flags: KeyFlags;
   mode: Mode;
@@ -48,7 +47,6 @@ const contextBadge = (context: KeyContext): { label: string; bg: string } => {
     case 'grid':
       return { label: 'DATA', bg: theme.cyan };
     case 'editor':
-    case 'result':
       return { label: 'SQL', bg: theme.magenta };
     case 'cell':
       return { label: 'CELL', bg: theme.cyan };
@@ -61,7 +59,6 @@ const StatusBarImpl: React.FC<Props> = ({
   width,
   status,
   error,
-  view,
   context,
   flags,
   mode,
@@ -125,7 +122,7 @@ const StatusBarImpl: React.FC<Props> = ({
     );
   }
 
-  const badge = contextBadge(view === 'query' ? 'editor' : context);
+  const badge = contextBadge(context);
   return bar(
     <Text>
       <Badge label={badge.label} bg={badge.bg} />

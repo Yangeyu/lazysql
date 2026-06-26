@@ -57,7 +57,8 @@ test('generateFromNl fills the editor and classifies, never executing', async ()
   expect(s.nlExplanation).toBe('deactivates user 5');
   expect(s.nlKind).toBe('write'); // flagged destructive
   expect(s.nlMode).toBe(false);
-  expect(s.queryResult).toBeNull(); // generation does NOT run the query
+  expect(s.result).toBeNull(); // generation does NOT run the query (no result)
+  expect(s.surface).toBe('browse'); // …and never flips the grid to a query surface
 });
 
 test('NL is unavailable (and beginNl is a no-op) without a generator', () => {
@@ -97,8 +98,9 @@ test('a non-Queryable source gates off the SQL editor and NL→SQL', async () =>
   // NL→SQL needs the Query capability to run, so it's hidden even with a generator.
   expect(store.getState().nlAvailable).toBe(false);
 
-  // Pressing `:` (enterQueryView) is inert — the UI never enters a dead SQL view.
-  store.getState().enterQueryView();
-  expect(store.getState().view).toBe('browse');
+  // Pressing `:` (focusPane 'editor') is inert — the editor pane never activates
+  // for a non-SQL source.
+  store.getState().focusPane('editor');
+  expect(store.getState().focus).not.toBe('editor');
   expect(store.getState().error).toContain('does not support SQL');
 });

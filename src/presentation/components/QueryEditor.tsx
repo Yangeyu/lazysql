@@ -1,21 +1,21 @@
 /**
- * QueryEditor — the free-form SQL view: an input area on top and the result set
- * (reusing DataGrid) below. Two sub-focuses, editor and result, let the user
- * type/run a query, then Tab into the grid to scroll it.
+ * QueryEditor — the SQL editor pane (top-right of the workbench). It owns ONLY
+ * the input box and its inline feedback: completions, the NL→SQL prompt, the
+ * generated explanation, and run errors. Running a query sends its result to the
+ * shared results grid below — the editor no longer renders results itself, so
+ * "edit SQL" and "show data" are cleanly separated (SRP).
  *
- * The input text is wrapped MANUALLY (wrapText) at a width derived from the
- * known viewport, then each line is rendered as its own <Text>. We do not lean
- * on Ink to measure-and-wrap a single Text inside flex containers: in this
- * nested layout Ink hands the wrapping Text a near-zero width, which collapsed
- * the SQL to one character per line (and only "fixed itself" after a Tab forced
- * a re-measure). Computing the wrap ourselves removes that dependency entirely.
+ * The input text is wrapped MANUALLY (wrapText) at a width derived from the known
+ * viewport, then each line is its own <Text>. We do not lean on Ink to
+ * measure-and-wrap a single Text inside flex containers: in this nested layout
+ * Ink hands the wrapping Text a near-zero width, collapsing the SQL to one
+ * character per line (only "fixing itself" after a re-measure). Computing the
+ * wrap ourselves removes that dependency entirely.
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
 import stringWidth from 'string-width';
-import { DataGrid } from './DataGrid.tsx';
-import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
 import {
   isDestructive,
   type StatementKind,
@@ -24,20 +24,16 @@ import { theme } from '../theme/theme.ts';
 
 interface Props {
   queryText: string;
-  editorFocused: boolean;
-  resultFocused: boolean;
-  result: ResultSet | null;
-  error: string | null;
-  elapsedMs: number | null;
-  gridRow: number;
+  /** Whether the editor pane holds focus (shows the caret, accent border). */
+  focused: boolean;
   completions: string[];
-  loading: boolean;
   nlMode: boolean;
   nlDraft: string;
   generating: boolean;
   nlExplanation: string | null;
   nlKind: StatementKind | null;
-  viewportRows: number;
+  /** The last run's error, surfaced under the input. */
+  error: string | null;
   viewportCols: number;
 }
 
@@ -62,7 +58,6 @@ const wrapText = (text: string, width: number): string[] => {
       line += token;
       lineW += tw;
     } else {
-      // Token longer than a whole line: break it character by character.
       for (const ch of token) {
         const cw = stringWidth(ch);
         if (lineW + cw > w) flush();
@@ -77,33 +72,27 @@ const wrapText = (text: string, width: number): string[] => {
 
 const QueryEditorImpl: React.FC<Props> = ({
   queryText,
-  editorFocused,
-  resultFocused,
-  result,
-  error,
-  elapsedMs,
-  gridRow,
+  focused,
   completions,
-  loading,
   nlMode,
   nlDraft,
   generating,
   nlExplanation,
   nlKind,
-  viewportRows,
+  error,
   viewportCols,
 }) => {
   // Reserve the box border (2), padding (2) and the prompt gutter for content.
   const contentWidth = Math.max(8, viewportCols - 4 - PROMPT.length);
-  const shown = queryText + (editorFocused && !nlMode ? '▌' : '');
+  const shown = queryText + (focused && !nlMode ? '▌' : '');
   const lines = wrapText(shown, contentWidth);
 
   return (
-    <Box flexDirection="column" flexGrow={1} width={viewportCols}>
+    <Box flexDirection="column" width={viewportCols}>
       <Box
         borderStyle="round"
         borderColor={
-          nlMode ? theme.magenta : editorFocused ? theme.borderFocus : theme.border
+          nlMode ? theme.magenta : focused ? theme.borderFocus : theme.border
         }
         paddingX={1}
         flexDirection="column"
@@ -138,59 +127,34 @@ const QueryEditorImpl: React.FC<Props> = ({
         </Box>
       ) : generating ? (
         <Text color={theme.magenta}>✦ Generating SQL…</Text>
-      ) : (
-        <>
-          {editorFocused && completions.length > 0 ? (
-            <Text wrap="truncate">
-              <Text color={theme.border}>⇥ </Text>
-              <Text color={theme.cyan} bold>
-                {completions[0]}
-              </Text>
-              <Text color={theme.border}>
-                {completions.slice(1).map((c) => ` · ${c}`).join('')}
-              </Text>
-            </Text>
-          ) : null}
-          {nlExplanation ? (
-            <Text wrap="truncate">
-              <Text color={theme.magenta}>✦ {nlExplanation}</Text>
-              {nlKind && isDestructive(nlKind) ? (
-                <Text color={theme.red} bold>
-                  {'  '}⚠ {nlKind.toUpperCase()} — review before running
-                </Text>
-              ) : null}
-            </Text>
-          ) : null}
-        </>
-      )}
-
-      {error ? (
+      ) : error ? (
         <Text color={theme.red} wrap="truncate">
           error: {error}
         </Text>
-      ) : loading ? (
-        <Text color={theme.yellow}>Running…</Text>
-      ) : result ? (
-        <>
-          <DataGrid
-            result={result}
-            cursor={gridRow}
-            selectedCol={-1}
-            sort={null}
-            loading={false}
-            hasTable
-            viewportRows={viewportRows}
-            viewportCols={viewportCols}
-            focused={resultFocused}
-          />
-          <Text color={theme.border}>
-            {result.rows.length} rows · {elapsedMs}ms
-            {result.truncated ? ' · truncated' : ''}
+      ) : focused && completions.length > 0 ? (
+        <Text wrap="truncate">
+          <Text color={theme.border}>⇥ </Text>
+          <Text color={theme.cyan} bold>
+            {completions[0]}
           </Text>
-        </>
+          <Text color={theme.border}>
+            {completions.slice(1).map((c) => ` · ${c}`).join('')}
+          </Text>
+        </Text>
+      ) : nlExplanation ? (
+        <Text wrap="truncate">
+          <Text color={theme.magenta}>✦ {nlExplanation}</Text>
+          {nlKind && isDestructive(nlKind) ? (
+            <Text color={theme.red} bold>
+              {'  '}⚠ {nlKind.toUpperCase()} — review before running
+            </Text>
+          ) : null}
+        </Text>
       ) : (
-        <Text color={theme.border}>
-          Type SQL and press ⏎ to run. ↑/↓ history · esc back.
+        <Text color={theme.border} wrap="truncate">
+          {focused
+            ? '⏎ run · ^G ask AI · esc grid'
+            : ': edit SQL · ⏎ run · ↑/↓ history'}
         </Text>
       )}
     </Box>

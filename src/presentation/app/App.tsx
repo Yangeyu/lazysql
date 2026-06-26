@@ -92,13 +92,10 @@ export const App: React.FC = () => {
   const queryable = useApp((s) => s.queryable);
   const helpOpen = useApp((s) => s.helpOpen);
   const cellView = useApp((s) => s.cellView);
-  const view = useApp((s) => s.view);
-  const queryFocus = useApp((s) => s.queryFocus);
+  const surface = useApp((s) => s.surface);
   const queryText = useApp((s) => s.queryText);
-  const queryResult = useApp((s) => s.queryResult);
   const queryError = useApp((s) => s.queryError);
   const queryElapsedMs = useApp((s) => s.queryElapsedMs);
-  const queryGridRow = useApp((s) => s.queryGridRow);
   const completions = useApp((s) => s.completions);
   const nlAvailable = useApp((s) => s.nlAvailable);
   const nlMode = useApp((s) => s.nlMode);
@@ -144,46 +141,16 @@ export const App: React.FC = () => {
       return;
     }
 
-    // Query editor view owns all input while active.
-    if (s.view === 'query') {
-      if (key.ctrl && input === 'c') {
-        ink.exit();
-        return;
-      }
-      // NL→SQL prompt captures all keys until generate/cancel.
-      if (s.nlMode) {
-        if (key.return) void s.generateFromNl();
-        else if (key.escape) s.cancelNl();
-        else if (key.backspace || key.delete)
-          s.updateNlDraft(s.nlDraft.slice(0, -1));
-        else if (input && !key.ctrl && !key.meta)
-          s.updateNlDraft(s.nlDraft + input);
-        return;
-      }
-      if (s.generating) return; // ignore input while the model works
-      if (s.queryFocus === 'editor') {
-        if (key.escape) s.exitQueryView();
-        else if (key.return) void s.executeQuery();
-        else if (key.ctrl && input === 'g') s.beginNl(); // ask the AI
-        else if (key.upArrow) s.historyPrev();
-        else if (key.downArrow) s.historyNext();
-        else if (key.tab) {
-          // Tab completes the current word, or moves to the result grid.
-          if (s.completions.length > 0) s.acceptCompletion();
-          else s.toggleQueryFocus();
-        } else if (key.backspace || key.delete)
-          s.updateQueryText(s.queryText.slice(0, -1));
-        else if (input && !key.ctrl && !key.meta)
-          s.updateQueryText(s.queryText + input);
-      } else {
-        if (key.escape) s.exitQueryView();
-        else if (input === '?') s.toggleHelp();
-        else if (key.tab) s.toggleQueryFocus();
-        else if (key.upArrow || input === 'k') s.queryGridUp();
-        else if (key.downArrow || input === 'j') s.queryGridDown();
-      }
+    // NL→SQL prompt captures all keys until generate/cancel (an editor sub-mode).
+    if (s.nlMode) {
+      if (key.ctrl && input === 'c') ink.exit();
+      else if (key.return) void s.generateFromNl();
+      else if (key.escape) s.cancelNl();
+      else if (key.backspace || key.delete) s.updateNlDraft(s.nlDraft.slice(0, -1));
+      else if (input && !key.ctrl && !key.meta) s.updateNlDraft(s.nlDraft + input);
       return;
     }
+    if (s.generating) return; // ignore input while the model works
 
     // Filter input mode captures all keys until commit/cancel.
     if (s.mode === 'filter') {
@@ -227,7 +194,33 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (input === 'q' || (key.ctrl && input === 'c')) {
+    // ^C always quits, even from the editor.
+    if (key.ctrl && input === 'c') {
+      ink.exit();
+      return;
+    }
+
+    // Editor focus captures typing — handled BEFORE the global letter shortcuts,
+    // so `q`/`:`/`?` are literal characters while you write SQL.
+    if (s.focus === 'editor') {
+      if (key.escape) s.focusPane('grid');
+      else if (key.return) void s.executeQuery();
+      else if (key.ctrl && input === 'g') s.beginNl(); // ask the AI
+      else if (key.upArrow) s.historyPrev();
+      else if (key.downArrow) s.historyNext();
+      else if (key.tab) {
+        // Tab completes the current word, else cycles to the next pane.
+        if (s.completions.length > 0) s.acceptCompletion();
+        else s.cycleFocus();
+      } else if (key.backspace || key.delete)
+        s.updateQueryText(s.queryText.slice(0, -1));
+      else if (input && !key.ctrl && !key.meta)
+        s.updateQueryText(s.queryText + input);
+      return;
+    }
+
+    // Global keys (sidebar / grid focus only).
+    if (input === 'q') {
       ink.exit();
       return;
     }
@@ -240,11 +233,11 @@ export const App: React.FC = () => {
       return;
     }
     if (input === ':') {
-      s.enterQueryView();
+      s.focusPane('editor'); // activate the SQL editor pane
       return;
     }
     if (key.tab) {
-      s.toggleFocus();
+      s.cycleFocus();
       return;
     }
     if (s.focus === 'sidebar') {
@@ -257,29 +250,37 @@ export const App: React.FC = () => {
       else if (input === 'n') s.beginNewConnection();
       else if (input === 'e') s.beginEditConnection();
     } else {
-      // Data-grid focus. `D` flips between the Data and DDL faces; the DDL face
-      // is read-only, so it ignores the row/edit keys.
-      if (input === 'D') s.toggleMainTab();
-      else if (s.mainTab === 'ddl') return;
+      // Grid focus. A 'browse' surface is editable; a 'query' result is read-only
+      // (navigation + cell inspect only). `D` flips Data/DDL on a browsed table.
+      if (s.surface === 'browse' && input === 'D') s.toggleMainTab();
+      else if (s.surface === 'browse' && s.mainTab === 'ddl') return; // static face
       else if (key.return) s.openCell();
       else if (key.upArrow || input === 'k') s.gridUp();
       else if (key.downArrow || input === 'j') s.gridDown();
       else if (key.leftArrow || input === 'h') s.gridLeft();
       else if (key.rightArrow || input === 'l') s.gridRight();
-      else if (input === 's') void s.applySort();
-      else if (input === '/') s.beginFilter();
-      else if (input === 'e') s.beginEdit();
-      else if (input === 'd') s.beginDelete();
-      else if (input === 'n') void s.pageNext();
-      else if (input === 'p') void s.pagePrev();
+      else if (s.surface === 'browse') {
+        if (input === 's') void s.applySort();
+        else if (input === '/') s.beginFilter();
+        else if (input === 'e') s.beginEdit();
+        else if (input === 'd') s.beginDelete();
+        else if (input === 'n') void s.pageNext();
+        else if (input === 'p') void s.pagePrev();
+      }
     }
   });
 
   const { rows: terminalRows, cols: terminalCols } = useTerminalSize();
-  const viewportRows = Math.max(3, terminalRows - 11);
   // Width available to the main pane: total minus the sidebar, the row gap, and
   // the main panel's own border + horizontal padding.
   const viewportCols = Math.max(24, terminalCols - SIDEBAR_WIDTH - 1 - 4);
+  // The right side splits ~1:3 — a compact SQL editor on top, the results grid
+  // below. The editor pane only exists for SQL-speaking sources (capability-
+  // driven, like the rest of the UI); other sources get the full grid height.
+  const editorRows = queryable
+    ? Math.min(10, Math.max(5, Math.floor((terminalRows - 2) / 4)))
+    : 0;
+  const gridBodyRows = Math.max(3, terminalRows - 2 - editorRows - 4);
   const gridFocused = focus === 'grid';
 
   // The active connection's display name + driver tag are derived from the
@@ -306,22 +307,20 @@ export const App: React.FC = () => {
     cellView
       ? 'cell'
       : mode === 'connform'
-      ? 'connform'
-      : mode === 'filter'
-      ? 'filter'
-      : mode === 'edit'
-        ? 'edit'
-        : mode === 'confirm'
-          ? 'confirm'
-          : view === 'query'
-            ? nlMode
-              ? 'nl'
-              : queryFocus === 'editor'
-                ? 'editor'
-                : 'result'
-            : focus === 'sidebar'
-              ? 'sidebar'
-              : 'grid';
+        ? 'connform'
+        : mode === 'filter'
+          ? 'filter'
+          : mode === 'edit'
+            ? 'edit'
+            : mode === 'confirm'
+              ? 'confirm'
+              : nlMode
+                ? 'nl'
+                : focus === 'editor'
+                  ? 'editor'
+                  : focus === 'sidebar'
+                    ? 'sidebar'
+                    : 'grid';
 
   const rowsInPage = result?.rows.length ?? 0;
   const from = total === 0 ? 0 : page.offset + 1;
@@ -343,34 +342,43 @@ export const App: React.FC = () => {
         focused={focus === 'sidebar'}
         width={SIDEBAR_WIDTH}
       />
-      {view === 'query' ? (
-        <QueryEditor
-          queryText={queryText}
-          editorFocused={queryFocus === 'editor'}
-          resultFocused={queryFocus === 'result'}
-          result={queryResult}
-          error={queryError}
-          elapsedMs={queryElapsedMs}
-          gridRow={queryGridRow}
-          completions={completions}
-          loading={loading}
-          nlMode={nlMode}
-          nlDraft={nlDraft}
-          generating={generating}
-          nlExplanation={nlExplanation}
-          nlKind={nlKind}
-          viewportRows={Math.max(3, terminalRows - 15)}
-          viewportCols={viewportCols}
-        />
-      ) : (
+      {/* Right side: the SQL editor (top, ~1/4) over the results grid (~3/4). */}
+      <Box flexDirection="column" flexGrow={1}>
+        {queryable ? (
+          <Box height={editorRows} flexShrink={0}>
+            <QueryEditor
+              queryText={queryText}
+              focused={focus === 'editor'}
+              completions={completions}
+              nlMode={nlMode}
+              nlDraft={nlDraft}
+              generating={generating}
+              nlExplanation={nlExplanation}
+              nlKind={nlKind}
+              error={queryError}
+              viewportCols={viewportCols}
+            />
+          </Box>
+        ) : null}
         <Box
-          flexDirection="column"
           flexGrow={1}
+          flexDirection="column"
           borderStyle="round"
           borderColor={gridFocused ? theme.borderFocus : theme.border}
           paddingX={1}
         >
-          {current ? (
+          {surface === 'query' ? (
+            <Box>
+              <Text backgroundColor={theme.magenta} color={theme.onAccent} bold>
+                {' Result '}
+              </Text>
+              <Text color={theme.border}>
+                {'  '}
+                {result?.rows.length ?? 0} rows
+                {queryElapsedMs != null ? ` · ${queryElapsedMs}ms` : ''}
+              </Text>
+            </Box>
+          ) : current ? (
             <Box>
               <Text
                 backgroundColor={mainTab === 'data' ? theme.accent : undefined}
@@ -389,11 +397,11 @@ export const App: React.FC = () => {
               </Text>
             </Box>
           ) : (
-            <Text bold color={focus === 'grid' ? theme.accent : theme.border}>
+            <Text bold color={gridFocused ? theme.accent : theme.border}>
               RESULTS
             </Text>
           )}
-          {mainTab === 'ddl' ? (
+          {surface === 'browse' && mainTab === 'ddl' ? (
             <StructureView
               structure={structure}
               loading={structureLoading}
@@ -405,16 +413,16 @@ export const App: React.FC = () => {
               result={result}
               cursor={gridRow}
               selectedCol={gridCol}
-              sort={sort}
+              sort={surface === 'browse' ? sort : null}
               loading={loading}
-              hasTable={current !== null}
-              viewportRows={current ? viewportRows - 1 : viewportRows}
+              hasTable={surface === 'query' || current !== null}
+              viewportRows={gridBodyRows}
               viewportCols={viewportCols}
               focused={gridFocused}
             />
           )}
         </Box>
-      )}
+      </Box>
     </Box>
   );
 
@@ -453,11 +461,11 @@ export const App: React.FC = () => {
         connectionName={connectionName}
         driverTag={driverTag}
         connected={activeId !== null}
-        objectName={view === 'query' ? null : current?.name ?? null}
+        objectName={surface === 'browse' ? current?.name ?? null : null}
         from={from}
         to={to}
         total={total}
-        filterSummary={view === 'query' ? '' : filterSummary(filter)}
+        filterSummary={surface === 'browse' ? filterSummary(filter) : ''}
         nlAvailable={nlAvailable}
       />
       <Box flexGrow={1} flexDirection="column">
@@ -467,7 +475,6 @@ export const App: React.FC = () => {
         width={terminalCols}
         status={status}
         error={error}
-        view={view}
         context={context}
         flags={flags}
         mode={mode}

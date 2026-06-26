@@ -16,20 +16,14 @@ const renderEditor = () =>
   render(
     <QueryEditor
       queryText={SQL}
-      editorFocused
-      resultFocused={false}
-      result={null}
-      error={null}
-      elapsedMs={null}
-      gridRow={0}
+      focused
       completions={[]}
-      loading={false}
       nlMode={false}
       nlDraft=""
       generating={false}
       nlExplanation={null}
       nlKind={null}
-      viewportRows={8}
+      error={null}
       viewportCols={80}
     />,
   );

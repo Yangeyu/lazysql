@@ -226,6 +226,38 @@ test('the SQL editor runs a typed query and shows the result', async () => {
   unmount();
 });
 
+test('editor is persistent; running a query fills the shared grid, then a table re-select returns to browse', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  // The SQL editor pane is ALWAYS present (3-pane layout) — visible before `:`.
+  expect(lastFrame() ?? '').toContain('SQL>');
+
+  stdin.write('\r'); // browse the table → grid shows table data (browse surface)
+  await tick();
+  expect(lastFrame() ?? '').toContain('label'); // a table column header (browse)
+
+  stdin.write(':'); // focus the editor pane
+  await tick();
+  stdin.write('SELECT 7 AS lucky'); // a data-independent query
+  await tick();
+  stdin.write('\r'); // run → the result takes over the SAME grid (query surface)
+  await tick(160);
+  const q = lastFrame() ?? '';
+  expect(q).toContain('lucky'); // query result column in the shared grid
+  expect(q).toContain('Result'); // grid header switched to the query surface
+
+  // Re-selecting the table in the sidebar returns the grid to the browse surface.
+  stdin.write('\t'); // grid → sidebar (Tab cycles sidebar→editor→grid→sidebar)
+  await tick();
+  stdin.write('\r'); // open the table again (cursor is still on it)
+  await tick(120);
+  const b = lastFrame() ?? '';
+  expect(b).toContain('Data'); // the Data/DDL tab → browse surface is back…
+  expect(b).not.toContain('Result'); // …and the grid left the query surface
+  // (the editor keeps `SELECT 7 AS lucky` so you can tweak and re-run it)
+  unmount();
+});
+
 test('? opens the keybindings help overlay and toggles it off again', async () => {
   const { lastFrame, stdin, unmount } = renderApp();
   await tick();

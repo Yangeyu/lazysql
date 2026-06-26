@@ -14,7 +14,6 @@ export type KeyContext =
   | 'sidebar'
   | 'grid'
   | 'editor'
-  | 'result'
   | 'filter'
   | 'edit'
   | 'confirm'
@@ -72,7 +71,8 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: 'D', hint: 'ddl', desc: 'Open the object showing its DDL/structure' },
       { keys: 'n', hint: 'new', desc: 'New connection' },
       { keys: 'e', hint: 'edit', desc: 'Edit the selected connection’s config' },
-      { keys: 'tab', hint: 'grid', desc: 'Focus the data grid' },
+      { keys: ':', hint: 'sql', desc: 'Focus the SQL editor', enabled: (f) => f.queryable },
+      { keys: 'tab', hint: 'pane', desc: 'Cycle to the next pane' },
     ],
   },
   grid: {
@@ -85,19 +85,20 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '/', hint: 'filter', desc: 'Filter the column by a substring' },
       { keys: 'e', hint: 'edit', desc: 'Edit the cell under the cursor' },
       { keys: 'd', hint: 'del', desc: 'Delete the row under the cursor' },
-      { keys: 'n/p', hint: 'page', desc: 'Next / previous page' },
+      { keys: 'n/p', hint: 'page', desc: 'Next / previous page (browsed table)' },
       { keys: 'D', hint: 'data/ddl', desc: 'Toggle the Data / DDL tab' },
-      { keys: 'tab', hint: 'sidebar', desc: 'Focus the sidebar' },
+      { keys: ':', hint: 'sql', desc: 'Focus the SQL editor', enabled: (f) => f.queryable },
+      { keys: 'tab', hint: 'pane', desc: 'Cycle to the next pane' },
     ],
   },
   editor: {
     title: 'SQL editor',
     bindings: [
-      { keys: '⏎', hint: 'run', desc: 'Run the query' },
+      { keys: '⏎', hint: 'run', desc: 'Run the query (result shows in the grid)' },
       {
         keys: 'tab',
-        hint: 'editor/result',
-        desc: 'Switch editor/result · accept completion',
+        hint: 'complete',
+        desc: 'Accept completion · else cycle to the next pane',
       },
       { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry' },
       {
@@ -106,15 +107,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
         desc: 'Generate SQL from natural language',
         enabled: (f) => f.nlAvailable,
       },
-      { keys: 'esc', hint: 'browse', desc: 'Back to browse' },
-    ],
-  },
-  result: {
-    title: 'Query result',
-    bindings: [
-      { keys: 'tab', hint: 'editor', desc: 'Back to the editor' },
-      { keys: '↑/↓ k/j', hint: 'scroll', desc: 'Scroll the result' },
-      { keys: 'esc', hint: 'browse', desc: 'Back to browse' },
+      { keys: 'esc', hint: 'grid', desc: 'Focus the results grid' },
     ],
   },
   filter: {

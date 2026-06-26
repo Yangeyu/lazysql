@@ -24,7 +24,8 @@ const renderEditor = () =>
       nlExplanation={null}
       nlKind={null}
       error={null}
-      viewportCols={80}
+      height={8}
+      innerWidth={80}
     />,
   );
 

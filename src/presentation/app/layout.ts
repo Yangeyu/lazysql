@@ -33,11 +33,13 @@ export const regionAt = (
 //   • a 1-row Header on top of everything;
 //   • the sidebar's rounded border (1) + its "CONNECTIONS" title (1);
 //   • the grid's border (1) + the Data/DDL (or Result) tab line (1) + the
-//     DataGrid column header (1) + its separator rule (1).
+//     DataGrid column header (1) + its separator rule (1);
+//   • plus a 1-row gap below the editor pane when one is present.
 // Centralizing them here is the whole point of this module: the mouse and the
 // renderer derive row positions from the SAME numbers, so they can't disagree.
 const HEADER = 1;
 const SIDEBAR_LIST_TOP = HEADER + 2;
+const EDITOR_GAP = 1;
 const GRID_LIST_CHROME = 4;
 
 /** Layout enriched with the dynamic offsets a click needs to resolve a row. */
@@ -72,11 +74,13 @@ export const hitTest = (l: HitLayout, x: number, y: number): Hit | null => {
     const i = y - SIDEBAR_LIST_TOP;
     return { pane: 'sidebar', row: i >= 0 && i < l.treeLen ? i : null };
   }
-  // Right side: the editor pane occupies the first `editorRows` body rows.
+  // Right side: the editor pane occupies the first `editorRows` body rows; a gap
+  // row sits below it, then the grid.
   if (l.editorRows > 0 && y < HEADER + l.editorRows) {
     return { pane: 'editor', row: null };
   }
-  const k = y - (HEADER + l.editorRows + GRID_LIST_CHROME);
+  const gap = l.editorRows > 0 ? EDITOR_GAP : 0;
+  const k = y - (HEADER + l.editorRows + gap + GRID_LIST_CHROME);
   const row = k >= 0 ? l.gridTop + k : -1;
   return { pane: 'grid', row: row >= 0 && row < l.gridLen ? row : null };
 };

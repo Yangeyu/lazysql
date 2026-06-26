@@ -1,16 +1,23 @@
 /**
- * QueryEditor — the SQL editor pane (top-right of the workbench). It owns ONLY
- * the input box and its inline feedback: completions, the NL→SQL prompt, the
- * generated explanation, and run errors. Running a query sends its result to the
- * shared results grid below — the editor no longer renders results itself, so
- * "edit SQL" and "show data" are cleanly separated (SRP).
+ * QueryEditor — the SQL editor pane (top-right of the workbench): ONE bordered
+ * panel with two stacked sections, an "ask" row on top and the SQL editor below,
+ * split by a divider:
  *
- * The input text is wrapped MANUALLY (wrapText) at a width derived from the known
- * viewport, then each line is its own <Text>. We do not lean on Ink to
- * measure-and-wrap a single Text inside flex containers: in this nested layout
- * Ink hands the wrapping Text a near-zero width, collapsing the SQL to one
- * character per line (only "fixing itself" after a re-measure). Computing the
- * wrap ourselves removes that dependency entirely.
+ *   ╭─────────────────────────────────╮
+ *   │ ✦ ask   how many active users?  │   ← NL→SQL input (active on ^G)
+ *   │ ─────────────────────────────── │   ← divider
+ *   │ SQL>    SELECT count(*) …        │   ← SQL editor (multi-line)
+ *   │ ⇥ users · user_id …             │   ← completions / explanation / error
+ *   ╰─────────────────────────────────╯
+ *
+ * The panel stretches to the full right-column width (no fixed width of its own),
+ * so it aligns exactly with the results grid below it. Running a query sends its
+ * result to the shared grid — the editor never renders results itself (SRP).
+ *
+ * The SQL text is wrapped MANUALLY (wrapText) at a width derived from the known
+ * viewport, then each line is its own <Text>: in this nested flex layout Ink
+ * hands a single wrapping Text a near-zero width, collapsing the SQL to one
+ * character per line. Computing the wrap ourselves removes that dependency.
  */
 
 import React from 'react';
@@ -24,17 +31,20 @@ import { theme } from '../theme/theme.ts';
 
 interface Props {
   queryText: string;
-  /** Whether the editor pane holds focus (shows the caret, accent border). */
+  /** Editor pane focused; the SQL sub-section is active when not in `nlMode`. */
   focused: boolean;
-  completions: string[];
+  /** The ask row is active (capturing the NL prompt). */
   nlMode: boolean;
   nlDraft: string;
+  completions: string[];
   generating: boolean;
   nlExplanation: string | null;
   nlKind: StatementKind | null;
-  /** The last run's error, surfaced under the input. */
   error: string | null;
-  viewportCols: number;
+  /** Fixed panel height, including its border. */
+  height: number;
+  /** Content width (panel inner width) — drives the wrap and the divider. */
+  innerWidth: number;
 }
 
 const PROMPT = 'SQL> ';
@@ -73,65 +83,93 @@ const wrapText = (text: string, width: number): string[] => {
 const QueryEditorImpl: React.FC<Props> = ({
   queryText,
   focused,
-  completions,
   nlMode,
   nlDraft,
+  completions,
   generating,
   nlExplanation,
   nlKind,
   error,
-  viewportCols,
+  height,
+  innerWidth,
 }) => {
-  // Reserve the box border (2), padding (2) and the prompt gutter for content.
-  const contentWidth = Math.max(8, viewportCols - 4 - PROMPT.length);
-  const shown = queryText + (focused && !nlMode ? '▌' : '');
-  const lines = wrapText(shown, contentWidth);
+  // Interior budget: ask row (1) + divider (1) + SQL rows + feedback (1).
+  const sqlRows = Math.max(1, height - 5);
+  const caret = focused && !nlMode ? '▌' : '';
+  const wrapped = wrapText(queryText + caret, Math.max(8, innerWidth - PROMPT.length));
+  // Keep the caret end visible: window to the last `sqlRows` lines, pad the rest
+  // so the feedback line stays pinned to the bottom.
+  const start = Math.max(0, wrapped.length - sqlRows);
+  const sql = wrapped.slice(start, start + sqlRows);
+  while (sql.length < sqlRows) sql.push('');
+
+  const borderColor = nlMode
+    ? theme.magenta
+    : focused
+      ? theme.borderFocus
+      : theme.border;
 
   return (
-    <Box flexDirection="column" width={viewportCols}>
-      <Box
-        borderStyle="round"
-        borderColor={
-          nlMode ? theme.magenta : focused ? theme.borderFocus : theme.border
-        }
-        paddingX={1}
-        flexDirection="column"
-        width={viewportCols}
-      >
-        {lines.map((ln, i) => (
-          <Text key={i} wrap="truncate">
-            {i === 0 ? (
-              <Text bold color={theme.magenta}>
-                {PROMPT}
-              </Text>
-            ) : (
-              ' '.repeat(PROMPT.length)
-            )}
-            {ln}
-          </Text>
-        ))}
-      </Box>
-
-      {nlMode ? (
-        <Box flexDirection="column">
-          <Text>
-            <Text color={theme.magenta} bold>
-              ✦ ask{' '}
-            </Text>
+    <Box
+      flexDirection="column"
+      flexShrink={0}
+      width="100%"
+      height={height}
+      borderStyle="round"
+      borderColor={borderColor}
+      paddingX={1}
+    >
+      {/* ── ask row (NL→SQL) ── */}
+      <Text wrap="truncate">
+        <Text color={theme.magenta} bold>
+          ✦ ask{' '}
+        </Text>
+        {nlMode ? (
+          <>
             <Text color={theme.cyan}>{nlDraft}</Text>
             <Text color={theme.accent}>▌</Text>
+          </>
+        ) : nlExplanation ? (
+          <Text color={theme.magenta}>
+            {nlExplanation}
+            {nlKind && isDestructive(nlKind) ? (
+              <Text color={theme.red} bold>
+                {'  '}⚠ {nlKind.toUpperCase()}
+              </Text>
+            ) : null}
           </Text>
-          <Text color={theme.border}>
-            ⏎ generate SQL (review before running) · esc cancel
-          </Text>
-        </Box>
-      ) : generating ? (
-        <Text color={theme.magenta}>✦ Generating SQL…</Text>
-      ) : error ? (
+        ) : (
+          <Text color={theme.border}>press ^G to ask in natural language</Text>
+        )}
+      </Text>
+
+      {/* ── divider ── (truncate guards against any off-by-one overflow) */}
+      <Text color={theme.border} wrap="truncate">
+        {'─'.repeat(Math.max(0, innerWidth))}
+      </Text>
+
+      {/* ── SQL editor ── */}
+      {sql.map((ln, i) => (
+        <Text key={i} wrap="truncate">
+          {start + i === 0 ? (
+            <Text bold color={theme.magenta}>
+              {PROMPT}
+            </Text>
+          ) : (
+            ' '.repeat(PROMPT.length)
+          )}
+          {ln}
+        </Text>
+      ))}
+
+      {/* ── feedback: completions / generating / error / hint ── */}
+      {error ? (
         <Text color={theme.red} wrap="truncate">
           error: {error}
         </Text>
-      ) : focused && completions.length > 0 ? (
+      ) : generating ? (
+        <Text color={theme.magenta}>✦ Generating SQL…</Text>
+      ) : focused && !nlMode && completions.length > 0 ? (
         <Text wrap="truncate">
           <Text color={theme.border}>⇥ </Text>
           <Text color={theme.cyan} bold>
@@ -141,20 +179,13 @@ const QueryEditorImpl: React.FC<Props> = ({
             {completions.slice(1).map((c) => ` · ${c}`).join('')}
           </Text>
         </Text>
-      ) : nlExplanation ? (
-        <Text wrap="truncate">
-          <Text color={theme.magenta}>✦ {nlExplanation}</Text>
-          {nlKind && isDestructive(nlKind) ? (
-            <Text color={theme.red} bold>
-              {'  '}⚠ {nlKind.toUpperCase()} — review before running
-            </Text>
-          ) : null}
-        </Text>
       ) : (
         <Text color={theme.border} wrap="truncate">
-          {focused
-            ? '⏎ run · ^G ask AI · esc grid'
-            : ': edit SQL · ⏎ run · ↑/↓ history'}
+          {nlMode
+            ? '⏎ generate SQL (review before running) · esc cancel'
+            : focused
+              ? '⏎ run · ^G ask AI · ↑/↓ history · esc grid'
+              : ': focus editor · ⏎ run'}
         </Text>
       )}
     </Box>

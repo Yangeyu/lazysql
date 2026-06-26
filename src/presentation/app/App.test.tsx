@@ -258,6 +258,23 @@ test('editor is persistent; running a query fills the shared grid, then a table 
   unmount();
 });
 
+test('the SQL editor and the results grid share one width (aligned right edge)', async () => {
+  const { lastFrame, unmount } = renderApp();
+  await tick();
+  const lines = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').split('\n');
+  // Every box corner on the RIGHT side (past the sidebar) must sit in one column
+  // — i.e. the editor pane and the grid pane are exactly the same width.
+  const rightEdges = new Set<number>();
+  for (const line of lines) {
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if ((ch === '╮' || ch === '╯') && i > 30) rightEdges.add(i);
+    }
+  }
+  expect(rightEdges.size).toBe(1); // editor box + grid box end at the same column
+  unmount();
+});
+
 test('? opens the keybindings help overlay and toggles it off again', async () => {
   const { lastFrame, stdin, unmount } = renderApp();
   await tick();

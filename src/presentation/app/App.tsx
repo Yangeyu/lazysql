@@ -327,17 +327,9 @@ export const App: React.FC = () => {
   const from = total === 0 ? 0 : page.offset + 1;
   const to = page.offset + rowsInPage;
 
-  const body = helpOpen ? (
-    <HelpOverlay groups={helpGroups(context, flags)} />
-  ) : cellView ? (
-    <CellView
-      column={cellView.column}
-      value={cellView.value}
-      offset={cellView.offset}
-      viewportRows={Math.max(5, terminalRows - 2)}
-      viewportCols={viewportCols}
-    />
-  ) : connForm ? (
+  // The persistent background — ALWAYS rendered, so the `?` help and the cell
+  // inspector float OVER it (lazygit-style) rather than replacing it.
+  const background = connForm ? (
     <ConnectionForm form={connForm} />
   ) : status === 'connecting' ? (
     <Box flexGrow={1} alignItems="center" justifyContent="center">
@@ -426,11 +418,36 @@ export const App: React.FC = () => {
     </Box>
   );
 
+  // Floating layers, composited over the background by <Overlay> (absolute, so
+  // they add no height to the frame → no full-clear, no flicker). Only one shows
+  // at a time; the panes behind stay visible, exactly like lazygit's menus.
+  const overlay = helpOpen ? (
+    <HelpOverlay
+      groups={helpGroups(context, flags)}
+      termRows={terminalRows}
+      termCols={terminalCols}
+    />
+  ) : cellView ? (
+    <CellView
+      column={cellView.column}
+      value={cellView.value}
+      offset={cellView.offset}
+      termRows={terminalRows}
+      termCols={terminalCols}
+    />
+  ) : null;
+
   return (
+    // position="relative" anchors the absolute overlays to the full screen.
     // minHeight is terminalRows-1, NOT terminalRows: Ink full-clears the screen
     // (causing flicker on every keypress) whenever the frame height reaches the
     // terminal height. Staying one row short keeps it on the incremental path.
-    <Box flexDirection="column" minHeight={terminalRows - 1} width={terminalCols}>
+    <Box
+      position="relative"
+      flexDirection="column"
+      minHeight={terminalRows - 1}
+      width={terminalCols}
+    >
       <Header
         width={terminalCols}
         connectionName={connectionName}
@@ -444,7 +461,7 @@ export const App: React.FC = () => {
         nlAvailable={nlAvailable}
       />
       <Box flexGrow={1} flexDirection="column">
-        {body}
+        {background}
       </Box>
       <StatusBar
         width={terminalCols}
@@ -460,6 +477,8 @@ export const App: React.FC = () => {
         editColumn={result?.columns[gridCol]?.name ?? null}
         pendingMessage={pending?.message ?? null}
       />
+      {/* drawn last so it composites on top of every pane and the status bar */}
+      {overlay}
     </Box>
   );
 };

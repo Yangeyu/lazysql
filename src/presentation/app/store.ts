@@ -184,8 +184,10 @@ export interface AppState {
 
   init: () => Promise<void>;
   toggleHelp: () => void;
-  /** Focus a pane from a mouse click (sidebar vs main grid). */
-  focusRegion: (region: Region) => void;
+  /** Select a sidebar tree row from a click (null row → just focus the pane). */
+  clickTree: (row: number | null) => void;
+  /** Select a grid data row from a click (null row → just focus the pane). */
+  clickGrid: (row: number | null) => void;
   /** Open the full-value inspector for the cell under the grid cursor. */
   openCell: () => void;
   closeCell: () => void;
@@ -587,7 +589,17 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
 
-      focusRegion: (region) => get().focusPane(region),
+      clickTree: (row) =>
+        set((s) => ({
+          focus: 'sidebar',
+          treeIndex: row != null ? row : s.treeIndex,
+        })),
+
+      clickGrid: (row) =>
+        set((s) => ({
+          focus: 'grid',
+          gridRow: row != null ? row : s.gridRow,
+        })),
 
       openCell: () => {
         const { result, gridRow, gridCol } = get();

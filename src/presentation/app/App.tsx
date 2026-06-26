@@ -23,7 +23,7 @@ import {
 } from '../keymap/keymap.ts';
 import { buildTree, toConnNodes, dialectLabel, shortTag } from '../tree/tree.ts';
 import { theme } from '../theme/theme.ts';
-import { regionAt } from './layout.ts';
+import { hitTest, rowWindow } from './layout.ts';
 import { useMouse } from '../hooks/useMouse.ts';
 import type { Filter } from '../../domain/query/Query.ts';
 
@@ -108,14 +108,27 @@ export const App: React.FC = () => {
     void store.getState().init();
   }, [store]);
 
-  // A click focuses the pane it lands in (sidebar vs main grid).
+  // A click selects the list row it lands on (sidebar tree item or grid row) and
+  // focuses that pane; a click on the editor pane just focuses it.
   useMouse((e) => {
-    const region = regionAt(
-      { rows: terminalRows, cols: terminalCols, sidebarWidth: SIDEBAR_WIDTH },
+    const hit = hitTest(
+      {
+        rows: terminalRows,
+        cols: terminalCols,
+        sidebarWidth: SIDEBAR_WIDTH,
+        editorRows,
+        gridTop,
+        treeLen: treeRows.length,
+        gridLen,
+      },
       e.x,
       e.y,
     );
-    if (region) store.getState().focusRegion(region);
+    if (!hit) return;
+    const s = store.getState();
+    if (hit.pane === 'sidebar') s.clickTree(hit.row);
+    else if (hit.pane === 'editor') s.focusPane('editor');
+    else s.clickGrid(hit.row);
   });
 
   useInput((input, key) => {
@@ -281,6 +294,13 @@ export const App: React.FC = () => {
     ? Math.min(10, Math.max(5, Math.floor((terminalRows - 2) / 4)))
     : 0;
   const gridBodyRows = Math.max(3, terminalRows - 2 - editorRows - 4);
+  // What the grid is actually showing, for click→row mapping: the DataGrid is on
+  // screen for a query result or a browsed table's Data tab (the DDL face is not
+  // a row list). gridTop mirrors the grid's own vertical scroll.
+  const gridShowsData =
+    surface === 'query' || (current !== null && mainTab === 'data');
+  const gridLen = gridShowsData ? result?.rows.length ?? 0 : 0;
+  const gridTop = rowWindow(gridRow, gridBodyRows, gridLen);
   const gridFocused = focus === 'grid';
 
   // The active connection's display name + driver tag are derived from the

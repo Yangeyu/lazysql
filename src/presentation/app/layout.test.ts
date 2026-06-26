@@ -1,7 +1,18 @@
 import { test, expect } from 'bun:test';
-import { regionAt, rowWindow } from './layout.ts';
+import { regionAt, rowWindow, hitTest } from './layout.ts';
 
 const L = { rows: 24, cols: 100, sidebarWidth: 28 };
+
+// editorRows 5 → grid border/tab/header/sep put data row 0 at screen y = 1+5+4.
+const HL = {
+  rows: 24,
+  cols: 100,
+  sidebarWidth: 28,
+  editorRows: 5,
+  gridTop: 0,
+  treeLen: 3,
+  gridLen: 10,
+};
 
 test('the header row and status row are not focus targets', () => {
   expect(regionAt(L, 10, 0)).toBeNull(); // header
@@ -31,4 +42,42 @@ test('rowWindow scrolls to keep the cursor on the last visible row', () => {
 test('rowWindow clamps the final page so it never shows empty space', () => {
   expect(rowWindow(99, 10, 100)).toBe(90); // not 90+, the last full page
   expect(rowWindow(5, 10, 3)).toBe(0); // fewer rows than the viewport
+});
+
+// ── hitTest: screen coordinate → pane + list row ─────────────────────────────
+
+test('hitTest ignores the header and status rows', () => {
+  expect(hitTest(HL, 10, 0)).toBeNull();
+  expect(hitTest(HL, 10, 23)).toBeNull();
+});
+
+test('hitTest maps a sidebar click to its tree row (border + title above)', () => {
+  expect(hitTest(HL, 5, 3)).toEqual({ pane: 'sidebar', row: 0 }); // first row
+  expect(hitTest(HL, 5, 5)).toEqual({ pane: 'sidebar', row: 2 }); // third row
+  expect(hitTest(HL, 5, 2)).toEqual({ pane: 'sidebar', row: null }); // the title
+  expect(hitTest(HL, 5, 6)).toEqual({ pane: 'sidebar', row: null }); // past the tree
+});
+
+test('hitTest routes the top-right to the editor pane, the rest to the grid', () => {
+  expect(hitTest(HL, 60, 2)).toEqual({ pane: 'editor', row: null }); // in the editor
+  expect(hitTest(HL, 60, 10)).toEqual({ pane: 'grid', row: 0 }); // first data row
+  expect(hitTest(HL, 60, 12)).toEqual({ pane: 'grid', row: 2 });
+  expect(hitTest(HL, 60, 9)).toEqual({ pane: 'grid', row: null }); // grid chrome
+});
+
+test('hitTest accounts for the grid scroll offset', () => {
+  // Scrolled down 20 rows (of 30): the row at the first visible line is row 20.
+  expect(hitTest({ ...HL, gridTop: 20, gridLen: 30 }, 60, 10)).toEqual({
+    pane: 'grid',
+    row: 20,
+  });
+});
+
+test('hitTest returns a null row past the last data row', () => {
+  // gridLen 10, first row at y=10 → rows 0..9 occupy y 10..19; y=20 is past them.
+  expect(hitTest(HL, 60, 20)).toEqual({ pane: 'grid', row: null });
+});
+
+test('hitTest with no editor pane (editorRows 0) puts data row 0 at y=5', () => {
+  expect(hitTest({ ...HL, editorRows: 0 }, 60, 5)).toEqual({ pane: 'grid', row: 0 });
 });

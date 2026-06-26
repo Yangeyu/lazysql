@@ -20,6 +20,7 @@ import stringWidth from 'string-width';
 import type { ResultSet, CellValue } from '../../domain/datasource/ResultSet.ts';
 import type { Sort } from '../../domain/query/Query.ts';
 import { theme } from '../theme/theme.ts';
+import { rowWindow } from '../app/layout.ts';
 
 interface Props {
   result: ResultSet | null;
@@ -100,27 +101,59 @@ export const columnWindow = (
   return { start, end };
 };
 
+/**
+ * Visual selection state of a grid cell — the SINGLE decision the renderer maps
+ * to styling, kept pure so the highlight logic is unit-tested directly (ink emits
+ * no colour under `bun test`, so the rendered frame can't reveal it):
+ *
+ *   • 'cell'     — the active cell, grid focused → strong inverse
+ *   • 'cell-dim' — the active cell, grid unfocused → accent tint (still locatable)
+ *   • 'row'      — the cursor row when there is NO column cursor (query results,
+ *                  selectedCol < 0) → whole-row inverse
+ *   • 'none'     — everything else
+ */
+export type CellHighlight = 'none' | 'cell' | 'cell-dim' | 'row';
+
+export const cellHighlight = (
+  rowIndex: number,
+  colIndex: number,
+  cursor: number,
+  selectedCol: number,
+  focused: boolean,
+): CellHighlight => {
+  if (rowIndex !== cursor) return 'none';
+  if (selectedCol < 0) return focused ? 'row' : 'none';
+  if (colIndex !== selectedCol) return 'none';
+  return focused ? 'cell' : 'cell-dim';
+};
+
 /** One styled cell of a rendered line. */
 interface Cell {
   text: string;
   color?: string;
   bold?: boolean;
+  /** Per-cell highlight — the active grid cell (row ∩ column cursor). */
+  inverse?: boolean;
 }
 
-/** Render a gutter + windowed cells as a single, non-wrapping line. */
+/**
+ * Render a gutter + windowed cells as a single, non-wrapping line. Highlight is
+ * applied PER CELL (so the column cursor lands on one cell, not the whole row);
+ * `rowInverse` is the fallback for grids with no column cursor (query results).
+ */
 const line = (
   key: React.Key,
   gutter: string,
   gutterColor: string,
   cells: Cell[],
-  inverse: boolean,
+  rowInverse: boolean,
 ): React.ReactNode => (
-  <Text key={key} wrap="truncate" inverse={inverse}>
+  <Text key={key} wrap="truncate" inverse={rowInverse}>
     <Text color={gutterColor}>{gutter}</Text>
     {cells.map((c, i) => (
       <React.Fragment key={i}>
         {i > 0 ? <Text color={theme.border}>{SEP}</Text> : null}
-        <Text color={c.color} bold={c.bold}>
+        <Text color={c.color} bold={c.bold} inverse={c.inverse}>
           {c.text}
         </Text>
       </React.Fragment>
@@ -152,9 +185,9 @@ const DataGridImpl: React.FC<Props> = ({
   const { columns, rows } = result;
   const vh = Math.max(1, viewportRows);
 
-  // Vertical window: keep the row cursor inside the visible slice.
-  const top =
-    cursor >= vh ? Math.min(cursor - vh + 1, Math.max(0, rows.length - vh)) : 0;
+  // Vertical window: keep the row cursor inside the visible slice. Derived by the
+  // shared geometry helper so mouse hit-testing maps screen rows the same way.
+  const top = rowWindow(cursor, vh, rows.length);
   const visible = rows.slice(top, top + vh);
 
   // Column widths from the visible window only — O(viewport), not O(table).
@@ -196,21 +229,32 @@ const DataGridImpl: React.FC<Props> = ({
       </Text>
       {visible.map((row, i) => {
         const absolute = top + i;
-        const selected = absolute === cursor;
-        const active = selected && focused;
+        const onCursor = absolute === cursor;
+        const rowInverse =
+          cellHighlight(absolute, 0, cursor, selectedCol, focused) === 'row';
         return line(
           absolute,
-          selected ? (focused ? '▶ ' : '▎ ') : '  ',
+          onCursor ? (focused ? '▶ ' : '▎ ') : '  ',
           theme.accent,
           win.map((_, wi) => {
             const ci = start + wi;
             const raw = row[ci] ?? null;
+            const hi = cellHighlight(absolute, ci, cursor, selectedCol, focused);
             return {
               text: fit(formatCell(raw), widths[ci]!),
-              color: raw === null && !active ? theme.border : undefined,
+              // 'cell' inverts; 'cell-dim' keeps an accent tint so the cursor is
+              // still visible when the grid loses focus.
+              inverse: hi === 'cell',
+              color:
+                hi === 'cell-dim'
+                  ? theme.accent
+                  : raw === null && !rowInverse
+                    ? theme.border
+                    : undefined,
+              bold: hi === 'cell-dim',
             };
           }),
-          active,
+          rowInverse,
         );
       })}
     </>

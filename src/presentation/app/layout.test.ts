@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { regionAt } from './layout.ts';
+import { regionAt, rowWindow } from './layout.ts';
 
 const L = { rows: 24, cols: 100, sidebarWidth: 28 };
 
@@ -16,4 +16,19 @@ test('clicks inside the sidebar width focus the sidebar', () => {
 test('clicks past the sidebar focus the main grid', () => {
   expect(regionAt(L, 29, 5)).toBe('grid');
   expect(regionAt(L, 99, 12)).toBe('grid');
+});
+
+test('rowWindow anchors at the top until the cursor passes the fold', () => {
+  expect(rowWindow(0, 10, 100)).toBe(0);
+  expect(rowWindow(9, 10, 100)).toBe(0); // last row that still fits
+});
+
+test('rowWindow scrolls to keep the cursor on the last visible row', () => {
+  expect(rowWindow(10, 10, 100)).toBe(1);
+  expect(rowWindow(50, 10, 100)).toBe(41);
+});
+
+test('rowWindow clamps the final page so it never shows empty space', () => {
+  expect(rowWindow(99, 10, 100)).toBe(90); // not 90+, the last full page
+  expect(rowWindow(5, 10, 3)).toBe(0); // fewer rows than the viewport
 });

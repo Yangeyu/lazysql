@@ -28,3 +28,20 @@ export const regionAt = (
   if (y <= 0 || y >= layout.rows - 1) return null; // header row / status row
   return x <= layout.sidebarWidth ? 'sidebar' : 'grid';
 };
+
+/**
+ * First visible index of a vertically-virtualized list that keeps `cursor` in
+ * view: 0 until the cursor passes the fold, then scrolled so the cursor sits on
+ * the last visible row, clamped so the final page never shows empty space. The
+ * single source of truth for vertical scroll — the renderer draws `slice(top,
+ * top+rows)` and hit-testing maps a screen row back through the same `top`, so
+ * they can never disagree. Pure; exported for unit testing.
+ */
+export const rowWindow = (
+  cursor: number,
+  viewportRows: number,
+  total: number,
+): number => {
+  const vh = Math.max(1, viewportRows);
+  return cursor >= vh ? Math.min(cursor - vh + 1, Math.max(0, total - vh)) : 0;
+};

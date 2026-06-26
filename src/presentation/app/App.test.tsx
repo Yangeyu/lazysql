@@ -275,6 +275,42 @@ test('the SQL editor and the results grid share one width (aligned right edge)',
   unmount();
 });
 
+test('the browse frame stays within the terminal height (no full-clear flicker)', async () => {
+  const cols = process.stdout.columns;
+  const rows = process.stdout.rows;
+  (process.stdout as { columns: number }).columns = 120;
+  (process.stdout as { rows: number }).rows = 30;
+  try {
+    const { lastFrame, stdin, unmount } = renderApp();
+    await tick();
+    stdin.write('\r'); // browse the table → grid fills with rows
+    await tick(120);
+    // The rendered frame must stay below the terminal height; the moment it
+    // reaches it, Ink full-clears every render and the grid flickers on j/k.
+    const lineCount = (lastFrame() ?? '').split('\n').length;
+    expect(lineCount).toBeLessThan(30);
+    unmount();
+  } finally {
+    (process.stdout as { columns?: number }).columns = cols;
+    (process.stdout as { rows?: number }).rows = rows;
+  }
+});
+
+test('a query error keeps the ask row pinned, not scrolled off the top', async () => {
+  const { lastFrame, stdin, unmount } = renderApp();
+  await tick();
+  stdin.write(':'); // focus the editor
+  await tick();
+  stdin.write('NOT VALID SQL');
+  await tick();
+  stdin.write('\r'); // run → error in the feedback line
+  await tick(140);
+  const f = lastFrame() ?? '';
+  expect(f).toContain('ask'); // the ask row survives above the SQL + error
+  expect(f).toContain('error'); // and the (single-line) error is shown
+  unmount();
+});
+
 test('? opens the keybindings help overlay and toggles it off again', async () => {
   const { lastFrame, stdin, unmount } = renderApp();
   await tick();

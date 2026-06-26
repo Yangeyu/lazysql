@@ -49,6 +49,11 @@ interface Props {
 
 const PROMPT = 'SQL> ';
 
+/** Collapse newlines so a value stays on a SINGLE feedback line — otherwise a
+ *  multi-line error would overflow the fixed-height pane and push the (pinned)
+ *  ask row off the top. */
+const oneLine = (s: string): string => s.replace(/\s*\n\s*/g, ' ');
+
 /** Greedy word-wrap to an exact display width, hard-breaking over-long words. */
 const wrapText = (text: string, width: number): string[] => {
   const w = Math.max(1, width);
@@ -131,7 +136,7 @@ const QueryEditorImpl: React.FC<Props> = ({
           </>
         ) : nlExplanation ? (
           <Text color={theme.magenta}>
-            {nlExplanation}
+            {oneLine(nlExplanation)}
             {nlKind && isDestructive(nlKind) ? (
               <Text color={theme.red} bold>
                 {'  '}⚠ {nlKind.toUpperCase()}
@@ -165,7 +170,7 @@ const QueryEditorImpl: React.FC<Props> = ({
       {/* ── feedback: completions / generating / error / hint ── */}
       {error ? (
         <Text color={theme.red} wrap="truncate">
-          error: {error}
+          error: {oneLine(error)}
         </Text>
       ) : generating ? (
         <Text color={theme.magenta}>✦ Generating SQL…</Text>

@@ -33,7 +33,7 @@ const strip = (s: string): string => s.replace(/\[[0-9;]*m/g, '');
 const click = (x: number, y: number) => `\x1b[<0;${x};${y}M`;
 
 // Force a known terminal size so list-row screen coordinates are deterministic:
-// rows 30 → editorRows 7, +1 gap → grid data row 0 sits at screen y=13 (1+7+1+4).
+// rows 30 → editorRows 7, flush (no gap) → grid data row 0 sits at screen y=12 (1+7+4).
 const withSize = async (run: () => Promise<void>): Promise<void> => {
   const cols = process.stdout.columns;
   const rows = process.stdout.rows;
@@ -74,7 +74,7 @@ test('clicking a grid row selects that row (delete confirm shows its key)', asyn
     await tick(220);
     stdin.write('\r'); // open table t → grid, cursor on row 0 (id 1)
     await tick(160);
-    stdin.write(click(61, 16)); // 0-based (60, 15) → the 3rd data row (id 3)
+    stdin.write(click(61, 15)); // 0-based (60, 14) → the 3rd data row (id 3)
     await tick(60);
     stdin.write('d'); // delete → confirmation shows the clicked row's primary key
     await tick(60);

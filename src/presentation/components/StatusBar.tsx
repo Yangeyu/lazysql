@@ -68,11 +68,17 @@ const StatusBarImpl: React.FC<Props> = ({
   editColumn,
   pendingMessage,
 }) => {
-  const hints = <Text color={theme.border}>{footerHints(context, flags)}</Text>;
+  // The hint list must stay on ONE line: if it wrapped, the frame would grow past
+  // the terminal height and trip Ink's full-screen clear (flicker). It truncates
+  // from the right, so the active context's keys (listed first) always survive.
   const bar = (left: React.ReactNode): React.ReactNode => (
     <Box width={width} justifyContent="space-between" paddingX={1}>
-      <Box>{left}</Box>
-      <Box>{hints}</Box>
+      <Box flexShrink={0}>{left}</Box>
+      <Box flexShrink={1} marginLeft={2}>
+        <Text wrap="truncate" color={theme.border}>
+          {footerHints(context, flags)}
+        </Text>
+      </Box>
     </Box>
   );
 

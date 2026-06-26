@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 
 import { createDataSource } from '../registry.ts';
+import { normalizeCell } from './SqlDataSource.ts';
 import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
 import type { DataSource } from '../../../domain/datasource/DataSource.ts';
 import {
@@ -23,6 +24,20 @@ import { listObjects } from '../../../application/usecases/ListObjects.ts';
 import { browseTable } from '../../../application/usecases/BrowseTable.ts';
 import { unwrap } from '../../../shared/Result.ts';
 import { firstPage, sql } from '../../../domain/query/Query.ts';
+
+// A JSON/JSONB column surfaces from pg/mysql as a JS object/array. normalizeCell
+// must render it as faithful JSON, never the useless "[object Object]".
+test('normalizeCell renders structured values as JSON, not [object Object]', () => {
+  expect(normalizeCell([{ a: 1 }, { b: 2 }])).toBe('[{"a":1},{"b":2}]');
+  expect(normalizeCell({ x: 'y' })).toBe('{"x":"y"}');
+  expect(normalizeCell(new Date('2020-01-02T03:04:05.000Z'))).toBe(
+    '2020-01-02T03:04:05.000Z',
+  );
+  // scalars pass through untouched
+  expect(normalizeCell('hi')).toBe('hi');
+  expect(normalizeCell(42)).toBe(42);
+  expect(normalizeCell(null)).toBe(null);
+});
 
 const DB = join(tmpdir(), `lazysql-test-${process.pid}.db`);
 let source: DataSource;

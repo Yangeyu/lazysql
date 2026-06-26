@@ -204,7 +204,7 @@ const toResultSet = (raw: RawResult): ResultSet => ({
   truncated: false,
 });
 
-const normalizeCell = (v: unknown): CellValue => {
+export const normalizeCell = (v: unknown): CellValue => {
   if (v === undefined || v === null) return null;
   if (
     typeof v === 'string' ||
@@ -215,5 +215,13 @@ const normalizeCell = (v: unknown): CellValue => {
   ) {
     return v;
   }
-  return String(v);
+  if (v instanceof Date) return v.toISOString();
+  // Structured values (a JSON/JSONB column surfaces as a JS object/array via the
+  // driver) become faithful JSON — NOT a useless "[object Object]". The cell
+  // inspector then detects it (looksLikeJson) and pretty-prints it.
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
 };

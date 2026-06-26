@@ -18,6 +18,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { Root } from './presentation/app/Root.tsx';
+import { enableSynchronizedOutput } from './presentation/term/synchronizedOutput.ts';
 import { createDataSource } from './adapters/datasource/registry.ts';
 import { YamlConnectionRepository } from './adapters/persistence/YamlConnectionRepository.ts';
 import { FileSecretStore } from './adapters/persistence/FileSecretStore.ts';
@@ -163,7 +164,14 @@ const leaveAltScreen = (): void => {
   if (isTty) process.stdout.write('\x1b[?1000l\x1b[?1006l\x1b[?1049l');
 };
 
+// Synchronized output (DEC mode 2026) — the flicker fix. Ink repaints the whole
+// frame on every render with no cell diffing, so a scroll's erase→repaint flashes
+// the blank intermediate state. Wrapping each frame so the terminal applies it
+// atomically removes the flash. See ./presentation/term/synchronizedOutput.ts.
+let restoreSynchronizedOutput: (() => void) | null = null;
+
 enterAltScreen();
+if (isTty) restoreSynchronizedOutput = enableSynchronizedOutput(process.stdout);
 // Belt-and-braces: restore the screen however the process ends (clean exit,
 // ^C, or an unexpected throw), so the terminal is never left in alt mode.
 process.on('exit', leaveAltScreen);
@@ -180,5 +188,6 @@ try {
   await waitUntilExit();
 } finally {
   process.off('exit', leaveAltScreen);
+  restoreSynchronizedOutput?.();
   leaveAltScreen();
 }

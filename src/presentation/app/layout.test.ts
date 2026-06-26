@@ -3,7 +3,8 @@ import { regionAt, rowWindow, hitTest } from './layout.ts';
 
 const L = { rows: 24, cols: 100, sidebarWidth: 28 };
 
-// editorRows 5 → grid border/tab/header/sep put data row 0 at screen y = 1+5+4.
+// editorRows 5, flush (no gap) → grid border/tab/header/sep put data row 0 at
+// screen y = 1+5+4 = 10.
 const HL = {
   rows: 24,
   cols: 100,
@@ -59,23 +60,23 @@ test('hitTest maps a sidebar click to its tree row (border + title above)', () =
 });
 
 test('hitTest routes the top-right to the editor pane, the rest to the grid', () => {
-  // editorRows 5 + 1-row gap → data row 0 sits at y = 1+5+1+4 = 11.
+  // editorRows 5, flush (no gap) → data row 0 sits at y = 1+5+4 = 10.
   expect(hitTest(HL, 60, 2)).toEqual({ pane: 'editor', row: null }); // in the editor
-  expect(hitTest(HL, 60, 11)).toEqual({ pane: 'grid', row: 0 }); // first data row
-  expect(hitTest(HL, 60, 13)).toEqual({ pane: 'grid', row: 2 });
-  expect(hitTest(HL, 60, 10)).toEqual({ pane: 'grid', row: null }); // grid chrome
+  expect(hitTest(HL, 60, 10)).toEqual({ pane: 'grid', row: 0 }); // first data row
+  expect(hitTest(HL, 60, 12)).toEqual({ pane: 'grid', row: 2 });
+  expect(hitTest(HL, 60, 9)).toEqual({ pane: 'grid', row: null }); // grid chrome (sep rule)
 });
 
 test('hitTest accounts for the grid scroll offset', () => {
-  // Scrolled down 20 rows (of 30): the row at the first visible line is row 20.
-  expect(hitTest({ ...HL, gridTop: 20, gridLen: 30 }, 60, 11)).toEqual({
+  // Scrolled down 20 rows (of 30): the row at the first visible line (y=10) is row 20.
+  expect(hitTest({ ...HL, gridTop: 20, gridLen: 30 }, 60, 10)).toEqual({
     pane: 'grid',
     row: 20,
   });
 });
 
 test('hitTest returns a null row past the last data row', () => {
-  // gridLen 10, first row at y=11 → rows 0..9 occupy y 11..20; y=21 is past them.
+  // gridLen 10, first row at y=10 → rows 0..9 occupy y 10..19; y=21 is past them.
   expect(hitTest(HL, 60, 21)).toEqual({ pane: 'grid', row: null });
 });
 

@@ -284,19 +284,23 @@ export const App: React.FC = () => {
   });
 
   const { rows: terminalRows, cols: terminalCols } = useTerminalSize();
-  // Width available to the main pane: total minus the sidebar, the row gap, and
-  // the main panel's own border + horizontal padding.
-  const viewportCols = Math.max(24, terminalCols - SIDEBAR_WIDTH - 1 - 4);
-  // The right side stacks the SQL editor over the results grid (~1:3) with a
-  // uniform 1-row gap between them, matching the 1-col gap to the sidebar. The
-  // editor only exists for SQL-speaking sources (capability-driven, like the
-  // rest of the UI); other sources get the full grid height.
+  // Width available to the main pane: total minus the sidebar and the panel's own
+  // border + horizontal padding (4). The panes sit flush (no gutter — see the
+  // layout note below), so the sidebar's right border meets the main panel's left
+  // border directly.
+  const viewportCols = Math.max(24, terminalCols - SIDEBAR_WIDTH - 4);
+  // The right side stacks the SQL editor over the results grid (~1:3), flush: the
+  // editor's bottom border abuts the grid's top border with no gap. The editor
+  // only exists for SQL-speaking sources (capability-driven, like the rest of the
+  // UI); other sources get the full grid height.
   const editorRows = queryable
     ? Math.min(12, Math.max(6, Math.floor((terminalRows - 2) / 4)))
     : 0;
-  // Rows the editor block occupies, including the gap below it (0 when absent).
-  const editorBlock = editorRows > 0 ? editorRows + 1 : 0;
-  const gridBodyRows = Math.max(3, terminalRows - editorBlock - 7);
+  // DataGrid body rows that EXACTLY fill the remaining height: header(1) +
+  // status(1) + editorRows + grid border(2) + tab(1) + col-header(1) + sep(1) +
+  // one row of slack so the frame stays below the terminal height (Ink full-
+  // clears — and flickers — the moment the frame reaches it). = editorRows + 8.
+  const gridBodyRows = Math.max(3, terminalRows - editorRows - 8);
   // What the grid is actually showing, for click→row mapping: the DataGrid is on
   // screen for a query result or a browsed table's Data tab (the DDL face is not
   // a row list). gridTop mirrors the grid's own vertical scroll.
@@ -358,7 +362,10 @@ export const App: React.FC = () => {
       <Text color={theme.yellow}>◢◣◤◥ connecting…</Text>
     </Box>
   ) : (
-    <Box flexDirection="row" gap={1} flexGrow={1}>
+    // FLUSH LAYOUT (lazygit-style): NO gutter between panes. A 1-row gap always
+    // reads taller than a 1-col gap — terminal cells are taller than they are wide
+    // — so the only gutter that looks equal on both axes is none. Borders abut.
+    <Box flexDirection="row" flexGrow={1}>
       <Sidebar
         rows={treeRows}
         selectedIndex={treeIndex}
@@ -366,9 +373,9 @@ export const App: React.FC = () => {
         width={SIDEBAR_WIDTH}
       />
       {/* Right side: the SQL editor (top, ~1/4) over the results grid (~3/4),
-          with a uniform 1-row gap — matching the 1-col gap to the sidebar. Both
-          panels stretch to the full column width, so their edges align. */}
-      <Box flexDirection="column" flexGrow={1} gap={1}>
+          flush — the editor's bottom border abuts the grid's top border, just as
+          the sidebar abuts them. Both panels stretch to the full column width. */}
+      <Box flexDirection="column" flexGrow={1}>
         {queryable ? (
           <QueryEditor
             queryText={queryText}

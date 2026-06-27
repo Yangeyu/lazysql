@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { classifyStatement, isDestructive } from './classify.ts';
+import { classifyStatement, isDestructive } from '../classify.ts';
 
 test('classifies reads', () => {
   expect(classifyStatement('SELECT * FROM t')).toBe('read');

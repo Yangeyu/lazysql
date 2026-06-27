@@ -8,7 +8,7 @@
 import { test, expect, beforeAll, afterAll } from 'bun:test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { KeychainSecretStore } from './KeychainSecretStore.ts';
+import { KeychainSecretStore } from '../KeychainSecretStore.ts';
 
 const darwin = process.platform === 'darwin';
 const kcTest = test.skipIf(!darwin);

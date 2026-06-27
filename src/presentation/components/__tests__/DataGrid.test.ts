@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from 'bun:test';
-import { columnWindow, cellHighlight } from './DataGrid.tsx';
+import { columnWindow, cellHighlight } from '../DataGrid.tsx';
 
 test('shows every column when they all fit', () => {
   expect(columnWindow([5, 5, 5], 0, 100)).toEqual({ start: 0, end: 3 });

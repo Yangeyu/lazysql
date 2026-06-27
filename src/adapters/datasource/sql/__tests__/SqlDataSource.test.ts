@@ -11,19 +11,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 
-import { createDataSource } from '../registry.ts';
-import { normalizeCell } from './SqlDataSource.ts';
-import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
-import type { DataSource } from '../../../domain/datasource/DataSource.ts';
+import { createDataSource } from '../../registry.ts';
+import { normalizeCell } from '../SqlDataSource.ts';
+import type { ConnectionProfile } from '../../../../domain/connection/ConnectionProfile.ts';
+import type { DataSource } from '../../../../domain/datasource/DataSource.ts';
 import {
   asRowEditable,
   asQueryable,
-} from '../../../domain/datasource/DataSource.ts';
-import { Capability } from '../../../domain/datasource/capabilities.ts';
-import { listObjects } from '../../../application/usecases/ListObjects.ts';
-import { browseTable } from '../../../application/usecases/BrowseTable.ts';
-import { unwrap } from '../../../shared/Result.ts';
-import { firstPage, sql } from '../../../domain/query/Query.ts';
+} from '../../../../domain/datasource/DataSource.ts';
+import { Capability } from '../../../../domain/datasource/capabilities.ts';
+import { listObjects } from '../../../../application/usecases/ListObjects.ts';
+import { browseTable } from '../../../../application/usecases/BrowseTable.ts';
+import { unwrap } from '../../../../shared/Result.ts';
+import { firstPage, sql } from '../../../../domain/query/Query.ts';
 
 // A JSON/JSONB column surfaces from pg/mysql as a JS object/array. normalizeCell
 // must render it as faithful JSON, never the useless "[object Object]".

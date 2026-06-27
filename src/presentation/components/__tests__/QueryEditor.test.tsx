@@ -7,8 +7,8 @@
 
 import React from 'react';
 import { test, expect } from 'bun:test';
-import { renderTest } from '../testing/renderTest.ts';
-import { QueryEditor } from './QueryEditor.tsx';
+import { renderTest } from '../../testing/renderTest.ts';
+import { QueryEditor } from '../QueryEditor.tsx';
 
 const SQL = "SELECT count(*) FROM documents WHERE source_name = '东方财富';";
 

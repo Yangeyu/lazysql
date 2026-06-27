@@ -5,8 +5,8 @@
  */
 
 import { test, expect } from 'bun:test';
-import { inlineParams } from './inlineParams.ts';
-import { sql } from '../../../domain/query/Query.ts';
+import { inlineParams } from '../inlineParams.ts';
+import { sql } from '../../../../domain/query/Query.ts';
 
 test('inlines positional ? placeholders left to right', () => {
   expect(

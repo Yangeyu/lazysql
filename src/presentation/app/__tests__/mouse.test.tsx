@@ -11,11 +11,11 @@ import { Database } from 'bun:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
-import { renderTest, type TestHandle } from '../testing/renderTest.ts';
-import { Root } from './Root.tsx';
-import { createDataSource } from '../../adapters/datasource/registry.ts';
-import { openConnection } from '../../application/usecases/OpenConnection.ts';
-import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
+import { renderTest, type TestHandle } from '../../testing/renderTest.ts';
+import { Root } from '../Root.tsx';
+import { createDataSource } from '../../../adapters/datasource/registry.ts';
+import { openConnection } from '../../../application/usecases/OpenConnection.ts';
+import type { ConnectionService } from '../../../application/ports/ConnectionService.ts';
 
 const DB = join(tmpdir(), `lazysql-mouse-${process.pid}.db`);
 const noSecrets = { get: async () => null, set: async () => {}, delete: async () => {} } as any;

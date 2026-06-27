@@ -10,14 +10,14 @@ import { stat, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { YamlConnectionRepository } from './YamlConnectionRepository.ts';
-import { FileSecretStore } from './FileSecretStore.ts';
-import { openConnection } from '../../application/usecases/OpenConnection.ts';
-import { ok } from '../../shared/Result.ts';
-import { CapabilitySet } from '../../domain/datasource/capabilities.ts';
-import type { DataSource } from '../../domain/datasource/DataSource.ts';
-import type { ConnectionProfile } from '../../domain/connection/ConnectionProfile.ts';
-import type { DataSourceFactory } from '../../application/ports/DataSourceFactory.ts';
+import { YamlConnectionRepository } from '../YamlConnectionRepository.ts';
+import { FileSecretStore } from '../FileSecretStore.ts';
+import { openConnection } from '../../../application/usecases/OpenConnection.ts';
+import { ok } from '../../../shared/Result.ts';
+import { CapabilitySet } from '../../../domain/datasource/capabilities.ts';
+import type { DataSource } from '../../../domain/datasource/DataSource.ts';
+import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
+import type { DataSourceFactory } from '../../../application/ports/DataSourceFactory.ts';
 
 const dir = join(tmpdir(), `lazysql-cfg-${process.pid}`);
 const connFile = join(dir, 'connections.yml');

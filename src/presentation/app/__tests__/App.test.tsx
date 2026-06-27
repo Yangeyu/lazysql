@@ -15,15 +15,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 
-import { renderTest } from '../testing/renderTest.ts';
-import { StoreContext } from './context.ts';
-import { App } from './App.tsx';
-import { createAppStore } from './store.ts';
-import { createDataSource } from '../../adapters/datasource/registry.ts';
-import type { ConnectionProfile } from '../../domain/connection/ConnectionProfile.ts';
-import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
-import type { DataSource } from '../../domain/datasource/DataSource.ts';
-import { ok, unwrap } from '../../shared/Result.ts';
+import { renderTest } from '../../testing/renderTest.ts';
+import { StoreContext } from '../context.ts';
+import { App } from '../App.tsx';
+import { createAppStore } from '../store.ts';
+import { createDataSource } from '../../../adapters/datasource/registry.ts';
+import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
+import type { ConnectionService } from '../../../application/ports/ConnectionService.ts';
+import type { DataSource } from '../../../domain/datasource/DataSource.ts';
+import { ok, unwrap } from '../../../shared/Result.ts';
 
 const DB = join(tmpdir(), `lazysql-tui-${process.pid}.db`);
 let source: DataSource;

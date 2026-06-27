@@ -11,8 +11,8 @@ import {
   firstObjectIndex,
   shortTag,
   type ConnNode,
-} from './tree.ts';
-import type { ObjectRef } from '../../domain/datasource/schema.ts';
+} from '../tree.ts';
+import type { ObjectRef } from '../../../domain/datasource/schema.ts';
 
 const active: ConnNode = { id: 'db', name: 'db', tag: 'PG', active: true };
 const other: ConnNode = { id: 'cache', name: 'cache', tag: 'Redis', active: false };

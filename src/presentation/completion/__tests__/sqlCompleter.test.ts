@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { complete, type SchemaCatalog } from './sqlCompleter.ts';
+import { complete, type SchemaCatalog } from '../sqlCompleter.ts';
 
 const catalog: SchemaCatalog = {
   tables: ['users', 'orders'],

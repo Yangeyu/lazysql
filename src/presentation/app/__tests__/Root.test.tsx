@@ -13,14 +13,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 
-import { renderTest } from '../testing/renderTest.ts';
-import { Root } from './Root.tsx';
-import { createDataSource } from '../../adapters/datasource/registry.ts';
-import { openConnection } from '../../application/usecases/OpenConnection.ts';
-import type { ConnectionProfile } from '../../domain/connection/ConnectionProfile.ts';
-import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
-import type { SecretStore } from '../../application/ports/SecretStore.ts';
-import type { SqlGenerator } from '../../application/ports/SqlGenerator.ts';
+import { renderTest } from '../../testing/renderTest.ts';
+import { Root } from '../Root.tsx';
+import { createDataSource } from '../../../adapters/datasource/registry.ts';
+import { openConnection } from '../../../application/usecases/OpenConnection.ts';
+import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
+import type { ConnectionService } from '../../../application/ports/ConnectionService.ts';
+import type { SecretStore } from '../../../application/ports/SecretStore.ts';
+import type { SqlGenerator } from '../../../application/ports/SqlGenerator.ts';
 
 const DB = join(tmpdir(), `lazysql-root-${process.pid}.db`);
 

@@ -9,8 +9,8 @@
 
 import React from 'react';
 import { test, expect } from 'bun:test';
-import { renderTest } from '../testing/renderTest.ts';
-import { CellView } from './CellView.tsx';
+import { renderTest } from '../../testing/renderTest.ts';
+import { CellView } from '../CellView.tsx';
 
 const mount = (rows: number, cols: number, node: React.ReactNode) =>
   renderTest(

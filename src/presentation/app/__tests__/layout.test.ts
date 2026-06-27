@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { rowWindow } from './layout.ts';
+import { rowWindow } from '../layout.ts';
 
 // Screen→pane hit-testing is gone: OpenTUI dispatches native onMouseDown to the
 // box under the cursor, so the only geometry left to test is the row window.

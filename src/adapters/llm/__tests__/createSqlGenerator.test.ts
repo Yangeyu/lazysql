@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from 'bun:test';
-import { createSqlGenerator } from './createSqlGenerator.ts';
+import { createSqlGenerator } from '../createSqlGenerator.ts';
 
 type Diag = { provider?: string; model?: string; baseURL?: string };
 const diag = (g: unknown): Diag => (g ?? {}) as Diag;

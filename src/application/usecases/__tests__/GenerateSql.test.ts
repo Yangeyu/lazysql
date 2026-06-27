@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test';
-import { generateSql } from './GenerateSql.ts';
-import type { SqlGenerator } from '../ports/SqlGenerator.ts';
-import { unwrap } from '../../shared/Result.ts';
+import { generateSql } from '../GenerateSql.ts';
+import type { SqlGenerator } from '../../ports/SqlGenerator.ts';
+import { unwrap } from '../../../shared/Result.ts';
 
 const fakeGen = (sql: string): SqlGenerator => ({
   generate: async () => ({ sql, explanation: 'because reasons' }),

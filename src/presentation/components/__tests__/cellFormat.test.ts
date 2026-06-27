@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { formatCellValue } from './cellFormat.ts';
+import { formatCellValue } from '../cellFormat.ts';
 
 test('pretty-prints JSON object text across multiple lines', () => {
   const { type, lines } = formatCellValue('{"a":1,"b":[2,3]}');

@@ -5,13 +5,13 @@
  */
 
 import { test, expect } from 'bun:test';
-import { createAppStore } from './store.ts';
-import { CapabilitySet } from '../../domain/datasource/capabilities.ts';
-import { ok } from '../../shared/Result.ts';
-import type { DataSource } from '../../domain/datasource/DataSource.ts';
-import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
-import type { ConnectionProfile } from '../../domain/connection/ConnectionProfile.ts';
-import type { SqlGenerator } from '../../application/ports/SqlGenerator.ts';
+import { createAppStore } from '../store.ts';
+import { CapabilitySet } from '../../../domain/datasource/capabilities.ts';
+import { ok } from '../../../shared/Result.ts';
+import type { DataSource } from '../../../domain/datasource/DataSource.ts';
+import type { ConnectionService } from '../../../application/ports/ConnectionService.ts';
+import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
+import type { SqlGenerator } from '../../../application/ports/SqlGenerator.ts';
 
 const fakeSource: DataSource = {
   id: 'fake',

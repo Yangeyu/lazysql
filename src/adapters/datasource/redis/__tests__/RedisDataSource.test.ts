@@ -11,22 +11,22 @@
 
 import { test, expect, beforeAll, afterAll } from 'bun:test';
 import { RedisClient } from 'bun';
-import { createDataSource } from '../registry.ts';
-import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
-import type { DataSource } from '../../../domain/datasource/DataSource.ts';
+import { createDataSource } from '../../registry.ts';
+import type { ConnectionProfile } from '../../../../domain/connection/ConnectionProfile.ts';
+import type { DataSource } from '../../../../domain/datasource/DataSource.ts';
 import {
   asIntrospectable,
   asBrowsable,
   asQueryable,
   asRowEditable,
   asTransactional,
-} from '../../../domain/datasource/DataSource.ts';
-import { Capability } from '../../../domain/datasource/capabilities.ts';
-import { browseTable } from '../../../application/usecases/BrowseTable.ts';
-import { updateRow, deleteRow } from '../../../application/usecases/EditRow.ts';
-import { unwrap } from '../../../shared/Result.ts';
-import { firstPage } from '../../../domain/query/Query.ts';
-import type { ObjectRef } from '../../../domain/datasource/schema.ts';
+} from '../../../../domain/datasource/DataSource.ts';
+import { Capability } from '../../../../domain/datasource/capabilities.ts';
+import { browseTable } from '../../../../application/usecases/BrowseTable.ts';
+import { updateRow, deleteRow } from '../../../../application/usecases/EditRow.ts';
+import { unwrap } from '../../../../shared/Result.ts';
+import { firstPage } from '../../../../domain/query/Query.ts';
+import type { ObjectRef } from '../../../../domain/datasource/schema.ts';
 
 const REDIS_URL = process.env.LAZYSQL_REDIS_URL ?? 'redis://localhost:6379';
 

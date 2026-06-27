@@ -55,3 +55,22 @@ test('the SQL editor inserts at the cursor, not only at the end', async () => {
   expect(h.frame()).toContain(`aX${CARET}b`);
   h.cleanup();
 });
+
+test('Home jumps the cursor to the start of the line', async () => {
+  const h = await renderTest(<Root connectionService={svc} initial={profile} />, {
+    width: 100,
+    height: 24,
+  });
+  await h.until((f) => f.includes('TestDB'));
+  h.press(':');
+  await h.until((f) => f.includes('⏎ run'));
+
+  await h.type('9');
+  await h.until((f) => f.includes('9'));
+  h.press('HOME'); // cursor to the start
+  await h.type('X'); // insert before the 9 → "X9"
+
+  await h.until((f) => f.includes(`X${CARET}9`));
+  expect(h.frame()).toContain(`X${CARET}9`);
+  h.cleanup();
+});

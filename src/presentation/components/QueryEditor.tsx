@@ -6,18 +6,17 @@
  *   ╭─────────────────────────────────╮
  *   │ ✦ ask   how many active users?  │   ← NL→SQL input (active on ^G)
  *   │ ─────────────────────────────── │   ← divider
- *   │ SQL>    SELECT count(*) …        │   ← SQL editor (multi-line)
+ *   │ SQL>    SELECT count(*) …        │   ← SQL editor (native input)
  *   │ ⇥ users · user_id …             │   ← completions / explanation / error
  *   ╰─────────────────────────────────╯
  *
- * The panel stretches to the full right-column width (no fixed width of its own),
- * so it aligns exactly with the results grid below it. Running a query sends its
+ * Both the ask row and the SQL line are native OpenTUI <input> widgets: each owns
+ * its own text + cursor (the cursor is the terminal's, no hand-rolled glyph), and
+ * reports edits via onInput / submits via onSubmit. The store holds only the
+ * committed query string (bound to the SQL input's `value`); history, completion
+ * and NL all drive it through that prop. While the editor is empty the browse
+ * statement shows as the input's dim placeholder. Running a query sends its
  * result to the shared grid — the editor never renders results itself (SRP).
- *
- * The SQL is laid out by wrapWithCursor (a width from the known viewport), which
- * also reports the caret's line/column so it can be drawn mid-string; each line
- * is its own <text>, so layout never collapses the SQL to one character per line.
- * Clicking the pane focuses it via `onPaneClick`.
  */
 
 import React from 'react';
@@ -27,23 +26,23 @@ import {
   type StatementKind,
 } from '../../domain/query/classify.ts';
 import { theme } from '../theme/theme.ts';
-import { Caret } from './Caret.tsx';
-import { wrapWithCursor } from '../input/wrap.ts';
-import { rowWindow } from '../app/layout.ts';
-import type { TextField } from '../input/textField.ts';
 
 interface Props {
-  queryText: TextField;
-  /** Read-only echo of the current browse statement, shown dimmed while the
-   *  editor is empty so the SQL panel always reflects what the grid shows. Null
-   *  when not browsing; the user's first keystroke takes over. */
+  /** The committed query text the SQL input is bound to (it owns the cursor). */
+  queryText: string;
+  /** Read-only echo of the current browse statement, shown as the input's dim
+   *  placeholder while it is empty so the panel reflects what the grid shows. */
   browsePreview: string | null;
-  /** Editor pane focused; the SQL sub-section is active when not in `nlMode`. */
+  /** Editor pane focused; the SQL input is active when not in `nlMode`. */
   focused: boolean;
   /** The ask row is active (capturing the NL prompt). */
   nlMode: boolean;
   /** The NL prompt was submitted (Enter) — generate SQL from it. */
   onNlSubmit: (prompt: string) => void;
+  /** The SQL input changed — sync the store (re-derives completions). */
+  onQueryInput: (value: string) => void;
+  /** The SQL input was submitted (Enter) — run the query. */
+  onQuerySubmit: () => void;
   completions: string[];
   generating: boolean;
   nlExplanation: string | null;
@@ -51,7 +50,7 @@ interface Props {
   error: string | null;
   /** Fixed panel height, including its border. */
   height: number;
-  /** Content width (panel inner width) — drives the wrap and the divider. */
+  /** Content width (panel inner width) — drives the divider. */
   innerWidth: number;
   /** The pane was clicked — focus the editor. */
   onPaneClick: () => void;
@@ -70,6 +69,8 @@ const QueryEditorImpl = ({
   focused,
   nlMode,
   onNlSubmit,
+  onQueryInput,
+  onQuerySubmit,
   completions,
   generating,
   nlExplanation,
@@ -79,26 +80,6 @@ const QueryEditorImpl = ({
   innerWidth,
   onPaneClick,
 }: Props) => {
-  // Interior budget: ask row (1) + divider (1) + SQL rows + feedback (1).
-  const sqlRows = Math.max(1, height - 5);
-  // Lay the query out and locate the caret, then window so the caret line stays
-  // visible (keeps the bottom feedback line pinned). The caret renders on its
-  // line below, so it isn't part of the wrapped text.
-  const { lines, caretLine, caretCol } = wrapWithCursor(
-    queryText.value,
-    queryText.cursor,
-    Math.max(8, innerWidth - PROMPT.length),
-  );
-  const start = rowWindow(caretLine, sqlRows, lines.length);
-  const sql = lines.slice(start, start + sqlRows);
-  while (sql.length < sqlRows) sql.push('');
-  const showCaret = focused && !nlMode;
-
-  // With nothing typed, the SQL section echoes the current browse statement
-  // (dimmed, read-only) so the panel always shows what produced the grid; the
-  // first keystroke (queryText non-empty) replaces it with the user's query.
-  const previewMode = !nlMode && queryText.value.length === 0 && !!browsePreview;
-
   const borderColor = nlMode
     ? theme.magenta
     : focused
@@ -148,49 +129,28 @@ const QueryEditorImpl = ({
         </text>
       )}
 
-      {/* ── divider ── (truncate guards against any off-by-one overflow) */}
+      {/* ── divider ── */}
       <text fg={theme.border} wrapMode="none">
         {'─'.repeat(Math.max(0, innerWidth))}
       </text>
 
-      {/* ── SQL editor: the live query, or — while empty — a dim echo of the
-          current browse statement ── */}
-      {previewMode
-        ? Array.from({ length: sqlRows }, (_, i) => (
-            <text key={i} wrapMode="none">
-              {i === 0 ? (
-                <>
-                  <b fg={theme.magenta}>{PROMPT}</b>
-                  <Caret focused={focused} />
-                  <span fg={theme.muted}>{browsePreview}</span>
-                </>
-              ) : (
-                ''
-              )}
-            </text>
-          ))
-        : sql.map((ln, i) => {
-            const abs = start + i;
-            const onCaretLine = showCaret && abs === caretLine;
-            return (
-              <text key={i} wrapMode="none">
-                {abs === 0 ? (
-                  <b fg={theme.magenta}>{PROMPT}</b>
-                ) : (
-                  ' '.repeat(PROMPT.length)
-                )}
-                {onCaretLine ? (
-                  <>
-                    {ln.slice(0, caretCol)}
-                    <Caret focused />
-                    {ln.slice(caretCol)}
-                  </>
-                ) : (
-                  ln
-                )}
-              </text>
-            );
-          })}
+      {/* ── SQL editor: a native input bound to the committed query text; while
+          empty it shows the browse statement as a dim placeholder ── */}
+      <box flexDirection="row">
+        <text wrapMode="none">
+          <b fg={theme.magenta}>{PROMPT}</b>
+        </text>
+        <input
+          value={queryText}
+          onInput={onQueryInput}
+          onSubmit={onQuerySubmit as never}
+          focused={focused && !nlMode}
+          placeholder={browsePreview ?? ''}
+          placeholderColor={theme.muted}
+          textColor={theme.cyan}
+          flexGrow={1}
+        />
+      </box>
 
       {/* ── feedback: completions / generating / error / hint ── */}
       {error ? (

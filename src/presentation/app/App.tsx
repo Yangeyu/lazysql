@@ -153,6 +153,8 @@ export const App = () => {
             focused={focus === 'editor'}
             nlMode={nlMode}
             onNlSubmit={(p) => void store.getState().generateFromNl(p)}
+            onQueryInput={(v) => store.getState().setQuery(v)}
+            onQuerySubmit={() => void store.getState().executeQuery()}
             completions={completions}
             generating={generating}
             nlExplanation={nlExplanation}

@@ -15,17 +15,6 @@
 import type { KeyEvent } from '@opentui/core';
 import type { AppState, Focus, Mode, SurfaceKind, MainTab } from '../app/store.ts';
 import { printableChar } from '../input/keys.ts';
-import {
-  insert,
-  backspace,
-  del,
-  left,
-  right,
-  home,
-  end,
-  deleteWordBack,
-  type TextField,
-} from '../input/textField.ts';
 
 /** The focus/mode the UI is in — selects which group of keys is active. */
 export type KeyContext =
@@ -117,18 +106,10 @@ export interface TextEntry {
   readonly onErase: (s: AppState) => void;
 }
 
-/** A cursored TextField field: every text-editing key routes through one `edit`
- *  applying a pure TextField operation, so typing, erasing, and cursor movement
- *  (←/→/Home/End/⌃W) all work uniformly without per-key store actions. */
-export interface FieldEntry {
-  readonly edit: (s: AppState, op: (tf: TextField) => TextField) => void;
-}
-
 export interface KeyGroup {
   readonly title: string;
   readonly bindings: readonly KeyBinding[];
   readonly text?: TextEntry;
-  readonly field?: FieldEntry;
 }
 
 /** Keys available whenever the UI isn't capturing text — i.e. the navigational
@@ -182,14 +163,14 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
   editor: {
     title: 'SQL editor',
     bindings: [
-      { keys: '⏎', hint: 'run', desc: 'Run the query (result shows in the grid)', match: ['return'], run: (s) => void s.executeQuery() },
+      // ⏎ is owned by the native <input> (onSubmit → run) — documentation-only.
+      { keys: '⏎', hint: 'run', desc: 'Run the query (result shows in the grid)' },
       { keys: 'tab', hint: 'complete', desc: 'Accept completion · else cycle to the next pane', match: ['tab'], run: (s) => (s.completions.length > 0 ? s.acceptCompletion() : s.cycleFocus()) },
       { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['up'], run: (s) => s.historyPrev() },
       { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['down'], run: (s) => s.historyNext() },
       { keys: '^G', hint: 'ask AI', desc: 'Generate SQL from natural language', match: ['^g'], enabled: (f) => f.nlAvailable, run: (s) => s.beginNl() },
       { keys: 'esc', hint: 'grid', desc: 'Focus the results grid', match: ['escape'], run: (s) => s.focusPane('grid') },
     ],
-    field: { edit: (s, op) => s.editQuery(op) },
   },
   filter: {
     title: 'Filter',
@@ -317,21 +298,8 @@ export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void 
       if (b.run && usable(b, flags) && hits(b, key, ch)) return b.run(s, env);
     }
   }
-  // Cursored field: typing, erasing, and caret movement are all TextField ops.
-  if (group.field) {
-    const e = group.field.edit;
-    const n = key.name;
-    if (n === 'backspace') e(s, backspace);
-    else if (n === 'delete') e(s, del);
-    else if (n === 'left') e(s, left);
-    else if (n === 'right') e(s, right);
-    else if (n === 'home') e(s, home);
-    else if (n === 'end') e(s, end);
-    else if (key.ctrl && n === 'w') e(s, deleteWordBack);
-    else if (ch !== null) e(s, (tf) => insert(tf, ch));
-    return;
-  }
-  // Append-only field (no cursor of its own).
+  // Append-only field (the connection form): the native inputs own their own
+  // editing, so the only text entry the dispatcher still routes is this one.
   if (group.text) {
     if (key.name === 'backspace' || key.name === 'delete') group.text.onErase(s);
     else if (ch !== null) group.text.onChar(s, ch);

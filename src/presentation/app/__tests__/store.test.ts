@@ -52,7 +52,7 @@ test('generateFromNl fills the editor and classifies, never executing', async ()
   await store.getState().generateFromNl('deactivate user 5');
 
   const s = store.getState();
-  expect(s.queryText.value).toBe('UPDATE users SET active = 0 WHERE id = 5');
+  expect(s.queryText).toBe('UPDATE users SET active = 0 WHERE id = 5');
   expect(s.nlExplanation).toBe('deactivates user 5');
   expect(s.nlKind).toBe('write'); // flagged destructive
   expect(s.nlMode).toBe(false);

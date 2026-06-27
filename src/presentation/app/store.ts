@@ -6,7 +6,6 @@
  */
 
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import { field, EMPTY, type TextField } from '../input/textField.ts';
 import {
   asBrowsePreviewable,
   asIntrospectable,
@@ -170,9 +169,10 @@ export interface AppState {
   cellView: CellInspect | null;
 
   // ── query editor ──
-  /** Editor input text. The result of running it lands in the shared grid
-   *  (`result`, surface 'query'); there is no separate query result slice. */
-  queryText: TextField;
+  /** Editor input text — the value the native <input> is bound to (it owns the
+   *  cursor). The result of running it lands in the shared grid (`result`,
+   *  surface 'query'); there is no separate query result slice. */
+  queryText: string;
   queryError: string | null;
   queryElapsedMs: number | null;
   history: string[];
@@ -256,8 +256,8 @@ export interface AppState {
   confirmPending: () => Promise<void>;
   cancelPending: () => void;
 
-  /** Apply a TextField edit to the query editor (re-derives completions). */
-  editQuery: (op: (tf: TextField) => TextField) => void;
+  /** Sync the query editor's text from the native input (re-derives completions). */
+  setQuery: (value: string) => void;
   executeQuery: () => Promise<void>;
   historyPrev: () => void;
   historyNext: () => void;
@@ -528,7 +528,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         structure: null,
         structureError: null,
         cellView: null,
-        queryText: EMPTY,
+        queryText: '',
         queryError: null,
         history: [],
         historyIndex: null,
@@ -570,7 +570,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       helpOpen: false,
       cellView: null,
 
-      queryText: EMPTY,
+      queryText: '',
       queryError: null,
       queryElapsedMs: null,
       history: [],
@@ -1039,15 +1039,13 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       // ── query editor ──────────────────────────────────────────────────────
 
-      editQuery: (op) => {
-        const queryText = op(get().queryText);
-        set({ queryText, historyIndex: null, completions: completionsFor(queryText.value) });
-      },
+      setQuery: (value) =>
+        set({ queryText: value, historyIndex: null, completions: completionsFor(value) }),
 
       executeQuery: async () => {
         if (!active) return;
         const { queryText, history } = get();
-        const text = queryText.value.trim();
+        const text = queryText.trim();
         if (!text) return;
         set({ loading: true, queryError: null });
         const r = await runQuery(active, text);
@@ -1088,29 +1086,29 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             ? history.length - 1
             : Math.max(0, historyIndex - 1);
         const text = history[idx] ?? '';
-        set({ historyIndex: idx, queryText: field(text), completions: [] });
+        set({ historyIndex: idx, queryText: text, completions: [] });
       },
 
       historyNext: () => {
         const { history, historyIndex } = get();
         if (historyIndex === null) return;
         if (historyIndex >= history.length - 1) {
-          set({ historyIndex: null, queryText: EMPTY, completions: [] });
+          set({ historyIndex: null, queryText: '', completions: [] });
           return;
         }
         const idx = historyIndex + 1;
         const text = history[idx] ?? '';
-        set({ historyIndex: idx, queryText: field(text), completions: [] });
+        set({ historyIndex: idx, queryText: text, completions: [] });
       },
 
       acceptCompletion: () => {
         const { queryText, completions } = get();
         const top = completions[0];
         if (!top) return;
-        const text = queryText.value;
+        const text = queryText;
         const word = text.match(/([A-Za-z_][A-Za-z0-9_]*)$/)?.[1] ?? '';
         const next = text.slice(0, text.length - word.length) + top;
-        set({ queryText: field(next), completions: completionsFor(next) });
+        set({ queryText: next, completions: completionsFor(next) });
       },
 
       // ── NL→SQL ────────────────────────────────────────────────────────────
@@ -1151,7 +1149,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         // Fill the editor for review — NEVER auto-execute (§5.2).
         set({
           generating: false,
-          queryText: field(r.value.sql),
+          queryText: r.value.sql,
           nlExplanation: r.value.explanation,
           nlKind: r.value.kind,
           completions: [],

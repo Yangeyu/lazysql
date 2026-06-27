@@ -1,27 +1,27 @@
 /**
- * Regression test for the editor input layout: a long SQL string must render
- * across the available width (wrapping at word boundaries), NOT collapse to one
- * token per line. Renders the real component through the OpenTUI test renderer at
- * a normal width and asserts contiguous phrases survive on a single line.
+ * The editor renders its prompt and binds the query text to the native SQL input.
+ * Renders the real component through the OpenTUI test renderer and asserts the
+ * prompt plus the bound query value are visible.
  */
 
 import React from 'react';
 import { test, expect } from 'bun:test';
 import { renderTest } from '../../testing/renderTest.ts';
 import { QueryEditor } from '../QueryEditor.tsx';
-import { field } from '../../input/textField.ts';
 
-const SQL = "SELECT count(*) FROM documents WHERE source_name = '东方财富';";
+const SQL = "SELECT count(*) FROM documents WHERE name = 'x';";
 
-test('renders the prompt and SQL without collapsing to one token per line', async () => {
+test('renders the prompt and the bound query text in the SQL input', async () => {
   const h = await renderTest(
     <QueryEditor
-      queryText={field(SQL)}
+      queryText={SQL}
       browsePreview={null}
       focused
       completions={[]}
       nlMode={false}
       onNlSubmit={() => {}}
+      onQueryInput={() => {}}
+      onQuerySubmit={() => {}}
       generating={false}
       nlExplanation={null}
       nlKind={null}
@@ -33,10 +33,10 @@ test('renders the prompt and SQL without collapsing to one token per line', asyn
     { width: 90, height: 10 },
   );
   await h.flush();
+  await h.flush();
   const frame = h.frame();
   expect(frame).toContain('SQL>');
-  // If the input width collapsed, "FROM documents" would be split across lines.
-  expect(frame).toContain('FROM documents');
   expect(frame).toContain('count(*)');
+  expect(frame).toContain('FROM documents');
   h.cleanup();
 });

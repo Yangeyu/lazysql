@@ -2,7 +2,6 @@ import { test, expect, mock } from 'bun:test';
 import { deriveContext, footerHints, helpGroups, dispatchKey } from '../keymap.ts';
 import type { ContextInput } from '../keymap.ts';
 import type { AppState } from '../../app/store.ts';
-import { field, type TextField } from '../../input/textField.ts';
 
 const base: ContextInput = {
   cellView: null,
@@ -64,11 +63,11 @@ const stub = (over: Partial<AppState> = {}): AppState =>
     surface: 'browse',
     mainTab: 'data',
     completions: [],
-    queryText: field(''),
+    queryText: '',
     gridDown: mock(() => {}),
     toggleMainTab: mock(() => {}),
     focusPane: mock(() => {}),
-    editQuery: mock(() => {}),
+    setQuery: mock(() => {}),
     ...over,
   }) as unknown as AppState;
 
@@ -86,18 +85,15 @@ test('dispatchKey: a grid key runs its bound action', () => {
   expect(s.gridDown).toHaveBeenCalledTimes(1);
 });
 
-test('dispatchKey: in the editor, global glyphs are literal text, not commands', () => {
-  // Capture what each edit op would insert into an empty field.
-  const typed: string[] = [];
-  const s = stub({
-    focus: 'editor',
-    editQuery: ((op: (tf: TextField) => TextField) => typed.push(op(field('')).value)) as never,
-  });
+test('dispatchKey: in the editor, glyphs are left to the native input', () => {
+  // The SQL <input> owns typing; the dispatcher must not treat : / q as commands
+  // (no focusPane, no quit) nor sync the store itself — the input's onInput does.
+  const s = stub({ focus: 'editor' });
   const e = env();
-  dispatchKey(s, key({ sequence: ':' }), e); // not focusPane
-  dispatchKey(s, key({ name: 'q', sequence: 'q' }), e); // not quit
-  expect(typed).toEqual([':', 'q']);
+  dispatchKey(s, key({ sequence: ':' }), e);
+  dispatchKey(s, key({ name: 'q', sequence: 'q' }), e);
   expect(s.focusPane).not.toHaveBeenCalled();
+  expect(s.setQuery).not.toHaveBeenCalled();
   expect(e.quit).not.toHaveBeenCalled();
 });
 

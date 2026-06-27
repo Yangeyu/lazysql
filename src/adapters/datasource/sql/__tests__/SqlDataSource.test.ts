@@ -134,6 +134,13 @@ test('contains filter binds the value (no interpolation)', async () => {
   expect(result.rows.rows[0]?.[1]).toBe('w25');
 });
 
+test('a failed query surfaces the driver reason, not the echoed SQL', async () => {
+  // The failure must carry the DB's own message (SQLite: `no such table: …`,
+  // spaced) — the pre-fix message only restated the SQL (`…no_such_table`).
+  const run = asQueryable(source)!.execute(sql('SELECT * FROM no_such_table'));
+  await expect(run).rejects.toThrow(/no such table/i);
+});
+
 // ── editing (RowEditable + Transactional) ──────────────────────────────────
 
 const widgetRef = { name: 'widget', kind: 'table' as const };

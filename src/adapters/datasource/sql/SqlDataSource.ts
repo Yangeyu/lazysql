@@ -197,17 +197,21 @@ export class SqlDataSource
     try {
       return await this.driver.run(query.text, query.params ?? []);
     } catch (cause) {
-      throw new QueryError(`query failed: ${truncate(query.text)}`, cause);
+      // Surface the driver's real message: the failing SQL is already echoed,
+      // so restating it (the obvious move) tells the user nothing.
+      throw new QueryError(reasonOf(cause), cause);
     }
   }
 }
 
+const reasonOf = (cause: unknown): string => {
+  const message = cause instanceof Error ? cause.message.trim() : String(cause);
+  return message.length > 0 ? message : 'query failed';
+};
+
 const throwIfAborted = (signal?: AbortSignal): void => {
   if (signal?.aborted) throw new QueryError('operation aborted');
 };
-
-const truncate = (text: string): string =>
-  text.length > 80 ? `${text.slice(0, 77)}...` : text;
 
 const toResultSet = (raw: RawResult): ResultSet => ({
   shape: 'tabular',

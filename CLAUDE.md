@@ -1,0 +1,111 @@
+# CLAUDE.md — lazysql 工作守则
+
+> 设计的**事实来源**是 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) + [docs/adr/](docs/adr/)。
+> 本文件只管「怎么干」，不复述设计；冲突时以 ARCHITECTURE 为准并提出修订。
+> 能被工具检查的规则已（应）由 `.githooks` / lint 强制——**见文末附录**，正文不靠自觉重复。
+
+---
+
+## 1. 流程（怎么开工）
+
+- **非平凡任务先想后写**：先输出【假设 / 我看到的歧义 / 方案 + 取舍】，**等确认再动手**。琐碎改动直接做。
+- **给你成功标准，就循环到达标**——别反复问"下一步做什么"，去验证（见 §4）。
+- **用力按体量校准**：跨层 / 动 port / 改架构才走计划；改 typo、补字段别上纲上线、别启动"架构思辨"。
+
+## 2. 放哪（先判"属于哪层"，再落目录）
+
+| 你在写… | 放这里 |
+|---|---|
+| 不依赖任何 IO 的业务规则 / 实体 / 值对象 | `src/domain/<concept>/` |
+| 出站端口（被外层实现的接口） | `src/application/ports/` |
+| 编排领域的用例（一文件一用例，导出 `lowerCamelCase` 函数） | `src/application/usecases/` |
+| 连真实 DB / LLM / 文件 / Keychain 的实现 | `src/adapters/<kind>/` |
+| TUI 组件 / store / 命令 / keymap / viewmodel | `src/presentation/<area>/` |
+| 跨层纯工具（如 `Result`） | `src/shared/`（**禁放业务逻辑**） |
+| 装配具体实现 | `src/main.ts`（组合根，唯一可 import 具体 adapter 处） |
+| 测试 | 同级 `__tests__/`，命名 `*.test.ts` |
+
+完整目录树见 ARCHITECTURE §7。新子系统沿用「按层 + 层内按特性」，别另起组织方式。
+
+## 3. 每层用对挡位（范式层内自治，边界契约统一）
+
+不同层的主矛盾不同，**就该用不同范式**；让它们不散架的是统一的交接契约（`Result` + port）。
+
+| 层 | 主矛盾 | 用什么挡位 | 别做 |
+|---|---|---|---|
+| `domain/` | 把概念建模对 | **纯数据 + 类型**，让非法状态无法表示 | 任何 IO / 第三方 SDK |
+| `application/usecases` | 步骤的**编排顺序** | **线性编排**：读起来像一条时间线，单一抽象层级，纯核薄壳 | 在这里拼字符串/算分页等低层细节 |
+| `adapters/` | 跟脏 IO 搏斗 | **务实命令式**：try/catch、连接池、重试；跨出边界转成 `Result` | 为"优雅"硬套函数式包裹 |
+| `presentation/` | 状态随事件演化 | **响应式 / 单向数据流**：输入→命令→用例→store→视图 | 组件绕过 action 直接深改状态 |
+
+**交接铁律**：跨层只经 `Result<T,E>` + port 这种统一形状握手。**内层永不 import 外层**（domain/application 出现具体库名 = 设计错了，停下）。
+
+## 4. DONE 的定义（客观裁判，不是形容词）
+
+```bash
+bun run typecheck && bun test   # 全绿才算完成
+```
+- **改了行为** → 先加/改测试复现目标，再让它通过。
+- **改了数据源适配器** → 必须过**共享契约测试套件**（按能力跳过不支持项）——这是 LSP 的可执行验收。
+- 契约测试需可达真实库，**不可达自动跳过**；别去改跳过逻辑"让它跑"。
+
+## 5. 命中即停、先问人（默认外科手术，**不自作主张**）
+
+LLM 缺的不是重构的勇气，是"该不该"的判断力。命中任一条 → **停下，讲方案，等点头**，别自己动手：
+
+- 要改 `domain/` 或 `application/` 里**不是本次目标**的代码 / 动一个 **port 接口** / 移动文件 / 跨层重构
+- 要为了通过去**修改现有测试**（而非新增）
+- 要加**第 3 个** `if (type===…)` 分支，或一串布尔标志来表达状态 ← **形状错了的信号**
+- 要引入**只用 1–2 次**的新抽象 / 间接层 / 新依赖
+- 你想"顺便重设计"——**趁早提出来给人看，不等于趁早自己重写**
+
+## 6. 设计模式：从受力里长出，扩展已有的，别重造
+
+你已经知道全部 GoF 模式——所以纪律是**别滥用、别重造**，而不是"多用"。
+
+**默认反模式（三次法则）**：一个模式只在它要解决的受力**出现第 2–3 次**时才引入。单次使用一个函数解决，别上模式。
+
+**闻到这些"气味" → 用本仓库**已有**的那套解法（去扩展它，别新建平行抽象）：**
+
+| 气味 | 解法 = 本仓库的 | 怎么扩展 |
+|---|---|---|
+| 按类型分行为且会增长（`if (type===…)`） | Strategy = `Dialect` / `ResultSet.shape` 渲染 | 加一个新 `Dialect`，主流程不改 |
+| 要造对象、创建逻辑泄漏进业务 | Factory/Registry = `registry` · `createSqlGenerator` | 注册一行，调用方零改 |
+| 内层碰到具体库 | Adapter/DIP = `ports/` ← `adapters/` | 新 adapter 实现端口，`main.ts` 注入 |
+| 胖接口逼实现方写空方法 | 能力接口(ISP) = `Queryable/RowEditable` + `asXxx` | 加新能力接口 + `asXxx` guard |
+| 用户动作要可测/可映射键位 | Command = keymap（ADR 0007） | 注册「上下文→命令」，不写死键位 |
+| 边界要传错误 | Result/Either = `shared/Result.ts` | `ok()/err()`，不在内层 throw 控制流 |
+
+**金标准范例（照形状抄）**：新增数据源 → 照 `adapters/datasource/sql/` 的形状，注册进 `registry`，过同一套契约测试。
+
+> 心法：**别问"这里该用什么模式"，先问"这里有几个责任、边界在哪"。责任分对，模式自己浮现；分对后没浮现出模式，就说明这里不需要模式。**
+
+## 7. 约定（机械闸门已强制的不赘述）
+
+- **导入**：相对路径 + 显式 `.ts`/`.tsx` 后缀；不用 `@alias`（虽配置但全库不用）。
+- **导出**：只命名导出，**禁 `export default`**。
+- **类型**：`import type {…}`；字段尽量 `readonly`；`strict`+`noUncheckedIndexedAccess` 下别用 `!` 绕 undefined。
+- **错误**：边界返 `Result<T,E>`，领域错误是带类型的类（`domain/errors/`）。
+- **状态**（Zustand）：**单一来源**（派生用 selector 算、不冗余存）·**不重叠**（一块状态一个 slice 管）·**可追踪**（只经 action 变更）。需要 `isXButActuallyY` 补丁标志时停下——用状态机/联合类型重表达。
+- **取消**：可能长耗时的 DB/LLM 调用透传 `signal?: AbortSignal`。
+- **日志**：写文件，**绝不写 stdout/console**（TUI 独占屏幕）。
+- **文件头注释**：非平凡模块开头讲「是什么 / 为什么这样设计 / 指向 ARCHITECTURE §x / adr/00xx」。注释解释"为什么"，不解释"做了什么"。
+- **TUI（OpenTUI/React）**：`box` 默认 column、`wrapMode="none"`、bold/inverse 用 `attributes`、不用 `React.FC`、原生鼠标。改前先看 `presentation/components/` 现状。
+
+## 8. 重大设计变更
+
+现有设计有**根本缺陷**（框架挡路、概念错位）→ 不在烂地基上增量。但按 §5：**先提方案、等同意**，然后记一条 ADR（`docs/adr/`，照现有格式）+ 同步更新 ARCHITECTURE 与本文件。健康设计内加功能 → 外科手术。判据：**是代码"脏"（局部清理）还是"形状"错了（才重设计）？**
+
+---
+
+### 附录 · 应下沉为机械闸门的规则（L1，比写在本文里更可靠）
+
+> 这些「能 grep / lint 出来」的规则，靠工具强制远胜靠 prompt 自觉。建议接进 `.githooks` 或 CI：
+
+1. **依赖方向**：`src/domain/**`、`src/application/**` 出现 `from '.*adapters` 或第三方 DB/LLM 包名 → 拒绝提交。
+2. **`no-default-export`**（lint，scoped to `src/`）。
+3. **`no-console`**（lint）——TUI 独占 stdout，`console.*` 是真 bug 源。
+4. **`bun run typecheck` + `bun test`**：接 pre-push / CI，作为 §4 的客观裁判。
+5. **commitlint**：已启用（见 `docs/commit-convention.md`）。
+
+> 一条「依赖方向」检查脚本，对架构质量的拉动 > 本文件其余全部条款之和——因为它把"违反架构"从"希望它别"变成"它做不到"。

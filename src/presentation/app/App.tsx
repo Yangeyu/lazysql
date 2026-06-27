@@ -57,7 +57,6 @@ export const App = () => {
   const filter = useApp((s) => s.filter);
   const mode = useApp((s) => s.mode);
   const connForm = useApp((s) => s.connForm);
-  const filterDraft = useApp((s) => s.filterDraft);
   const editDraft = useApp((s) => s.editDraft);
   const pending = useApp((s) => s.pending);
   const loading = useApp((s) => s.loading);
@@ -238,8 +237,13 @@ export const App = () => {
         context={context}
         flags={flags}
         mode={mode}
-        filterDraft={filterDraft}
+        filterInitial={
+          filter?.conditions.find(
+            (c) => c.column === (result?.columns[gridCol]?.name ?? ''),
+          )?.value ?? ''
+        }
         filterColumn={result?.columns[gridCol]?.name ?? null}
+        onFilterSubmit={(v) => void store.getState().commitFilter(v)}
         editDraft={editDraft}
         editColumn={result?.columns[gridCol]?.name ?? null}
         pendingMessage={pending?.message ?? null}

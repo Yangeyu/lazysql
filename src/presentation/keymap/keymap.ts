@@ -97,11 +97,14 @@ export interface KeyBinding {
   /** Fuller one-line description for the help overlay. */
   readonly desc: string;
   /** Tokens this binding fires on: a key name ('up', 'return'), a literal glyph
-   *  ('k', ':', ' '), or a control chord ('^g'). Any one matching triggers it. */
-  readonly match: readonly string[];
+   *  ('k', ':', ' '), or a control chord ('^g'). Any one matching triggers it.
+   *  Omitted for a documentation-only row — a key a focused native widget owns
+   *  (e.g. ⏎ submits an <input>), shown in the footer/help but not dispatched. */
+  readonly match?: readonly string[];
   /** What the binding does. Reads/acts on the live store state; `env` covers the
-   *  lone non-store effect (quit). Async actions are fired and not awaited. */
-  readonly run: (s: AppState, env: DispatchEnv) => void;
+   *  lone non-store effect (quit). Async actions are fired and not awaited.
+   *  Omitted together with `match` for a documentation-only row. */
+  readonly run?: (s: AppState, env: DispatchEnv) => void;
   /** When present, the binding shows AND fires only if this predicate holds. */
   readonly enabled?: (f: KeyFlags) => boolean;
 }
@@ -191,10 +194,10 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
   filter: {
     title: 'Filter',
     bindings: [
-      { keys: '⏎', hint: 'apply', desc: 'Apply the filter (empty clears it)', match: ['return'], run: (s) => void s.commitFilter() },
+      // ⏎ is owned by the native <input> (onSubmit) — documentation-only here.
+      { keys: '⏎', hint: 'apply', desc: 'Apply the filter (empty clears it)' },
       { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelFilter() },
     ],
-    field: { edit: (s, op) => s.editFilter(op) },
   },
   edit: {
     title: 'Edit cell',
@@ -254,7 +257,7 @@ const usable = (b: KeyBinding, f: KeyFlags): boolean => !b.enabled || b.enabled(
 
 /** Does this key event satisfy one of a binding's match tokens? */
 const hits = (b: KeyBinding, key: KeyEvent, ch: string | null): boolean =>
-  b.match.some((t) =>
+  (b.match ?? []).some((t) =>
     t.startsWith('^') ? key.ctrl && key.name === t.slice(1) : NAMED.has(t) ? key.name === t : ch === t,
   );
 
@@ -307,11 +310,11 @@ export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void 
   const group = GROUPS[context];
 
   for (const b of group.bindings) {
-    if (usable(b, flags) && hits(b, key, ch)) return b.run(s, env);
+    if (b.run && usable(b, flags) && hits(b, key, ch)) return b.run(s, env);
   }
   if (NAV.has(context)) {
     for (const b of GLOBAL) {
-      if (usable(b, flags) && hits(b, key, ch)) return b.run(s, env);
+      if (b.run && usable(b, flags) && hits(b, key, ch)) return b.run(s, env);
     }
   }
   // Cursored field: typing, erasing, and caret movement are all TextField ops.

@@ -159,7 +159,6 @@ export interface AppState {
   gridRow: number;
   gridCol: number;
   mode: Mode;
-  filterDraft: TextField;
   editDraft: TextField;
   pkColumns: string[];
   pending: Pending | null;
@@ -248,10 +247,9 @@ export interface AppState {
   pageNext: () => Promise<void>;
   pagePrev: () => Promise<void>;
   beginFilter: () => void;
-  /** Apply a TextField edit to the filter draft (typing, cursor moves, erase). */
-  editFilter: (op: (tf: TextField) => TextField) => void;
   cancelFilter: () => void;
-  commitFilter: () => Promise<void>;
+  /** Apply the filter typed in the native input (empty clears it). */
+  commitFilter: (value: string) => Promise<void>;
   beginEdit: () => void;
   /** Apply a TextField edit to the cell-edit draft. */
   editEdit: (op: (tf: TextField) => TextField) => void;
@@ -569,7 +567,6 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       gridRow: 0,
       gridCol: 0,
       mode: 'normal',
-      filterDraft: EMPTY,
       editDraft: EMPTY,
       pkColumns: [],
       pending: null,
@@ -954,26 +951,25 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       },
 
       beginFilter: () => {
-        const { current, filter, result, gridCol } = get();
+        const { current, result, gridCol } = get();
         const column = result?.columns[gridCol]?.name;
         if (!current || !column) return;
-        // Pre-fill the draft with the existing value for this column, if any.
-        const existing = filter?.conditions.find((c) => c.column === column);
-        set({ mode: 'filter', filterDraft: field(existing?.value ?? '') });
+        // The native <input> holds the draft; it is seeded with any existing
+        // filter value for this column (derived in the view), so the store keeps
+        // no draft of its own.
+        set({ mode: 'filter' });
       },
 
-      editFilter: (op) => set({ filterDraft: op(get().filterDraft) }),
+      cancelFilter: () => set({ mode: 'normal' }),
 
-      cancelFilter: () => set({ mode: 'normal', filterDraft: EMPTY }),
-
-      commitFilter: async () => {
-        const { current, sort, result, gridCol, filterDraft } = get();
+      commitFilter: async (value) => {
+        const { current, sort, result, gridCol } = get();
         const column = result?.columns[gridCol]?.name;
-        set({ mode: 'normal', filterDraft: EMPTY });
+        set({ mode: 'normal' });
         if (!current || !column) return;
-        const value = filterDraft.value.trim();
-        const filter: Filter | null = value
-          ? { conditions: [{ column, op: 'contains', value }] }
+        const v = value.trim();
+        const filter: Filter | null = v
+          ? { conditions: [{ column, op: 'contains', value: v }] }
           : null;
         await load(current, { page: firstPage(PAGE_SIZE), sort, filter });
       },

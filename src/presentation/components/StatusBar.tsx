@@ -22,8 +22,10 @@ interface Props {
   context: KeyContext;
   flags: KeyFlags;
   mode: Mode;
-  filterDraft: TextField;
+  /** Seed value for the filter input (existing filter for the column, or ''). */
+  filterInitial: string;
   filterColumn: string | null;
+  onFilterSubmit: (value: string) => void;
   editDraft: TextField;
   editColumn: string | null;
   pendingMessage: string | null;
@@ -66,8 +68,9 @@ const StatusBarImpl = ({
   context,
   flags,
   mode,
-  filterDraft,
+  filterInitial,
   filterColumn,
+  onFilterSubmit,
   editDraft,
   editColumn,
   pendingMessage,
@@ -108,15 +111,25 @@ const StatusBarImpl = ({
     );
   }
 
-  // Filter input mode owns the bar: live prompt.
+  // Filter input mode owns the bar: a native single-line input holds the draft.
   if (mode === 'filter') {
     return bar(
-      <text>
-        <Badge label="filter" bg={theme.yellow} />
-        <span> </span>
-        <span fg={theme.border}>{filterColumn ?? '?'} contains </span>
-        <TextInput field={filterDraft} focused fg={theme.cyan} />
-      </text>,
+      <box flexDirection="row">
+        <text wrapMode="none">
+          <Badge label="filter" bg={theme.yellow} />
+          <span> </span>
+          <span fg={theme.border}>{filterColumn ?? '?'} contains </span>
+        </text>
+        <input
+          focused
+          value={filterInitial}
+          // onSubmit is typed as an upstream intersection quirk; at runtime it
+          // delivers the input's string value (verified).
+          onSubmit={onFilterSubmit as never}
+          width={40}
+          textColor={theme.cyan}
+        />
+      </box>,
     );
   }
 

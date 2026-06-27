@@ -15,3 +15,6 @@ export const configDir = (): string => {
 export const connectionsFile = (): string => join(configDir(), 'connections.yml');
 
 export const secretsFile = (): string => join(configDir(), 'secrets.json');
+
+/** Application settings (non-secret), e.g. the NL→SQL provider. */
+export const configFile = (): string => join(configDir(), 'config.yml');

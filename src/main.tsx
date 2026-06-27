@@ -23,7 +23,8 @@ import { createSystemClipboard } from './adapters/clipboard/SystemClipboard.ts';
 import { YamlConnectionRepository } from './adapters/persistence/YamlConnectionRepository.ts';
 import { FileSecretStore } from './adapters/persistence/FileSecretStore.ts';
 import { KeychainSecretStore } from './adapters/persistence/KeychainSecretStore.ts';
-import { connectionsFile } from './adapters/persistence/paths.ts';
+import { connectionsFile, configFile } from './adapters/persistence/paths.ts';
+import { loadLlmEnv } from './adapters/persistence/appConfig.ts';
 import { openConnection } from './application/usecases/OpenConnection.ts';
 import { createSqlGenerator } from './adapters/llm/createSqlGenerator.ts';
 import type { SecretStore } from './application/ports/SecretStore.ts';
@@ -76,6 +77,18 @@ connections:
   #     db: 0
 `;
 
+const DEFAULT_APP_CONFIG = `# lazysql application settings (non-secret).
+# API keys are NOT stored here — keep them in the environment:
+#   OPENAI_API_KEY · DEEPSEEK_API_KEY · DASHSCOPE_API_KEY · ANTHROPIC_API_KEY
+#
+# NL→SQL provider. Uncomment to pin one; otherwise it is auto-detected from
+# whichever API key is present. An exported LAZYSQL_LLM_* var overrides this.
+# llm:
+#   provider: openai        # bailian | openai | deepseek | anthropic
+#   model: gpt-4o           # optional model override
+#   baseUrl: https://api.openai.com/v1   # optional endpoint override
+`;
+
 const looksLikeFile = (arg: string): boolean =>
   /\.(db|sqlite|sqlite3)$/i.test(arg) || existsSync(arg);
 
@@ -108,6 +121,12 @@ const file = connectionsFile();
 if (!existsSync(file)) {
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, DEFAULT_CONFIG, 'utf8');
+}
+
+const cfgFile = configFile();
+if (!existsSync(cfgFile)) {
+  await mkdir(dirname(cfgFile), { recursive: true });
+  await writeFile(cfgFile, DEFAULT_APP_CONFIG, 'utf8');
 }
 
 const arg = process.argv[2];
@@ -146,8 +165,13 @@ const connectionService: ConnectionService = {
 };
 
 // NL→SQL is enabled only when a provider is configured; otherwise it stays off.
-// Provider is picked by createSqlGenerator (LAZYSQL_LLM_PROVIDER, else by key).
-const generator: SqlGenerator | null = createSqlGenerator();
+// config.yml supplies the persisted provider/model; process.env overrides it (so
+// an ad-hoc LAZYSQL_LLM_* or an API key still wins) — createSqlGenerator then
+// picks the provider from the merged settings.
+const generator: SqlGenerator | null = createSqlGenerator({
+  ...(await loadLlmEnv()),
+  ...process.env,
+});
 
 // OpenTUI owns the terminal: createCliRenderer sets up the alternate screen,
 // mouse reporting and the double-buffered (cell-diffed) render loop, and restores

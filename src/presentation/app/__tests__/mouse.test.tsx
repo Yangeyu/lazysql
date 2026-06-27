@@ -77,6 +77,31 @@ test('clicking a grid row selects that row (delete confirm shows its key)', asyn
   h.cleanup();
 });
 
+test('clicking a cell selects its column, not just its row', async () => {
+  const h = await renderTest(<Root connectionService={svc} initial={profile} />, {
+    width: 120,
+    height: 30,
+  });
+  await h.until((f) => f.includes('Tables'));
+  h.enter(); // open table t (columns: id, name) → cursor on row 0, col 0 (id)
+  await h.until((f) => f.includes('beta'));
+
+  // Click the `name` cell of the `beta` row — a different row AND a different
+  // column than the starting (row 0, id) cursor.
+  const y = lineY(h, 'beta');
+  const x = h.frame().split('\n')[y]!.indexOf('beta');
+  await h.click(x, y);
+  await h.flush();
+
+  h.enter(); // open the cell inspector on the cell under the cursor
+  await h.until((f) => f.includes('⊞ cell'));
+  // The inspector titles itself with the selected column — `name`, not `id`,
+  // proves the click moved the COLUMN cursor (and the value is beta's name).
+  expect(h.frame()).toMatch(/⊞ cell\s+name/);
+  h.esc();
+  h.cleanup();
+});
+
 test('clicking a sidebar row selects that row (Enter then acts on it)', async () => {
   const h = await renderTest(<Root connectionService={svc} initial={profile} />, {
     width: 120,

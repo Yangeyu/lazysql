@@ -1,7 +1,7 @@
 /**
  * Unit tests for the pure tree projection — multiple connection roots, grouping
  * objects into categories, fold behaviour, and the initial-cursor helpers. No
- * Ink, no store.
+ * renderer, no store.
  */
 
 import { test, expect } from 'bun:test';

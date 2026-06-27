@@ -201,7 +201,7 @@ export interface AppState {
   /** Select a sidebar tree row from a click (null row → just focus the pane). */
   clickTree: (row: number | null) => void;
   /** Select a grid data row from a click (null row → just focus the pane). */
-  clickGrid: (row: number | null) => void;
+  clickGrid: (row: number | null, col?: number) => void;
   /** Open the full-value inspector for the cell under the grid cursor. */
   openCell: () => void;
   closeCell: () => void;
@@ -617,10 +617,11 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           treeIndex: row != null ? row : s.treeIndex,
         })),
 
-      clickGrid: (row) =>
+      clickGrid: (row, col) =>
         set((s) => ({
           focus: 'grid',
           gridRow: row != null ? row : s.gridRow,
+          gridCol: col != null ? col : s.gridCol,
         })),
 
       openCell: () => {

@@ -1,9 +1,9 @@
 /**
  * Keyboard input adapter — the single seam that turns OpenTUI's `KeyEvent` into
  * the one question the editable fields ask: "what character did the user just
- * type?". Ink handed us a decoded `input` string next to the key; OpenTUI hands
- * a `KeyEvent` whose `sequence` carries the literal decoded bytes, so we read the
- * typed glyph from there. Keeping this here (not inline in App's dispatch) makes
+ * type?". OpenTUI hands a `KeyEvent` whose `sequence` carries the literal decoded
+ * bytes (but no ready-made character field), so we read the typed glyph from
+ * there. Keeping this here (not inline in App's dispatch) makes
  * the input contract unit-testable and keeps terminal-decoding out of the UI.
  */
 

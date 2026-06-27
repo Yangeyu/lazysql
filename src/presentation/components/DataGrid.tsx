@@ -36,8 +36,9 @@ interface Props {
   /** Columns (terminal cells) of horizontal space available. */
   viewportCols: number;
   focused: boolean;
-  /** A data row was clicked (absolute row index). */
-  onRowClick: (index: number) => void;
+  /** A grid cell was clicked: the row, plus the column when a specific cell was
+   *  hit (omitted for a click on the row gutter, which selects the row only). */
+  onCellClick: (row: number, col?: number) => void;
 }
 
 /** Per-column cap and the inter-column separator (display width 3). */
@@ -151,6 +152,32 @@ interface Cell {
   inverse?: boolean;
 }
 
+/**
+ * Which column a click at local x (cells from the row's left edge) landed on, or
+ * null for the gutter / past the last visible column. The row is one <text> with
+ * a `GUTTER_W` gutter then the windowed cells, each `widths[start+wi]` wide and
+ * separated by `SEP_W`; a click on a separator counts as the cell before it.
+ * Pure (mirrors the exact render layout); exported for unit testing.
+ */
+export const columnAtX = (
+  localX: number,
+  widths: readonly number[],
+  start: number,
+  count: number,
+): number | null => {
+  let x = localX - GUTTER_W;
+  if (x < 0) return null;
+  for (let wi = 0; wi < count; wi++) {
+    const w = widths[start + wi]!;
+    if (x < w) return start + wi;
+    x -= w;
+    if (wi === count - 1) break; // no separator after the last column
+    if (x < SEP_W) return start + wi; // a click on the separator → the cell before it
+    x -= SEP_W;
+  }
+  return null;
+};
+
 /** Combine a cell's bold/inverse flags into an OpenTUI attributes bitmask. */
 const cellAttributes = (c: Cell): number | undefined => {
   const a =
@@ -170,7 +197,7 @@ const line = (
   gutterColor: string,
   cells: Cell[],
   rowInverse: boolean,
-  onMouseDown?: (event: MouseEvent) => void,
+  onMouseDown?: (this: { x: number }, event: MouseEvent) => void,
 ): React.ReactNode => (
   <text
     key={key}
@@ -200,7 +227,7 @@ const DataGridImpl = ({
   viewportRows,
   viewportCols,
   focused,
-  onRowClick,
+  onCellClick,
 }: Props) => {
   if (loading) return <text fg={theme.yellow}>Loading…</text>;
   if (!hasTable)
@@ -290,9 +317,13 @@ const DataGridImpl = ({
             };
           }),
           rowInverse,
-          (e) => {
+          // A regular function so `this` is the row's <text> renderable: its `.x`
+          // is the row's absolute left, so `event.x - this.x` is the local cell
+          // offset → the exact column clicked (null on the gutter = row only).
+          function (this: { x: number }, e: MouseEvent) {
             e.stopPropagation();
-            onRowClick(absolute);
+            const col = columnAtX(e.x - this.x, widths, start, win.length);
+            onCellClick(absolute, col ?? undefined);
           },
         );
       })}

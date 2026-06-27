@@ -7,8 +7,8 @@
  * flow and, drawn last in the tree, paints over its siblings; its
  * `backgroundColor` fills the panel rect opaquely so the busy background never
  * bleeds through. That replaces the two hand-painted layers (an opaque
- * space-fill behind the bordered content) the Ink version needed — one box now
- * does both. Fixed size + cell-diff rendering mean scrolling inside it repaints
+ * space-fill behind the bordered content) a clear-and-redraw renderer needed —
+ * one box now does both. Fixed size + cell-diff rendering mean scrolling repaints
  * only the changed lines.
  */
 

@@ -3,7 +3,7 @@
  * Composition root — wires concrete adapters (registry, YAML repo, file secret
  * store) to the application and TUI. It decides which connection to open
  * (by name, by ad-hoc SQLite file, or the default), resolves its secret, and
- * hands a connected store to Ink. Everything below depends only on ports. (DIP)
+ * hands a connected store to the TUI. Everything below depends only on ports. (DIP)
  *
  * Usage:
  *   bun start                 open the default saved connection

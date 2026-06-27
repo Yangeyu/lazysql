@@ -1,7 +1,7 @@
 /**
  * Pure formatter for the cell inspector: turn a raw cell value into a typed,
  * line-oriented view. JSON text (objects/arrays) is pretty-printed structurally;
- * everything else is shown faithfully. Kept free of Ink so it is unit-testable.
+ * everything else is shown faithfully. Kept renderer-free so it is unit-testable.
  */
 
 import type { CellValue } from '../../domain/datasource/ResultSet.ts';

@@ -148,7 +148,7 @@ export const App = () => {
       {/* Right column: the SQL editor (top, ~1/4) over the results panel (~3/4),
           each a distinct bordered panel split by the same 1-row gap. Both stretch
           to the full column width. */}
-      <box flexDirection="column" flexGrow={1} gap={1}>
+      <box flexDirection="column" flexGrow={1} gap={0}>
         {queryable ? (
           <QueryEditor
             queryText={queryText}
@@ -182,7 +182,7 @@ export const App = () => {
           loading={loading}
           viewportRows={gridBodyRows}
           viewportCols={viewportCols}
-          onRowClick={(i) => store.getState().clickGrid(i)}
+          onCellClick={(r, c) => store.getState().clickGrid(r, c)}
           structure={structure}
           structureLoading={structureLoading}
           structureError={structureError}

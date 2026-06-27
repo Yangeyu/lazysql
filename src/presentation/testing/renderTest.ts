@@ -3,8 +3,9 @@
  * `bun test`. It wraps `@opentui/react`'s `testRender` (a mock terminal with
  * programmable input + frame capture) into the small surface the suites use:
  * mount a tree, press/type/click, read the rendered char frame, wait for it to
- * settle, tear down. This replaces ink-testing-library's `render()` —
- * `frame()`↔`lastFrame()`, `press`/`type`↔`stdin.write`, `cleanup()`↔`unmount()`.
+ * settle, tear down. One harness, no shims: `frame()` reads the captured chars,
+ * `press`/`type` drive the mock keyboard, `click` the mock mouse, `cleanup()`
+ * tears the renderer down.
  */
 
 import type { ReactNode } from 'react';

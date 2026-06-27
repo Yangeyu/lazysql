@@ -5,7 +5,7 @@
  * fixed canonical order: nothing here knows or branches on the database *type*,
  * so a richer adapter introspection (indexes, triggers…) lights up its category
  * automatically. Keeping this a pure function makes navigation trivially
- * testable without Ink.
+ * testable without a renderer.
  */
 
 import type { ObjectKind, ObjectRef } from '../../domain/datasource/schema.ts';

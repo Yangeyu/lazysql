@@ -45,8 +45,8 @@ interface Props {
   viewportRows: number;
   /** Columns (terminal cells) of horizontal space available. */
   viewportCols: number;
-  /** A data row was clicked (absolute row index). */
-  onRowClick: (index: number) => void;
+  /** A grid cell was clicked (row, plus column when a specific cell was hit). */
+  onCellClick: (row: number, col?: number) => void;
   // ── structure (DDL) body ──
   structure: ObjectSchema | null;
   structureLoading: boolean;
@@ -67,7 +67,7 @@ const ResultsPanelImpl = ({
   loading,
   viewportRows,
   viewportCols,
-  onRowClick,
+  onCellClick,
   structure,
   structureLoading,
   structureError,
@@ -133,7 +133,7 @@ const ResultsPanelImpl = ({
         viewportRows={viewportRows}
         viewportCols={viewportCols}
         focused={focused}
-        onRowClick={onRowClick}
+        onCellClick={onCellClick}
       />
     )}
   </box>

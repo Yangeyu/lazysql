@@ -31,3 +31,19 @@ export const classifyStatement = (sql: string): StatementKind => {
 /** Writes and DDL change data/schema — surface a stronger warning for these. */
 export const isDestructive = (kind: StatementKind): boolean =>
   kind === 'write' || kind === 'ddl';
+
+/**
+ * An UPDATE/DELETE with no WHERE — it rewrites or removes EVERY row, the classic
+ * footgun worth a confirm before it runs. Heuristic (not a parser): the leading
+ * keyword is update/delete and no `where` token appears. Biased to fail-open — a
+ * `where` inside a string literal suppresses the prompt rather than risk nagging
+ * on a statement that is in fact qualified.
+ */
+export const isUnqualifiedWrite = (sql: string): boolean => {
+  const keyword = sql
+    .trim()
+    .match(/^([a-z]+)/i)?.[1]
+    ?.toLowerCase();
+  if (keyword !== 'update' && keyword !== 'delete') return false;
+  return !/\bwhere\b/i.test(sql);
+};

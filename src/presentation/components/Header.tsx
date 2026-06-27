@@ -20,6 +20,8 @@ interface Props {
   from: number;
   to: number;
   total: number;
+  /** 1-based absolute position of the grid cursor; 0 when the grid is empty. */
+  cursorRow: number;
   filterSummary: string;
   nlAvailable: boolean;
 }
@@ -33,6 +35,7 @@ const HeaderImpl = ({
   from,
   to,
   total,
+  cursorRow,
   filterSummary,
   nlAvailable,
 }: Props) => (
@@ -66,10 +69,10 @@ const HeaderImpl = ({
     </box>
 
     <box flexDirection="row">
-      {objectName && total >= 0 ? (
-        <text fg={theme.border}>
-          {from}–{to}
-          <span> of </span>
+      {cursorRow > 0 || (objectName && total >= 0) ? (
+        <text fg={theme.border} wrapMode="none">
+          {cursorRow > 0 ? <span fg={theme.cyan}>{`↕${cursorRow} · `}</span> : null}
+          {objectName ? <span>{`${from}–${to} of `}</span> : null}
           <span fg={theme.cyan}>{total}</span>
           <span> rows</span>
         </text>

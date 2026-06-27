@@ -105,6 +105,12 @@ export const App = ({ clipboard }: AppProps) => {
   );
   const gridFocused = focus === 'grid';
 
+  // Mirror the grid's visible height into the store so half-page cursor jumps
+  // (^d/^u) can size themselves; the store can't see the layout otherwise.
+  useEffect(() => {
+    store.getState().setGridViewport(gridBodyRows);
+  }, [store, gridBodyRows]);
+
   // The active connection's display name + driver tag are derived from the
   // single source of truth (profiles + activeId), not stored separately.
   const activeProfile = useMemo(
@@ -132,6 +138,8 @@ export const App = ({ clipboard }: AppProps) => {
   const rowsInPage = result?.rows.length ?? 0;
   const from = total === 0 ? 0 : page.offset + 1;
   const to = page.offset + rowsInPage;
+  // Absolute 1-based position of the grid cursor across pages (0 when empty).
+  const cursorRow = rowsInPage > 0 ? page.offset + gridRow + 1 : 0;
 
   // The persistent background — ALWAYS rendered, so the `?` help and the cell
   // inspector float OVER it (lazygit-style) rather than replacing it.
@@ -253,6 +261,7 @@ export const App = ({ clipboard }: AppProps) => {
         from={from}
         to={to}
         total={total}
+        cursorRow={cursorRow}
         filterSummary={surface === 'browse' ? filterSummary(filter) : ''}
         nlAvailable={nlAvailable}
       />

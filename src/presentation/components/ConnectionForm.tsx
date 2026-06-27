@@ -123,6 +123,23 @@ const ConnectionFormImpl = ({ form, onFieldInput }: Props) => {
               ⚠ {form.error}
             </text>
           </box>
+        ) : form.probe ? (
+          <box flexDirection="column">
+            <text> </text>
+            <text
+              wrapMode="none"
+              fg={
+                form.probe.state === 'ok'
+                  ? theme.green
+                  : form.probe.state === 'fail'
+                    ? theme.red
+                    : theme.muted
+              }
+            >
+              {form.probe.state === 'ok' ? '✓ ' : form.probe.state === 'fail' ? '✗ ' : '⏳ '}
+              {form.probe.message}
+            </text>
+          </box>
         ) : null}
       </box>
     </box>

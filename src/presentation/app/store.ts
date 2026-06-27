@@ -56,13 +56,18 @@ import type {
   SqlGenerator,
   SchemaContext,
 } from '../../application/ports/SqlGenerator.ts';
+import { isUnqualifiedWrite } from '../../domain/query/classify.ts';
 import type { StatementKind } from '../../domain/query/classify.ts';
+import type { QueryHistoryStore } from '../../application/ports/QueryHistoryStore.ts';
 import {
   complete,
   type SchemaCatalog,
 } from '../completion/sqlCompleter.ts';
 
 export const PAGE_SIZE = 100;
+
+/** How many recent statements the SQL editor history keeps, per connection. */
+export const HISTORY_LIMIT = 100;
 
 /** The three persistent panes the cursor can occupy (lazygit-style). */
 export type Focus = 'sidebar' | 'editor' | 'grid';
@@ -84,6 +89,12 @@ export interface ConnFormField {
  *  native <input> fields below. */
 export const DRIVER_ROW = -1;
 
+/** State of a one-off "test connection" probe, shown until the next edit. */
+export interface ConnProbe {
+  readonly state: 'testing' | 'ok' | 'fail';
+  readonly message: string;
+}
+
 /** Draft state for the new-connection form (mode === 'connform'). */
 export interface ConnForm {
   driver: DriverId;
@@ -93,6 +104,8 @@ export interface ConnForm {
   /** Whether the secret (password) field shows its value instead of bullets. */
   reveal: boolean;
   error: string | null;
+  /** Result of the last ^T test probe, or null before one is run / after an edit. */
+  probe: ConnProbe | null;
   /** Id of the profile being edited, or null when creating a new one. */
   editingId: string | null;
 }
@@ -103,6 +116,8 @@ export interface AppStoreDeps {
   generator?: SqlGenerator | null;
   /** Profile to connect to on init (e.g. a CLI arg); also shown as a root. */
   initial?: ConnectionProfile | null;
+  /** Durable SQL editor history, per connection; null disables persistence. */
+  historyStore?: QueryHistoryStore | null;
 }
 /**
  * What the single results grid is currently showing. ONE grid, ONE result —
@@ -174,6 +189,9 @@ export interface AppState {
   browseSql: string | null;
   gridRow: number;
   gridCol: number;
+  /** Visible body rows of the grid, mirrored from the layout so cursor jumps
+   *  (half-page) can size themselves; 0 until the view reports it. */
+  gridViewportRows: number;
   mode: Mode;
   pkColumns: string[];
   pending: Pending | null;
@@ -263,6 +281,9 @@ export interface AppState {
   /** Toggle showing the password in clear (^R) to verify what was typed. */
   connFormToggleReveal: () => void;
   connFormSubmit: () => Promise<void>;
+  /** Probe the drafted connection (connect + drop) without saving it; the result
+   *  shows in the form until the next edit. */
+  connFormTest: () => Promise<void>;
   connFormCancel: () => void;
   /** Move focus to a pane (`:`/Esc/click); gates the editor on `queryable`. */
   focusPane: (target: Focus) => void;
@@ -272,6 +293,15 @@ export interface AppState {
   gridDown: () => void;
   gridLeft: () => void;
   gridRight: () => void;
+  /** Jump the row cursor to the first / last loaded row (vim g/G). */
+  gridTop: () => void;
+  gridBottom: () => void;
+  /** Move the row cursor half a viewport up / down (vim ^u/^d), clamped to the
+   *  loaded rows. */
+  gridHalfUp: () => void;
+  gridHalfDown: () => void;
+  /** Report the grid's visible body height so half-page jumps can size to it. */
+  setGridViewport: (rows: number) => void;
   applySort: () => Promise<void>;
   pageNext: () => Promise<void>;
   pagePrev: () => Promise<void>;
@@ -353,9 +383,33 @@ const slugify = (name: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '') || 'connection';
 
+/** The profile + inline password a connection form currently describes. Shared
+ *  by save and the test probe so the two read the form's fields identically. */
+const formProfile = (
+  f: ConnForm,
+): { profile: ConnectionProfile; password: string | null } => {
+  const val = (k: string) => (f.fields.find((x) => x.key === k)?.value ?? '').trim();
+  const password = val('password') || null;
+  const options: Record<string, unknown> = {};
+  if (f.driver === 'sqlite') {
+    options.file = val('file');
+  } else {
+    options.host = val('host');
+    options.port = val('port');
+    options.user = val('user');
+    if (f.driver === 'redis') options.db = val('db');
+    else options.database = val('database');
+  }
+  const name = val('name');
+  return {
+    profile: { id: f.editingId ?? slugify(name), name, driver: f.driver, options },
+    password,
+  };
+};
+
 export const createAppStore = (deps: AppStoreDeps): AppStore =>
   createStore<AppState>((set, get) => {
-    const { connectionService, generator = null, initial = null } = deps;
+    const { connectionService, generator = null, initial = null, historyStore = null } = deps;
     // The live connection, swapped in/out by attach()/disconnect(). The store
     // owns it but reaches it only through the segregated capability guards
     // (asQueryable/asIntrospectable), never as a concrete driver. (docs/adr/0002)
@@ -495,6 +549,48 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
     const keyText = (key: RowKey): string =>
       key.map((k) => `${k.column}=${String(k.value)}`).join(' AND ');
 
+    /** Run the editor's SQL and take over the shared grid with the result. The
+     *  execution proper, shared by the direct run and the guarded (confirmed)
+     *  path so the two can't drift. */
+    const runEditorSql = async (text: string): Promise<void> => {
+      if (!active) return;
+      const { history } = get();
+      set({ loading: true, queryError: null });
+      const r = await runQuery(active, text);
+      if (!r.ok) {
+        set({ loading: false, queryError: r.error.message, queryElapsedMs: null });
+        return;
+      }
+      // Record in history, skipping an immediate duplicate and keeping only the
+      // most recent HISTORY_LIMIT entries.
+      const nextHistory = (
+        history[history.length - 1] === text ? history : [...history, text]
+      ).slice(-HISTORY_LIMIT);
+      // The result takes over the shared grid as a read-only 'query' surface.
+      // The browsed table is dropped (current=null) so its row ops can't fire
+      // on a query result; re-selecting it in the sidebar returns to browse.
+      set({
+        loading: false,
+        surface: 'query',
+        current: null,
+        pkColumns: [],
+        browseSql: null, // a query result isn't a browse — no statement to echo
+        result: r.value.result,
+        total: r.value.result.rows.length,
+        queryElapsedMs: r.value.elapsedMs,
+        queryError: null,
+        gridRow: 0,
+        gridCol: 0,
+        mainTab: 'data',
+        structure: null,
+        focus: 'grid',
+        history: nextHistory,
+        historyIndex: null,
+      });
+      const id = get().activeId;
+      if (id && historyStore) void historyStore.save(id, nextHistory);
+    };
+
     /** Recompute completions for the editor text against the cached catalog. */
     const completionsFor = (text: string): string[] => {
       const cat = get().catalog;
@@ -589,6 +685,16 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         historyIndex: null,
         catalog: null,
       });
+      // Restore this connection's persisted history (best-effort, async); guard
+      // against a fast switch landing it on a different connection.
+      if (historyStore) {
+        historyStore
+          .load(id)
+          .then((h) => {
+            if (get().activeId === id) set({ history: h });
+          })
+          .catch(() => {});
+      }
       await loadSchema();
     };
 
@@ -618,6 +724,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       browseSql: null,
       gridRow: 0,
       gridCol: 0,
+      gridViewportRows: 0,
       mode: 'normal',
       pkColumns: [],
       pending: null,
@@ -886,6 +993,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             index: 0,
             reveal: false,
             error: null,
+            probe: null,
             editingId: null,
           },
         });
@@ -909,6 +1017,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             index: 0,
             reveal: false,
             error: null,
+            probe: null,
             editingId: profile.id,
           },
         });
@@ -918,7 +1027,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         const f = get().connForm;
         if (!f) return;
         const fields = f.fields.map((x) => (x.key === key ? { ...x, value } : x));
-        set({ connForm: { ...f, fields } });
+        set({ connForm: { ...f, fields, probe: null } });
       },
 
       // The non-secret fields are native <input>s that own their own editing;
@@ -930,7 +1039,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         const fields = f.fields.map((field, i) =>
           i === f.index ? { ...field, value: field.value + ch } : field,
         );
-        set({ connForm: { ...f, fields } });
+        set({ connForm: { ...f, fields, probe: null } });
       },
 
       connFormBackspace: () => {
@@ -939,7 +1048,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         const fields = f.fields.map((field, i) =>
           i === f.index ? { ...field, value: field.value.slice(0, -1) } : field,
         );
-        set({ connForm: { ...f, fields } });
+        set({ connForm: { ...f, fields, probe: null } });
       },
 
       connFormMove: (delta) => {
@@ -979,35 +1088,37 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       connFormSubmit: async () => {
         const f = get().connForm;
         if (!f) return;
-        const val = (k: string) =>
-          (f.fields.find((x) => x.key === k)?.value ?? '').trim();
-        const name = val('name');
-        if (!name) {
+        // Editing keeps the original id so the saved secret stays linked; a blank
+        // password leaves that secret untouched (saveConnection only writes a
+        // secret when one is provided).
+        const { profile, password } = formProfile(f);
+        if (!profile.name) {
           set({ connForm: { ...f, error: 'name is required' } });
           return;
         }
-        const password = val('password') || null;
-        const options: Record<string, unknown> = {};
-        if (f.driver === 'sqlite') {
-          options.file = val('file');
-        } else {
-          options.host = val('host');
-          options.port = val('port');
-          options.user = val('user');
-          if (f.driver === 'redis') options.db = val('db');
-          else options.database = val('database');
-        }
-        const profile: ConnectionProfile = {
-          // Editing keeps the original id so the saved secret stays linked; a
-          // blank password leaves that secret untouched (saveConnection only
-          // writes a secret when one is provided).
-          id: f.editingId ?? slugify(name),
-          name,
-          driver: f.driver,
-          options,
-        };
         set({ mode: 'normal', connForm: null });
         await get().saveConnection(profile, password);
+      },
+
+      connFormTest: async () => {
+        const f = get().connForm;
+        if (!f) return;
+        const { profile, password } = formProfile(f);
+        // The probe connects with the typed password inlined (it isn't in the
+        // keychain yet); openConnection falls back to the stored secret when the
+        // field is blank, so editing an existing connection tests too.
+        const probeProfile = password
+          ? { ...profile, options: { ...profile.options, password } }
+          : profile;
+        set({ connForm: { ...f, error: null, probe: { state: 'testing', message: 'testing…' } } });
+        const r = await connectionService.open(probeProfile);
+        if (r.ok) await r.value.disconnect().catch(() => {});
+        const result: ConnProbe = r.ok
+          ? { state: 'ok', message: 'connection ok' }
+          : { state: 'fail', message: r.error.message };
+        // Drop the result if the form was edited or closed while the probe ran.
+        const cur = get().connForm;
+        if (cur && cur.probe?.state === 'testing') set({ connForm: { ...cur, probe: result } });
       },
 
       focusPane: (target) => {
@@ -1053,6 +1164,27 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             s.gridCol + 1,
           ),
         })),
+
+      gridTop: () => set({ gridRow: 0 }),
+
+      gridBottom: () =>
+        set((s) => ({ gridRow: Math.max(0, (s.result?.rows.length ?? 1) - 1) })),
+
+      gridHalfUp: () =>
+        set((s) => ({
+          gridRow: Math.max(0, s.gridRow - Math.max(1, Math.floor(s.gridViewportRows / 2))),
+        })),
+
+      gridHalfDown: () =>
+        set((s) => ({
+          gridRow: Math.min(
+            Math.max(0, (s.result?.rows.length ?? 1) - 1),
+            s.gridRow + Math.max(1, Math.floor(s.gridViewportRows / 2)),
+          ),
+        })),
+
+      setGridViewport: (rows) =>
+        set((s) => (s.gridViewportRows === rows ? s : { gridViewportRows: rows })),
 
       applySort: async () => {
         const { current, sort, filter, result, gridCol } = get();
@@ -1182,38 +1314,24 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       executeQuery: async () => {
         if (!active) return;
-        const { queryText, history } = get();
-        const text = queryText.trim();
+        const text = get().queryText.trim();
         if (!text) return;
-        set({ loading: true, queryError: null });
-        const r = await runQuery(active, text);
-        if (!r.ok) {
-          set({ loading: false, queryError: r.error.message, queryElapsedMs: null });
+        // An unqualified UPDATE/DELETE rewrites every row — stage a confirm rather
+        // than run it straight off the editor's ⏎. Focus leaves the editor so its
+        // native input can't swallow the y/n the confirm prompt is waiting on.
+        if (isUnqualifiedWrite(text)) {
+          const verb = text.match(/^[a-z]+/i)?.[0]?.toUpperCase() ?? 'WRITE';
+          set({
+            mode: 'confirm',
+            focus: 'grid',
+            pending: {
+              message: `${verb} with no WHERE — affects ALL rows. Run?`,
+              run: () => runEditorSql(text),
+            },
+          });
           return;
         }
-        // The result takes over the shared grid as a read-only 'query' surface.
-        // The browsed table is dropped (current=null) so its row ops can't fire
-        // on a query result; re-selecting it in the sidebar returns to browse.
-        set({
-          loading: false,
-          surface: 'query',
-          current: null,
-          pkColumns: [],
-          browseSql: null, // a query result isn't a browse — no statement to echo
-          result: r.value.result,
-          total: r.value.result.rows.length,
-          queryElapsedMs: r.value.elapsedMs,
-          queryError: null,
-          gridRow: 0,
-          gridCol: 0,
-          mainTab: 'data',
-          structure: null,
-          focus: 'grid',
-          // record in history, skipping an immediate duplicate
-          history:
-            history[history.length - 1] === text ? history : [...history, text],
-          historyIndex: null,
-        });
+        await runEditorSql(text);
       },
 
       historyPrev: () => {

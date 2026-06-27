@@ -94,7 +94,9 @@ const ResultsPanelImpl = ({
         </text>
         <text fg={theme.border}>
           {'  '}
-          {result?.rows.length ?? 0} rows
+          {result?.affected != null
+            ? `${result.affected} affected`
+            : `${result?.rows.length ?? 0} rows`}
           {queryElapsedMs != null ? ` · ${queryElapsedMs}ms` : ''}
         </text>
       </box>

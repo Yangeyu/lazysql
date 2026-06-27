@@ -130,3 +130,29 @@ test('dispatchKey: the DDL context only answers the tab toggle', () => {
   dispatchKey(s, key({ sequence: 'D' }), env());
   expect(s.toggleMainTab).toHaveBeenCalledTimes(1);
 });
+
+test('dispatchKey: g/G jump the tree to its first / last row', () => {
+  const treeTop = mock(() => {});
+  const treeBottom = mock(() => {});
+  const s = stub({ focus: 'sidebar', treeTop, treeBottom } as Partial<AppState>);
+  dispatchKey(s, key({ name: 'g', sequence: 'g' }), env());
+  dispatchKey(s, key({ name: 'G', sequence: 'G' }), env());
+  expect(treeTop).toHaveBeenCalledTimes(1);
+  expect(treeBottom).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: ⌃l focuses the results pane, from a nav context and the editor', () => {
+  const fromGrid = stub({ focus: 'grid' });
+  dispatchKey(fromGrid, key({ name: 'l', ctrl: true }), env());
+  expect(fromGrid.focusPane).toHaveBeenCalledWith('grid');
+
+  const fromEditor = stub({ focus: 'editor' });
+  dispatchKey(fromEditor, key({ name: 'l', ctrl: true }), env());
+  expect(fromEditor.focusPane).toHaveBeenCalledWith('grid');
+});
+
+test('dispatchKey: the removed 1/2/3 pane-jump no longer fires', () => {
+  const s = stub({ focus: 'grid' });
+  for (const d of ['1', '2', '3']) dispatchKey(s, key({ sequence: d }), env());
+  expect(s.focusPane).not.toHaveBeenCalled();
+});

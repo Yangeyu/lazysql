@@ -123,9 +123,7 @@ const GLOBAL: readonly KeyBinding[] = [
   { keys: '`', hint: 'conn', desc: 'Switch connection (back to picker)', match: ['`'], run: (s) => s.disconnect() },
   { keys: ':', hint: 'sql', desc: 'Open the SQL query editor', match: [':'], enabled: (f) => f.queryable, run: (s) => s.focusPane('editor') },
   { keys: 'tab', hint: 'pane', desc: 'Cycle to the next pane', match: ['tab'], run: (s) => s.cycleFocus() },
-  { keys: '1/2/3', hint: 'jump', desc: 'Jump to a pane: 1 tree · 2 editor · 3 grid', match: ['1'], run: (s) => s.focusPane('sidebar') },
-  { keys: '1/2/3', hint: 'jump', desc: 'Jump to a pane: 1 tree · 2 editor · 3 grid', match: ['2'], enabled: (f) => f.queryable, run: (s) => s.focusPane('editor') },
-  { keys: '1/2/3', hint: 'jump', desc: 'Jump to a pane: 1 tree · 2 editor · 3 grid', match: ['3'], run: (s) => s.focusPane('grid') },
+  { keys: '^l', hint: 'results', desc: 'Focus the results pane', match: ['^l'], run: (s) => s.focusPane('grid') },
   { keys: '?', hint: 'help', desc: 'Toggle this help', match: ['?'], run: (s) => s.toggleHelp() },
   { keys: 'q', hint: 'quit', desc: 'Quit lazysql', match: ['q'], run: (_s, env) => env.quit() },
 ];
@@ -137,6 +135,8 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '↑/↓ k/j', hint: 'move', desc: 'Move the selection', match: ['up', 'k'], run: (s) => s.treeUp() },
       { keys: '↑/↓ k/j', hint: 'move', desc: 'Move the selection', match: ['down', 'j'], run: (s) => s.treeDown() },
       { keys: '⏎/space', hint: 'open', desc: 'Expand/collapse a node · open an object', match: ['return', ' '], run: (s) => void s.treeToggle() },
+      { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last row', match: ['g'], run: (s) => s.treeTop() },
+      { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last row', match: ['G'], run: (s) => s.treeBottom() },
       { keys: '→/l', hint: 'expand', desc: 'Expand a node · open an object', match: ['right', 'l'], run: (s) => void s.treeExpand() },
       { keys: '←/h', hint: 'collapse', desc: 'Collapse a node · jump to parent', match: ['left', 'h'], run: (s) => s.treeCollapse() },
       { keys: 'D', hint: 'ddl', desc: 'Open the object showing its DDL/structure', match: ['D'], run: (s) => void s.treeShowDdl() },
@@ -182,6 +182,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['up'], run: (s) => s.historyPrev() },
       { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['down'], run: (s) => s.historyNext() },
       { keys: '^G', hint: 'ask AI', desc: 'Generate SQL from natural language', match: ['^g'], enabled: (f) => f.nlAvailable, run: (s) => s.beginNl() },
+      { keys: '^l', hint: 'results', desc: 'Focus the results pane', match: ['^l'], run: (s) => s.focusPane('grid') },
       // ^C is intercepted ahead of the context loop (dispatchKey) — doc-only here.
       { keys: '^C', hint: 'clear', desc: 'Clear the editor draft' },
       { keys: 'esc', hint: 'grid', desc: 'Focus the results grid', match: ['escape'], run: (s) => s.focusPane('grid') },

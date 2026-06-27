@@ -237,6 +237,9 @@ export interface AppState {
   treeRows: () => TreeRow[];
   treeUp: () => void;
   treeDown: () => void;
+  /** Jump the tree selection to the first / last visible row (vim g/G). */
+  treeTop: () => void;
+  treeBottom: () => void;
   /** Enter/Space: toggle a container's fold, or open an object. */
   treeToggle: () => Promise<void>;
   /** →/l: expand a container, or open an object. */
@@ -799,6 +802,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         set((s) => ({
           treeIndex: Math.min(rowsNow().length - 1, s.treeIndex + 1),
         })),
+
+      treeTop: () => set({ treeIndex: 0 }),
+
+      treeBottom: () => set({ treeIndex: Math.max(0, rowsNow().length - 1) }),
 
       treeToggle: async () => {
         const row = rowsNow()[get().treeIndex];

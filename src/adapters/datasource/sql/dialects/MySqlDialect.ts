@@ -89,6 +89,16 @@ export class MySqlDialect implements Dialect {
     }));
   }
 
+  sourceQuery(ref: ObjectRef): Query {
+    // Views are the only source-bearing kind introspected today; trigger/routine
+    // definitions arrive with their catalog introspection.
+    return sql(
+      `SELECT view_definition FROM information_schema.views
+       WHERE table_schema = DATABASE() AND table_name = ?`,
+      [ref.name],
+    );
+  }
+
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {
     const where = buildWhere(spec.filter, quoteIdent, ph, 'LIKE');
     return sql(

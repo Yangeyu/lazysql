@@ -136,7 +136,7 @@ export class MongoDataSource
       nullable: name !== '_id',
       isPrimaryKey: name === '_id',
     }));
-    return { ref, columns };
+    return { ref, detail: [{ kind: 'columns', columns }] };
   }
 
   // ── Browsable ─────────────────────────────────────────────────────────────

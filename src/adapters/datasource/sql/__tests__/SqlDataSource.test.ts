@@ -18,7 +18,9 @@ import type { DataSource } from '../../../../domain/datasource/DataSource.ts';
 import {
   asRowEditable,
   asQueryable,
+  asIntrospectable,
 } from '../../../../domain/datasource/DataSource.ts';
+import { columnsOf } from '../../../../domain/datasource/schema.ts';
 import { Capability } from '../../../../domain/datasource/capabilities.ts';
 import { listObjects } from '../../../../application/usecases/ListObjects.ts';
 import { browseTable } from '../../../../application/usecases/BrowseTable.ts';
@@ -46,6 +48,13 @@ beforeAll(async () => {
   const db = new Database(DB, { create: true });
   db.exec(
     `CREATE TABLE widget (id INTEGER PRIMARY KEY, label TEXT NOT NULL, qty INTEGER);`,
+  );
+  // A view, a user index and a trigger — the non-table kinds the schema tier and
+  // the definition path must surface (part of the adapter contract).
+  db.exec(`CREATE VIEW pricey AS SELECT id, label FROM widget WHERE qty > 10;`);
+  db.exec(`CREATE INDEX widget_label ON widget(label);`);
+  db.exec(
+    `CREATE TRIGGER widget_guard BEFORE DELETE ON widget BEGIN SELECT 1; END;`,
   );
   const ins = db.prepare('INSERT INTO widget (label, qty) VALUES (?, ?)');
   for (let i = 1; i <= 25; i++) ins.run(`w${i}`, i);
@@ -75,6 +84,37 @@ test('declares Query/SchemaIntrospect/Browse capabilities', () => {
 test('listObjects returns the table', async () => {
   const objects = unwrap(await listObjects(source));
   expect(objects.map((o) => o.name)).toContain('widget');
+});
+
+test('listObjects surfaces views, user indexes and triggers by kind', async () => {
+  const objects = unwrap(await listObjects(source));
+  const kindOf = (name: string) => objects.find((o) => o.name === name)?.kind;
+  expect(kindOf('pricey')).toBe('view');
+  expect(kindOf('widget_label')).toBe('index');
+  expect(kindOf('widget_guard')).toBe('trigger');
+  expect(kindOf('widget')).toBe('table');
+});
+
+test('describe gives a source-only object just its definition section', async () => {
+  const schema = await asIntrospectable(source)!.describe({
+    name: 'widget_label',
+    kind: 'index',
+  });
+  expect(schema.detail.map((d) => d.kind)).toEqual(['source']);
+  const source0 = schema.detail[0];
+  expect(source0?.kind === 'source' && source0.text).toMatch(/CREATE INDEX/i);
+  expect(columnsOf(schema)).toEqual([]); // no rows to browse
+});
+
+test('describe gives a view BOTH its columns and its defining source', async () => {
+  const schema = await asIntrospectable(source)!.describe({
+    name: 'pricey',
+    kind: 'view',
+  });
+  expect(schema.detail.map((d) => d.kind)).toEqual(['columns', 'source']);
+  expect(columnsOf(schema).map((c) => c.name)).toEqual(['id', 'label']);
+  const src = schema.detail.find((d) => d.kind === 'source');
+  expect(src?.kind === 'source' && src.text).toMatch(/SELECT/i);
 });
 
 test('browseTable paginates and counts', async () => {

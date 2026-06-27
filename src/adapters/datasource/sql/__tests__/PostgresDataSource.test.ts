@@ -25,6 +25,7 @@ import { browseTable } from '../../../../application/usecases/BrowseTable.ts';
 import { unwrap } from '../../../../shared/Result.ts';
 import { firstPage, sql } from '../../../../domain/query/Query.ts';
 import type { ObjectRef } from '../../../../domain/datasource/schema.ts';
+import { columnsOf } from '../../../../domain/datasource/schema.ts';
 
 const PG_URL =
   process.env.LAZYSQL_PG_URL ??
@@ -91,9 +92,9 @@ pgTest('listObjects finds the table in the public schema', async () => {
 
 pgTest('describe reports the primary key and nullability', async () => {
   const introspectable = asIntrospectable(source)!;
-  const schema = await introspectable.describe(widget);
-  const id = schema.columns.find((c) => c.name === 'id');
-  const label = schema.columns.find((c) => c.name === 'label');
+  const cols = columnsOf(await introspectable.describe(widget));
+  const id = cols.find((c) => c.name === 'id');
+  const label = cols.find((c) => c.name === 'label');
   expect(id?.isPrimaryKey).toBe(true);
   expect(id?.nullable).toBe(false);
   expect(label?.isPrimaryKey).toBe(false);

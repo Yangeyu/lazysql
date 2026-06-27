@@ -16,6 +16,7 @@ import { sql } from '../../../../domain/query/Query.ts';
 import type {
   ObjectRef,
   ColumnDef,
+  ObjectKind,
 } from '../../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
 import type { RawResult } from '../Driver.ts';
@@ -40,9 +41,13 @@ export class SqliteDialect implements Dialect {
   readonly id = 'sqlite';
 
   listObjectsQuery(): Query {
+    // sqlite_master already carries every object kind in one table; `sql IS NULL`
+    // drops the auto-indexes SQLite creates for UNIQUE/PK (noise, not user objects).
     return sql(
       `SELECT name, type FROM sqlite_master
-       WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%'
+       WHERE type IN ('table','view','index','trigger')
+         AND name NOT LIKE 'sqlite_%'
+         AND (type <> 'index' OR sql IS NOT NULL)
        ORDER BY type, name`,
     );
   }
@@ -50,9 +55,10 @@ export class SqliteDialect implements Dialect {
   parseObjects(raw: RawResult): ObjectRef[] {
     const iName = col(raw, 'name');
     const iType = col(raw, 'type');
+    // sqlite_master's `type` is already one of our ObjectKinds.
     return raw.rows.map((r) => ({
       name: String(r[iName]),
-      kind: r[iType] === 'view' ? ('view' as const) : ('table' as const),
+      kind: String(r[iType]) as ObjectKind,
     }));
   }
 
@@ -74,6 +80,11 @@ export class SqliteDialect implements Dialect {
       nullable: Number(r[iNotNull]) === 0,
       isPrimaryKey: Number(r[iPk]) > 0,
     }));
+  }
+
+  sourceQuery(ref: ObjectRef): Query {
+    // sqlite_master.sql holds the verbatim CREATE for views/indexes/triggers.
+    return sql(`SELECT sql FROM sqlite_master WHERE name = ?`, [ref.name]);
   }
 
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {

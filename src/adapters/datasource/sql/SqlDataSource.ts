@@ -29,7 +29,9 @@ import type {
   SchemaSnapshot,
   ObjectSchema,
   ObjectRef,
+  DetailSection,
 } from '../../../domain/datasource/schema.ts';
+import { sectionsFor } from '../../../domain/datasource/schema.ts';
 import type {
   RowKey,
   RowPatch,
@@ -113,8 +115,18 @@ export class SqlDataSource
   }
 
   async describe(ref: ObjectRef): Promise<ObjectSchema> {
-    const raw = await this.runQuery(this.dialect.describeQuery(ref));
-    return { ref, columns: this.dialect.parseColumns(raw) };
+    // Assemble exactly the sections this kind exposes (sectionsFor) by running
+    // the dialect query for each: columns for relations, the verbatim DDL for
+    // source-only objects (and both, for a view).
+    const detail = await Promise.all(
+      sectionsFor(ref.kind).map(
+        async (kind): Promise<DetailSection> =>
+          kind === 'columns'
+            ? { kind, columns: this.dialect.parseColumns(await this.runQuery(this.dialect.describeQuery(ref))) }
+            : { kind, text: firstCell(await this.runQuery(this.dialect.sourceQuery(ref))) },
+      ),
+    );
+    return { ref, detail };
   }
 
   // ── Browsable ───────────────────────────────────────────────────────────
@@ -203,6 +215,10 @@ export class SqlDataSource
     }
   }
 }
+
+/** The first cell of a raw result as text — a `sourceQuery` returns one DDL
+ *  string in one row, one column; empty when the object yields nothing. */
+const firstCell = (raw: RawResult): string => String(raw.rows[0]?.[0] ?? '');
 
 const reasonOf = (cause: unknown): string => {
   const message = cause instanceof Error ? cause.message.trim() : String(cause);

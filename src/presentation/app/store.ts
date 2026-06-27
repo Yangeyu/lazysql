@@ -17,6 +17,7 @@ import type {
   ObjectRef,
   ObjectSchema,
 } from '../../domain/datasource/schema.ts';
+import { columnsOf, sectionsFor } from '../../domain/datasource/schema.ts';
 import type { RowKey, FieldValue } from '../../domain/datasource/edit.ts';
 import {
   buildTree,
@@ -395,25 +396,33 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         sort: null,
         filter: null,
         pkColumns: [],
-        mainTab: 'data',
         structure: null,
         structureError: null,
       });
-      // Primary-key columns gate editing; a table without one is read-only.
+      // One describe decides everything: an object with a column section has rows
+      // (browse it into the grid); a source-only object (index/trigger/…) has
+      // none, so we skip the browse and show its definition in the structure tab.
+      let schema: ObjectSchema | null = null;
       const introspectable = asIntrospectable(active);
       if (introspectable) {
         try {
-          const schema = await introspectable.describe(ref);
-          set({
-            pkColumns: schema.columns
-              .filter((c) => c.isPrimaryKey)
-              .map((c) => c.name),
-          });
+          schema = await introspectable.describe(ref);
         } catch {
-          /* leave pkColumns empty → editing disabled for this table */
+          /* describe failed → treat as browsable; load() surfaces any error */
         }
       }
-      await load(ref, { page: firstPage(PAGE_SIZE), sort: null, filter: null });
+      const columns = schema ? columnsOf(schema) : [];
+      set({
+        structure: schema, // cache for the structure/DDL view
+        pkColumns: columns.filter((c) => c.isPrimaryKey).map((c) => c.name),
+      });
+      if (!schema || columns.length > 0) {
+        set({ mainTab: 'data' });
+        await load(ref, { page: firstPage(PAGE_SIZE), sort: null, filter: null });
+      } else {
+        // No rows to browse — present the definition only.
+        set({ current: ref, result: null, total: 0, browseSql: null, mainTab: 'ddl' });
+      }
     };
 
     /** Lazily fetch the open object's column schema for the DDL tab (cached). */
@@ -498,13 +507,18 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       if (!introspectable) return;
       try {
         const snapshot = await introspectable.introspect();
-        const tables = snapshot.objects.map((o) => o.name);
+        // Completion only wants column-bearing objects (tables/views), not the
+        // index/trigger/… kinds that have no columns.
+        const relations = snapshot.objects.filter((o) =>
+          sectionsFor(o.kind).includes('columns'),
+        );
+        const tables = relations.map((o) => o.name);
         const columnsByTable: Record<string, string[]> = {};
         await Promise.all(
-          snapshot.objects.slice(0, 50).map(async (o) => {
+          relations.slice(0, 50).map(async (o) => {
             try {
               const schema = await introspectable.describe(o);
-              columnsByTable[o.name] = schema.columns.map((c) => c.name);
+              columnsByTable[o.name] = columnsOf(schema).map((c) => c.name);
             } catch {
               /* skip a table we cannot describe */
             }
@@ -798,6 +812,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       },
 
       toggleMainTab: () => {
+        // A source-only object (index/trigger/…) has no Data tab to flip to — the
+        // structure (its definition) is all there is, so the toggle is inert.
+        const s = get().structure;
+        if (s && columnsOf(s).length === 0) return;
         const next = get().mainTab === 'data' ? 'ddl' : 'data';
         set({ mainTab: next });
         if (next === 'ddl') void loadStructure();

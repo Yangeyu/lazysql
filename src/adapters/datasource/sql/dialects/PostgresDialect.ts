@@ -98,6 +98,16 @@ export class PostgresDialect implements Dialect {
     }));
   }
 
+  sourceQuery(ref: ObjectRef): Query {
+    // Views are the only source-bearing kind introspected today; index/trigger/
+    // routine definitions (pg_get_*) arrive with their catalog introspection.
+    return sql(
+      `SELECT view_definition FROM information_schema.views
+       WHERE table_schema = $1 AND table_name = $2`,
+      [ref.namespace ?? DEFAULT_SCHEMA, ref.name],
+    );
+  }
+
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {
     const where = buildWhere(spec.filter, quoteIdent, ph, 'ILIKE');
     const n = where.params.length;

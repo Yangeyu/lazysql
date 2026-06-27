@@ -39,7 +39,10 @@ const fakePg: DataSource & SchemaIntrospectable = {
       { name: 'audit', kind: 'table', namespace: 'drizzle' },
     ],
   }),
-  describe: async () => ({ ref: { name: 'users', kind: 'table' }, columns: [] }),
+  describe: async () => ({
+    ref: { name: 'users', kind: 'table' as const },
+    detail: [{ kind: 'columns' as const, columns: [] }],
+  }),
 };
 
 const service: ConnectionService = {

@@ -135,7 +135,7 @@ export class RedisDataSource
   }
 
   async describe(ref: ObjectRef): Promise<ObjectSchema> {
-    return { ref, columns: SCHEMA_COLUMNS };
+    return { ref, detail: [{ kind: 'columns', columns: SCHEMA_COLUMNS }] };
   }
 
   // ── Browsable ─────────────────────────────────────────────────────────────

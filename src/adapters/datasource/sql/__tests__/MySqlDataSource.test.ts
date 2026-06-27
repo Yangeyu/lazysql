@@ -25,6 +25,7 @@ import { browseTable } from '../../../../application/usecases/BrowseTable.ts';
 import { unwrap } from '../../../../shared/Result.ts';
 import { firstPage, sql } from '../../../../domain/query/Query.ts';
 import type { ObjectRef } from '../../../../domain/datasource/schema.ts';
+import { columnsOf } from '../../../../domain/datasource/schema.ts';
 
 const MYSQL_URL =
   process.env.LAZYSQL_MYSQL_URL ??
@@ -87,9 +88,9 @@ myTest('listObjects finds the table in the current database', async () => {
 });
 
 myTest('describe reports the primary key via COLUMN_KEY', async () => {
-  const schema = await asIntrospectable(source)!.describe(widget);
-  const id = schema.columns.find((c) => c.name === 'id');
-  const label = schema.columns.find((c) => c.name === 'label');
+  const cols = columnsOf(await asIntrospectable(source)!.describe(widget));
+  const id = cols.find((c) => c.name === 'id');
+  const label = cols.find((c) => c.name === 'label');
   expect(id?.isPrimaryKey).toBe(true);
   expect(id?.nullable).toBe(false);
   expect(label?.isPrimaryKey).toBe(false);

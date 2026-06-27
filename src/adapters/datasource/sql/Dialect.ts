@@ -27,6 +27,11 @@ export interface Dialect {
   /** Parse the raw result of `describeQuery` into column definitions. */
   parseColumns(raw: RawResult): ColumnDef[];
 
+  /** Query yielding one object's verbatim source/DDL as a single text cell
+   *  (view's SELECT, index/trigger/routine definition). Called only for kinds
+   *  whose `sectionsFor` includes 'source'. */
+  sourceQuery(ref: ObjectRef): Query;
+
   /** Query reading one paginated, optionally sorted/filtered window of rows. */
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query;
   /** Query counting an object's rows under the same optional filter. */

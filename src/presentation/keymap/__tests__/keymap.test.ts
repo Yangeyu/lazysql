@@ -73,9 +73,25 @@ const stub = (over: Partial<AppState> = {}): AppState =>
 
 const env = () => ({ quit: mock(() => {}), copy: mock(() => {}) });
 
-test('dispatchKey: ⌃C quits from any context', () => {
+test('dispatchKey: ⌃C quits from any context but the editor', () => {
   const e = env();
-  dispatchKey(stub({ focus: 'editor' }), key({ name: 'c', ctrl: true }), e);
+  dispatchKey(stub({ focus: 'grid' }), key({ name: 'c', ctrl: true }), e);
+  expect(e.quit).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: ⌃C clears a non-empty editor draft instead of quitting', () => {
+  const s = stub({ focus: 'editor', queryText: 'SELECT 1' });
+  const e = env();
+  dispatchKey(s, key({ name: 'c', ctrl: true }), e);
+  expect(e.quit).not.toHaveBeenCalled();
+  expect(s.setQuery).toHaveBeenCalledWith('');
+});
+
+test('dispatchKey: ⌃C on an already-empty editor quits', () => {
+  const s = stub({ focus: 'editor', queryText: '' });
+  const e = env();
+  dispatchKey(s, key({ name: 'c', ctrl: true }), e);
+  expect(s.setQuery).not.toHaveBeenCalled();
   expect(e.quit).toHaveBeenCalledTimes(1);
 });
 

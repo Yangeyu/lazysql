@@ -174,6 +174,8 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['up'], run: (s) => s.historyPrev() },
       { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['down'], run: (s) => s.historyNext() },
       { keys: '^G', hint: 'ask AI', desc: 'Generate SQL from natural language', match: ['^g'], enabled: (f) => f.nlAvailable, run: (s) => s.beginNl() },
+      // ^C is intercepted ahead of the context loop (dispatchKey) — doc-only here.
+      { keys: '^C', hint: 'clear', desc: 'Clear the editor draft' },
       { keys: 'esc', hint: 'grid', desc: 'Focus the results grid', match: ['escape'], run: (s) => s.focusPane('grid') },
     ],
   },
@@ -282,7 +284,14 @@ export const helpGroups = (context: KeyContext, flags: KeyFlags): KeyGroup[] => 
  * the global keys (navigational contexts only), and finally free-text entry.
  */
 export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void => {
-  if (key.ctrl && key.name === 'c') return env.quit();
+  if (key.ctrl && key.name === 'c') {
+    // In the SQL editor ^C clears a non-empty draft (shell-like); on an already
+    // empty editor — or in any other context — it quits.
+    if (!s.helpOpen && deriveContext(s) === 'editor' && s.queryText !== '') {
+      return s.setQuery('');
+    }
+    return env.quit();
+  }
 
   const ch = printableChar(key);
 

@@ -176,7 +176,7 @@ const QueryEditorImpl = ({
           {nlMode
             ? '⏎ generate SQL (review before running) · esc cancel'
             : focused
-              ? '⏎ run · ^G ask AI · ↑/↓ history · esc grid'
+              ? '⏎ run · ^G ask AI · ↑/↓ history · ^C clear · esc grid'
               : ': focus editor · ⏎ run'}
         </text>
       )}

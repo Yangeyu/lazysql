@@ -16,10 +16,13 @@ export class MySqlDriver implements SqlDriver {
   constructor(private readonly config: PoolOptions | string) {}
 
   async connect(): Promise<void> {
+    // connectionLimit: 1, not a pool: a pool scatters statements across
+    // sessions, so session-scoped state (TEMP tables, SET/@vars, multi-statement
+    // BEGIN…COMMIT) would vanish between queries. Single-user UI ⇒ serialised.
     this.pool =
       typeof this.config === 'string'
         ? createPool(this.config)
-        : createPool({ connectionLimit: 4, ...this.config });
+        : createPool({ connectionLimit: 1, ...this.config });
     const conn = await this.pool.getConnection();
     conn.release();
   }

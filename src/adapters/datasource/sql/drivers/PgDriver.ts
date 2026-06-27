@@ -51,7 +51,10 @@ export class PgDriver implements SqlDriver {
   constructor(private readonly config: PgConnectConfig) {}
 
   async connect(): Promise<void> {
-    const common = { adapter: 'postgres' as const, max: 4, connectionTimeout: 10 };
+    // max: 1, not a pool: a pool scatters statements across backends, so
+    // session-scoped state (TEMP tables, SET/search_path, multi-statement
+    // BEGIN…COMMIT) would vanish between queries. Single-user UI ⇒ serialised.
+    const common = { adapter: 'postgres' as const, max: 1, connectionTimeout: 10 };
     const sql = this.config.connectionString
       ? new SQL({ url: this.config.connectionString, ...common })
       : new SQL({

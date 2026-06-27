@@ -98,7 +98,7 @@ export const App = ({ clipboard }: AppProps) => {
     }),
   );
 
-  const { viewportCols, editorRows, gridBodyRows } = computeLayout(
+  const { viewportCols, editorRows, gridBodyRows, sidebarRows } = computeLayout(
     terminalCols,
     terminalRows,
     queryable,
@@ -155,6 +155,7 @@ export const App = ({ clipboard }: AppProps) => {
         selectedIndex={treeIndex}
         focused={focus === 'sidebar'}
         width={SIDEBAR_WIDTH}
+        viewportRows={sidebarRows}
         onRowClick={(i) => store.getState().clickTree(i)}
         onPaneClick={() => store.getState().focusPane('sidebar')}
       />

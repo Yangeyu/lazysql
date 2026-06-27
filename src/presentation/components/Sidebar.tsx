@@ -13,12 +13,15 @@ import { TextAttributes } from '@opentui/core';
 import type { ObjectKind } from '../../domain/datasource/schema.ts';
 import type { TreeRow } from '../tree/tree.ts';
 import { theme, driverColor } from '../theme/theme.ts';
+import { rowWindow } from '../app/layout.ts';
 
 interface Props {
   rows: TreeRow[];
   selectedIndex: number;
   focused: boolean;
   width: number;
+  /** Tree rows the body can show; the list virtualizes to this height. */
+  viewportRows: number;
   /** A row was clicked (0-based index into `rows`). */
   onRowClick: (index: number) => void;
   /** The pane's chrome/empty space was clicked — focus it. */
@@ -101,45 +104,55 @@ const SidebarImpl = ({
   selectedIndex,
   focused,
   width,
+  viewportRows,
   onRowClick,
   onPaneClick,
-}: Props) => (
-  <box
-    flexDirection="column"
-    width={width}
-    border
-    borderStyle="rounded"
-    borderColor={focused ? theme.borderFocus : theme.border}
-    paddingX={1}
-    onMouseDown={onPaneClick}
-  >
-    <text attributes={TextAttributes.BOLD} fg={focused ? theme.accent : theme.border}>
-      CONNECTIONS
-    </text>
-    {rows.length === 0 ? (
-      <text fg={theme.border}>(no connection)</text>
-    ) : (
-      rows.map((row, i) => {
-        const selected = i === selectedIndex;
-        return (
-          <text
-            key={i}
-            wrapMode="none"
-            selectable
-            attributes={selected && focused ? TextAttributes.INVERSE : undefined}
-            fg={selected && !focused ? theme.accent : undefined}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              onRowClick(i);
-            }}
-          >
-            {selected && !focused ? <span fg={theme.accent}>▎</span> : ' '}
-            {rowContent(row, selected)}
-          </text>
-        );
-      })
-    )}
-  </box>
-);
+}: Props) => {
+  // Vertical virtualization, identical to the DataGrid: render only the window
+  // that fits, scrolled to keep the cursor in view. `i` stays the absolute index
+  // so selection highlight and the click handler address the full `rows`.
+  const vh = Math.max(1, viewportRows);
+  const top = rowWindow(selectedIndex, vh, rows.length);
+  const visible = rows.slice(top, top + vh);
+  return (
+    <box
+      flexDirection="column"
+      width={width}
+      border
+      borderStyle="rounded"
+      borderColor={focused ? theme.borderFocus : theme.border}
+      paddingX={1}
+      onMouseDown={onPaneClick}
+    >
+      <text attributes={TextAttributes.BOLD} fg={focused ? theme.accent : theme.border}>
+        CONNECTIONS
+      </text>
+      {rows.length === 0 ? (
+        <text fg={theme.border}>(no connection)</text>
+      ) : (
+        visible.map((row, vi) => {
+          const i = top + vi;
+          const selected = i === selectedIndex;
+          return (
+            <text
+              key={i}
+              wrapMode="none"
+              selectable
+              attributes={selected && focused ? TextAttributes.INVERSE : undefined}
+              fg={selected && !focused ? theme.accent : undefined}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                onRowClick(i);
+              }}
+            >
+              {selected && !focused ? <span fg={theme.accent}>▎</span> : ' '}
+              {rowContent(row, selected)}
+            </text>
+          );
+        })
+      )}
+    </box>
+  );
+};
 
 export const Sidebar = React.memo(SidebarImpl);

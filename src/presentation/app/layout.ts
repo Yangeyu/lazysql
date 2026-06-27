@@ -16,6 +16,8 @@ export interface Layout {
   readonly editorRows: number;
   /** Grid body rows that fill the results panel exactly. */
   readonly gridBodyRows: number;
+  /** Tree rows the sidebar body can show; drives its vertical virtualization. */
+  readonly sidebarRows: number;
 }
 
 /**
@@ -27,6 +29,9 @@ export interface Layout {
  * gap, and a panel's border + horizontal padding (4); gridBodyRows removes the
  * header (1), status (1), the editor and its gap, and the results panel's own
  * chrome — full border (2) + tab row (1) + grid header (1) + grid divider (1).
+ *
+ * sidebarRows is the full left column (terminal minus header + status = 2) less
+ * the sidebar's own chrome: border (2) + the CONNECTIONS title row (1).
  */
 export const computeLayout = (cols: number, rows: number, queryable: boolean): Layout => {
   const viewportCols = Math.max(24, cols - SIDEBAR_WIDTH - 1 - 4);
@@ -35,7 +40,8 @@ export const computeLayout = (cols: number, rows: number, queryable: boolean): L
   // no longer grows with the query.)
   const editorRows = queryable ? 6 : 0;
   const gridBodyRows = Math.max(3, rows - editorRows - (queryable ? 8 : 7));
-  return { viewportCols, editorRows, gridBodyRows };
+  const sidebarRows = Math.max(1, rows - 5);
+  return { viewportCols, editorRows, gridBodyRows, sidebarRows };
 };
 
 /**

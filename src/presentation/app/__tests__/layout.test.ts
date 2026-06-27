@@ -27,6 +27,12 @@ test('computeLayout floors every pane dimension so a tiny terminal never goes ne
   const tiny = computeLayout(10, 6, true);
   expect(tiny.viewportCols).toBeGreaterThanOrEqual(24);
   expect(tiny.gridBodyRows).toBeGreaterThanOrEqual(3);
+  expect(tiny.sidebarRows).toBeGreaterThanOrEqual(1);
+});
+
+test('computeLayout sizes the sidebar body from the column minus header/status + its chrome', () => {
+  // 40 rows − header(1) − status(1) − sidebar border(2) − CONNECTIONS title(1).
+  expect(computeLayout(100, 40, true).sidebarRows).toBe(35);
 });
 
 test('rowWindow anchors at the top until the cursor passes the fold', () => {

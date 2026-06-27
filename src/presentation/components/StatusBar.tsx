@@ -12,8 +12,6 @@ import { TextAttributes } from '@opentui/core';
 import type { Mode } from '../app/store.ts';
 import { footerHints, type KeyContext, type KeyFlags } from '../keymap/keymap.ts';
 import { theme } from '../theme/theme.ts';
-import { TextInput } from './TextInput.tsx';
-import type { TextField } from '../input/textField.ts';
 
 interface Props {
   width: number;
@@ -26,8 +24,10 @@ interface Props {
   filterInitial: string;
   filterColumn: string | null;
   onFilterSubmit: (value: string) => void;
-  editDraft: TextField;
+  /** Seed value for the cell-edit input (the current cell's value). */
+  editInitial: string;
   editColumn: string | null;
+  onEditSubmit: (value: string) => void;
   pendingMessage: string | null;
 }
 
@@ -71,8 +71,9 @@ const StatusBarImpl = ({
   filterInitial,
   filterColumn,
   onFilterSubmit,
-  editDraft,
+  editInitial,
   editColumn,
+  onEditSubmit,
   pendingMessage,
 }: Props) => {
   // The hint list stays on ONE line: it truncates from the right, so the active
@@ -88,15 +89,23 @@ const StatusBarImpl = ({
     </box>
   );
 
-  // Cell-edit input mode: show the value being typed.
+  // Cell-edit input mode: a native single-line input holds the new value.
   if (mode === 'edit') {
     return bar(
-      <text>
-        <Badge label="edit" bg={theme.magenta} />
-        <span> </span>
-        <span fg={theme.border}>{editColumn ?? '?'} = </span>
-        <TextInput field={editDraft} focused fg={theme.cyan} />
-      </text>,
+      <box flexDirection="row">
+        <text wrapMode="none">
+          <Badge label="edit" bg={theme.magenta} />
+          <span> </span>
+          <span fg={theme.border}>{editColumn ?? '?'} = </span>
+        </text>
+        <input
+          focused
+          value={editInitial}
+          onSubmit={onEditSubmit as never}
+          width={40}
+          textColor={theme.cyan}
+        />
+      </box>,
     );
   }
 

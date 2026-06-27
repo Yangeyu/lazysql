@@ -57,7 +57,6 @@ export const App = () => {
   const filter = useApp((s) => s.filter);
   const mode = useApp((s) => s.mode);
   const connForm = useApp((s) => s.connForm);
-  const editDraft = useApp((s) => s.editDraft);
   const pending = useApp((s) => s.pending);
   const loading = useApp((s) => s.loading);
 
@@ -244,8 +243,12 @@ export const App = () => {
         }
         filterColumn={result?.columns[gridCol]?.name ?? null}
         onFilterSubmit={(v) => void store.getState().commitFilter(v)}
-        editDraft={editDraft}
+        editInitial={(() => {
+          const cell = result?.rows[gridRow]?.[gridCol];
+          return cell == null ? '' : String(cell);
+        })()}
         editColumn={result?.columns[gridCol]?.name ?? null}
+        onEditSubmit={(v) => store.getState().submitEdit(v)}
         pendingMessage={pending?.message ?? null}
       />
       {/* drawn last so it composites on top of every pane and the status bar */}

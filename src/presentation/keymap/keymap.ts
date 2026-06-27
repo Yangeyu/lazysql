@@ -202,10 +202,10 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
   edit: {
     title: 'Edit cell',
     bindings: [
-      { keys: '⏎', hint: 'review', desc: 'Review the change before applying', match: ['return'], run: (s) => s.submitEdit() },
+      // ⏎ is owned by the native <input> (onSubmit) — documentation-only here.
+      { keys: '⏎', hint: 'review', desc: 'Review the change before applying' },
       { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelEdit() },
     ],
-    field: { edit: (s, op) => s.editEdit(op) },
   },
   confirm: {
     title: 'Confirm',

@@ -159,7 +159,6 @@ export interface AppState {
   gridRow: number;
   gridCol: number;
   mode: Mode;
-  editDraft: TextField;
   pkColumns: string[];
   pending: Pending | null;
   loading: boolean;
@@ -251,10 +250,9 @@ export interface AppState {
   /** Apply the filter typed in the native input (empty clears it). */
   commitFilter: (value: string) => Promise<void>;
   beginEdit: () => void;
-  /** Apply a TextField edit to the cell-edit draft. */
-  editEdit: (op: (tf: TextField) => TextField) => void;
   cancelEdit: () => void;
-  submitEdit: () => void;
+  /** Stage the cell edit typed in the native input as a pending confirm. */
+  submitEdit: (value: string) => void;
   beginDelete: () => void;
   confirmPending: () => Promise<void>;
   cancelPending: () => void;
@@ -567,7 +565,6 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       gridRow: 0,
       gridCol: 0,
       mode: 'normal',
-      editDraft: EMPTY,
       pkColumns: [],
       pending: null,
       loading: false,
@@ -975,33 +972,30 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       },
 
       beginEdit: () => {
-        const { result, gridRow, gridCol, pkColumns } = get();
+        const { result, gridCol, pkColumns } = get();
         const column = result?.columns[gridCol]?.name;
         if (!result || !column) return;
         if (pkColumns.length === 0) {
           set({ error: 'table has no primary key — editing disabled' });
           return;
         }
-        const cell = result.rows[gridRow]?.[gridCol];
-        set({ mode: 'edit', error: null, editDraft: field(cell == null ? '' : String(cell)) });
+        // The native <input> holds the draft, seeded with the cell value (derived
+        // in the view); the store keeps no draft of its own.
+        set({ mode: 'edit', error: null });
       },
 
-      editEdit: (op) => set({ editDraft: op(get().editDraft) }),
+      cancelEdit: () => set({ mode: 'normal' }),
 
-      cancelEdit: () => set({ mode: 'normal', editDraft: EMPTY }),
-
-      submitEdit: () => {
-        const { current, result, gridCol, editDraft } = get();
+      submitEdit: (value) => {
+        const { current, result, gridCol } = get();
         const column = result?.columns[gridCol]?.name;
         const key = currentRowKey();
         if (!current || !column || !key) {
-          set({ mode: 'normal', editDraft: EMPTY });
+          set({ mode: 'normal' });
           return;
         }
-        const value = editDraft.value;
         set({
           mode: 'confirm',
-          editDraft: EMPTY,
           pending: {
             message: `UPDATE ${current.name} SET ${column} = '${value}' WHERE ${keyText(key)}`,
             run: async () => {

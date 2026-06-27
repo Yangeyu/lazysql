@@ -21,6 +21,7 @@ import { Root } from './presentation/app/Root.tsx';
 import { createDataSource } from './adapters/datasource/registry.ts';
 import { createSystemClipboard } from './adapters/clipboard/SystemClipboard.ts';
 import { YamlConnectionRepository } from './adapters/persistence/YamlConnectionRepository.ts';
+import { JsonQueryHistoryStore } from './adapters/persistence/JsonQueryHistoryStore.ts';
 import { FileSecretStore } from './adapters/persistence/FileSecretStore.ts';
 import { KeychainSecretStore } from './adapters/persistence/KeychainSecretStore.ts';
 import { connectionsFile, configFile } from './adapters/persistence/paths.ts';
@@ -112,6 +113,7 @@ const die = (message: string): never => {
 // ── boot ──────────────────────────────────────────────────────────────────
 
 const repo = new YamlConnectionRepository();
+const history = new JsonQueryHistoryStore();
 const secrets: SecretStore =
   process.env.LAZYSQL_SECRETS === 'keychain' && KeychainSecretStore.isSupported()
     ? new KeychainSecretStore()
@@ -193,5 +195,6 @@ createRoot(renderer).render(
     initial={initial}
     generator={generator}
     clipboard={createSystemClipboard()}
+    historyStore={history}
   />,
 );

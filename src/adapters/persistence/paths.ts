@@ -18,3 +18,6 @@ export const secretsFile = (): string => join(configDir(), 'secrets.json');
 
 /** Application settings (non-secret), e.g. the NL→SQL provider. */
 export const configFile = (): string => join(configDir(), 'config.yml');
+
+/** Per-connection SQL editor history (non-secret). */
+export const historyFile = (): string => join(configDir(), 'history.json');

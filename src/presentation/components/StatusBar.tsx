@@ -11,7 +11,7 @@ import React from 'react';
 import { TextAttributes } from '@opentui/core';
 import type { Mode } from '../app/store.ts';
 import { footerHints, type KeyContext, type KeyFlags } from '../keymap/keymap.ts';
-import { theme } from '../theme/theme.ts';
+import { theme, INPUT_CURSOR } from '../theme/theme.ts';
 
 interface Props {
   width: number;
@@ -104,6 +104,8 @@ const StatusBarImpl = ({
           onSubmit={onEditSubmit as never}
           width={40}
           textColor={theme.cyan}
+          cursorStyle={INPUT_CURSOR}
+          cursorColor={theme.accent}
         />
       </box>,
     );
@@ -137,6 +139,8 @@ const StatusBarImpl = ({
           onSubmit={onFilterSubmit as never}
           width={40}
           textColor={theme.cyan}
+          cursorStyle={INPUT_CURSOR}
+          cursorColor={theme.accent}
         />
       </box>,
     );

@@ -1,62 +1,129 @@
 /**
- * ConnectionForm — the `n` new-connection modal. A driver selector plus the
- * driver-appropriate fields; navigation and editing live in the store (mode
- * 'connform'), so this only renders the current draft. Submitting persists the
- * profile (and password, kept out of the YAML) via the Workbench.
+ * ConnectionForm — the `n`/`e` connection modal. A driver selector over the
+ * driver-appropriate fields; navigation lives in the store (mode 'connform').
+ *
+ * Every editable field is a native <input> (real cursor, mid-string editing,
+ * the same accent caret as the rest of the app) EXCEPT the password: OpenTUI's
+ * input can't mask, so the one secret field is store-rendered as bullets with a
+ * ^R reveal. The Driver is its own focusable row so ←/→ can cycle it without
+ * stealing the in-field cursor movement the native inputs need.
  */
 
 import React from 'react';
 import { TextAttributes } from '@opentui/core';
-import type { ConnForm } from '../app/store.ts';
-import { theme } from '../theme/theme.ts';
+import { DRIVER_ROW, type ConnForm, type ConnFormField } from '../app/store.ts';
+import { theme, INPUT_CURSOR, driverColor } from '../theme/theme.ts';
+import { dialectLabel, shortTag } from '../tree/tree.ts';
 import { Caret } from './Caret.tsx';
 
-const LABEL_COL = 12;
+const LABEL_COL = 10;
 
-const ConnectionFormImpl = ({ form }: { form: ConnForm }) => {
-  const editing = form.editingId !== null;
+interface Props {
+  readonly form: ConnForm;
+  /** Push a non-secret field edit back to the store (inputs are controlled). */
+  readonly onFieldInput: (key: string, value: string) => void;
+}
+
+/** The masked password field: bullets (or the clear value under ^R), with the
+ *  shared caret. The one field that can't be a native <input> (no mask there). */
+const SecretField = ({
+  field,
+  focused,
+  reveal,
+  editing,
+}: {
+  field: ConnFormField;
+  focused: boolean;
+  reveal: boolean;
+  editing: boolean;
+}) => {
+  const shown = reveal ? field.value : '•'.repeat(field.value.length);
+  // Editing with a blank password keeps the stored secret — say so.
+  const unchanged = field.value.length === 0 && editing ? '(unchanged)' : '';
   return (
-    <box flexDirection="column" flexGrow={1} alignItems="center">
+    <text wrapMode="none" flexGrow={1}>
+      <span fg={theme.cyan}>{shown}</span>
+      <Caret focused={focused} />
+      {unchanged ? <span fg={theme.muted}> {unchanged}</span> : null}
+    </text>
+  );
+};
+
+/** Label cell: a focus marker plus the padded label, accent when its row holds
+ *  the focus so the active row reads at a glance. */
+const Label = ({ text: label, focused }: { text: string; focused: boolean }) => (
+  <text fg={focused ? theme.accent : theme.muted} wrapMode="none">
+    {(focused ? '› ' : '  ') + label.padEnd(LABEL_COL)}
+  </text>
+);
+
+const ConnectionFormImpl = ({ form, onFieldInput }: Props) => {
+  const editing = form.editingId !== null;
+  const driverFocused = form.index === DRIVER_ROW;
+  const driverName = dialectLabel(form.driver);
+  const arrow = driverFocused ? theme.accent : theme.border;
+  return (
+    <box flexDirection="column" flexGrow={1} alignItems="center" justifyContent="center">
       <box
         flexDirection="column"
         border
         borderStyle="rounded"
-        borderColor="cyan"
-        paddingX={2}
+        borderColor={theme.borderFocus}
+        title={editing ? ' Edit connection ' : ' New connection '}
+        paddingX={3}
         paddingY={1}
-        width={54}
+        width={56}
       >
-        <text attributes={TextAttributes.BOLD} fg="cyan">
-          {editing ? 'Edit connection' : 'New connection'}
-        </text>
+        {/* Driver — a focusable row; ←/→ cycles it while it holds the focus. */}
+        <box flexDirection="row">
+          <Label text="Driver" focused={driverFocused} />
+          <text wrapMode="none">
+            <span fg={arrow}>‹ </span>
+            <span fg={driverColor(shortTag(driverName))} attributes={TextAttributes.BOLD}>
+              {driverName}
+            </span>
+            <span fg={arrow}> ›</span>
+          </text>
+        </box>
+
         <text> </text>
-        <text>
-          <span fg={theme.muted}>{'Driver'.padEnd(LABEL_COL)}</span>
-          <span fg="yellow">◂ {form.driver} ▸</span>
-        </text>
+
         {form.fields.map((f, i) => {
-          const selected = i === form.index;
-          const shown = f.secret ? '•'.repeat(f.value.length) : f.value;
-          // When editing, an empty password keeps the stored one — say so.
-          const placeholder =
-            f.secret && editing && f.value.length === 0 ? '(unchanged)' : '';
+          const focused = form.index === i;
           return (
-            <text key={f.key} wrapMode="none">
-              <span fg={theme.muted}>{f.label.padEnd(LABEL_COL)}</span>
-              <span
-                attributes={selected ? TextAttributes.INVERSE : undefined}
-                fg={selected ? 'cyan' : undefined}
-              >
-                {shown || ' '}
-              </span>
-              {placeholder ? <span fg={theme.muted}> {placeholder}</span> : null}
-              <Caret focused={selected} />
-            </text>
+            <box key={f.key} flexDirection="row">
+              <Label text={f.label} focused={focused} />
+              {f.secret ? (
+                <SecretField field={f} focused={focused} reveal={form.reveal} editing={editing} />
+              ) : focused ? (
+                // Only the focused field is a live <input>; mounting one at a time
+                // keeps native focus from lingering on a field we've navigated off.
+                <input
+                  value={f.value}
+                  onInput={(v) => onFieldInput(f.key, v)}
+                  focused
+                  textColor={theme.cyan}
+                  cursorStyle={INPUT_CURSOR}
+                  cursorColor={theme.accent}
+                  flexGrow={1}
+                />
+              ) : (
+                <text wrapMode="none" flexGrow={1} fg={theme.cyan}>
+                  {f.value}
+                </text>
+              )}
+            </box>
           );
         })}
-        {form.error ? <text fg="red">{form.error}</text> : null}
-        <text> </text>
-        <text fg={theme.muted}>↑/↓ field · ←/→ driver · ⏎ save · esc cancel</text>
+
+        {form.error ? (
+          <box flexDirection="column">
+            <text> </text>
+            <text fg={theme.red} wrapMode="none">
+              ⚠ {form.error}
+            </text>
+          </box>
+        ) : null}
       </box>
     </box>
   );

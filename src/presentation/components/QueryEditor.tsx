@@ -25,7 +25,7 @@ import {
   isDestructive,
   type StatementKind,
 } from '../../domain/query/classify.ts';
-import { theme } from '../theme/theme.ts';
+import { theme, INPUT_CURSOR } from '../theme/theme.ts';
 
 interface Props {
   /** The committed query text the SQL input is bound to (it owns the cursor). */
@@ -109,6 +109,8 @@ const QueryEditorImpl = ({
             onSubmit={onNlSubmit as never}
             flexGrow={1}
             textColor={theme.cyan}
+            cursorStyle={INPUT_CURSOR}
+            cursorColor={theme.accent}
           />
         </box>
       ) : (
@@ -148,6 +150,8 @@ const QueryEditorImpl = ({
           placeholder={browsePreview ?? ''}
           placeholderColor={theme.muted}
           textColor={theme.cyan}
+          cursorStyle={INPUT_CURSOR}
+          cursorColor={theme.accent}
           flexGrow={1}
         />
       </box>

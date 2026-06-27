@@ -98,9 +98,9 @@ export interface KeyBinding {
   readonly enabled?: (f: KeyFlags) => boolean;
 }
 
-/** Append-only text entry (a field with no cursor of its own, e.g. the
- *  connection form, where ←/→ are bound to driver switching). Kept off the
- *  documented `bindings` so it never clutters the footer. */
+/** Raw char entry for a field with no native <input> of its own — only the
+ *  connection form's masked secret field, which is store-rendered as bullets.
+ *  Kept off the documented `bindings` so it never clutters the footer. */
 export interface TextEntry {
   readonly onChar: (s: AppState, ch: string) => void;
   readonly onErase: (s: AppState) => void;
@@ -198,10 +198,11 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
   connform: {
     title: 'New connection',
     bindings: [
-      { keys: '↑/↓', hint: 'field', desc: 'Move between fields', match: ['up'], run: (s) => s.connFormMove(-1) },
-      { keys: '↑/↓', hint: 'field', desc: 'Move between fields', match: ['down', 'tab'], run: (s) => s.connFormMove(1) },
-      { keys: '←/→', hint: 'driver', desc: 'Change the driver', match: ['left'], run: (s) => s.connFormCycleDriver(-1) },
-      { keys: '←/→', hint: 'driver', desc: 'Change the driver', match: ['right'], run: (s) => s.connFormCycleDriver(1) },
+      { keys: '↑/↓', hint: 'field', desc: 'Move between the driver and fields', match: ['up'], run: (s) => s.connFormMove(-1) },
+      { keys: '↑/↓', hint: 'field', desc: 'Move between the driver and fields', match: ['down', 'tab'], run: (s) => s.connFormMove(1) },
+      { keys: '←/→', hint: 'driver', desc: 'Change the driver (on the Driver row)', match: ['left'], run: (s) => s.connFormCycleDriver(-1) },
+      { keys: '←/→', hint: 'driver', desc: 'Change the driver (on the Driver row)', match: ['right'], run: (s) => s.connFormCycleDriver(1) },
+      { keys: '^R', hint: 'reveal', desc: 'Show/hide the password', match: ['^r'], run: (s) => s.connFormToggleReveal() },
       { keys: '⏎', hint: 'save', desc: 'Save the connection', match: ['return'], run: (s) => void s.connFormSubmit() },
       { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.connFormCancel() },
     ],
@@ -298,8 +299,8 @@ export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void 
       if (b.run && usable(b, flags) && hits(b, key, ch)) return b.run(s, env);
     }
   }
-  // Append-only field (the connection form): the native inputs own their own
-  // editing, so the only text entry the dispatcher still routes is this one.
+  // The native <input>s own their own editing; the only text the dispatcher
+  // still routes is the connection form's masked secret field (no input there).
   if (group.text) {
     if (key.name === 'backspace' || key.name === 'delete') group.text.onErase(s);
     else if (ch !== null) group.text.onChar(s, ch);

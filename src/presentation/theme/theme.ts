@@ -38,6 +38,17 @@ export const theme = {
  */
 export const CARET = '▏';
 
+/**
+ * The native `<input>` text cursor: a steady (non-blinking) thin vertical bar in
+ * the brand accent — the same I-beam look as `CARET`, but drawn by OpenTUI's
+ * cursor renderer instead of a glyph. Without this every input falls back to the
+ * EditBuffer default (a blinking block in the terminal's own colour); one source
+ * of truth here keeps all four inputs (filter / edit / NL ask / SQL) identical.
+ * `cursorColor` is a sibling prop (the style's own `color` is for the global
+ * renderer cursor); pass `cursorColor={theme.accent}` alongside.
+ */
+export const INPUT_CURSOR = { style: 'line', blinking: false } as const;
+
 /** A short, per-driver colour for the connection's badge chip. */
 export const driverColor = (tag: string): string =>
   ({

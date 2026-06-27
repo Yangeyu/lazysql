@@ -121,7 +121,10 @@ export const App = () => {
   // The persistent background — ALWAYS rendered, so the `?` help and the cell
   // inspector float OVER it (lazygit-style) rather than replacing it.
   const background = connForm ? (
-    <ConnectionForm form={connForm} />
+    <ConnectionForm
+      form={connForm}
+      onFieldInput={(k, v) => store.getState().connFormSetField(k, v)}
+    />
   ) : status === 'connecting' ? (
     <box flexGrow={1} alignItems="center" justifyContent="center">
       <text fg={theme.yellow}>◢◣◤◥ connecting…</text>

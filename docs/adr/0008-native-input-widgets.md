@@ -43,17 +43,30 @@ ADR 0007 把可编辑文本建模成自绘的 `TextField { value, cursor }`：st
 
 ### 3. 删除自绘栈
 
-`textField.ts`、`wrap.ts`、`TextInput.tsx` 及其测试全部删除；keymap 的 `FieldEntry` / 文本路由
-（`field.edit`）随之移除（连接表单仍用 append-only 的 `text` 入口 + 字形光标，见代价 2）。
+`textField.ts`、`wrap.ts`、`TextInput.tsx` 及其测试全部删除。
+
+### 4. 连接表单也迁到原生 `<input>`（含驱动选择行 + 一个特殊的密码字段）
+
+连接表单原是迁移前遗留的 append-only 字形光标，**本次一并归一**：每个非密码字段是聚焦时挂载的原生
+`<input>`（受控，值存 store；同一时刻只挂一个，避免离开字段后原生焦点滞留导致按键串入），获得真光标 /
+中间编辑 / 与全仓一致的 accent 竖线。两处刻意保留差异：
+
+- **Driver 成为可聚焦的一行**（`index === DRIVER_ROW`）。`←/→` 只在它聚焦时切换驱动 → 文本框里的 `←/→`
+  归还给光标移动，**冲突消除**；驱动显示全称（PostgreSQL）。
+- **密码字段是唯一的例外**：OpenTUI 原生 `<input>` **无掩码能力**（core 无 mask/password/echo），
+  所以这一个 secret 字段仍由 store 渲染成 `•` 圆点（dispatcher 的 `text` 入口只为它路由原始字符，
+  且仅在聚焦字段确为 secret 时生效），并加 `^R` 临时显形以便核对。这是「有特殊意义」的诚实建模。
 
 ## 代价 / 边界（记录在案）
 
 1. **SQL 编辑器变单行**。`<input>` 单行、Enter=运行（与既有行为一致——之前 Enter 也是运行、不能输入换行），
    但失去了「多行折行**显示**」的观感，改为水平滚动。`<textarea>` 能保留多行显示，但实测它**不暴露 onInput**
    （拿不到实时值，补全要不到），且 Enter 需改键、↑/↓ 与历史冲突——代价更大，故选 `<input>`。编辑器面板因此固定为 6 行。
-2. **连接表单暂未迁移**。它是多字段表单、`←/→` 绑定切 driver，与单行 input 模型不契合，仍保留 append-only
-   渲染 + 末尾字形光标（append-only 不跳，可接受）。是不同 widget 的诚实建模，非半迁移。
-3. **硬件光标样式**：现用 widget 默认光标；如需统一成 block/line，可经 `renderer.setCursorStyle` 设置（未做）。
+2. **密码字段不能中间编辑**。掩码在 OpenTUI 里没有原生支持，故 secret 字段是 store 渲染的 append-only 圆点
+   （`^R` 可显形核对）；这是它与其它原生 `<input>` 字段唯一的机制差异，由掩码这一特殊意义决定。
+3. **光标样式已统一**：所有原生 `<input>` 经 `INPUT_CURSOR`（`cursorStyle={{style:'line',blinking:false}}`
+   + `cursorColor={accent}`）画成稳定的 accent 竖线；密码字段的字形 `Caret`（`▏` accent）是它在不能用真光标
+   处的同形镜像。
 
 ## 结论
 

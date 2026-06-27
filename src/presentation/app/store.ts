@@ -73,11 +73,20 @@ export interface ConnFormField {
   readonly secret?: boolean;
 }
 
+/** Focus index of the Driver selector row — it sits above the fields, so the
+ *  navigable range is [DRIVER_ROW, fields.length-1]. ←/→ only cycles the driver
+ *  while it's focused, which keeps ←/→ free for in-field cursor movement on the
+ *  native <input> fields below. */
+export const DRIVER_ROW = -1;
+
 /** Draft state for the new-connection form (mode === 'connform'). */
 export interface ConnForm {
   driver: DriverId;
   fields: ConnFormField[];
+  /** Focused row: DRIVER_ROW for the driver selector, else a field index. */
   index: number;
+  /** Whether the secret (password) field shows its value instead of bullets. */
+  reveal: boolean;
   error: string | null;
   /** Id of the profile being edited, or null when creating a new one. */
   editingId: string | null;
@@ -227,10 +236,15 @@ export interface AppState {
   beginNewConnection: () => void;
   /** Edit the connection under the cursor: open the form prefilled from it. */
   beginEditConnection: () => void;
+  /** Set a non-secret field's value (the native <input> is controlled). */
+  connFormSetField: (key: string, value: string) => void;
+  /** Append/erase for the masked secret field only (no native input there). */
   connFormType: (ch: string) => void;
   connFormBackspace: () => void;
   connFormMove: (delta: 1 | -1) => void;
   connFormCycleDriver: (dir: 1 | -1) => void;
+  /** Toggle showing the password in clear (^R) to verify what was typed. */
+  connFormToggleReveal: () => void;
   connFormSubmit: () => Promise<void>;
   connFormCancel: () => void;
   /** Move focus to a pane (`:`/Esc/click); gates the editor on `queryable`. */
@@ -776,6 +790,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             driver,
             fields: fieldsForDriver(driver),
             index: 0,
+            reveal: false,
             error: null,
             editingId: null,
           },
@@ -798,15 +813,26 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             driver: profile.driver,
             fields: fieldsForProfile(profile),
             index: 0,
+            reveal: false,
             error: null,
             editingId: profile.id,
           },
         });
       },
 
-      connFormType: (ch) => {
+      connFormSetField: (key, value) => {
         const f = get().connForm;
         if (!f) return;
+        const fields = f.fields.map((x) => (x.key === key ? { ...x, value } : x));
+        set({ connForm: { ...f, fields } });
+      },
+
+      // The non-secret fields are native <input>s that own their own editing;
+      // the dispatcher only routes raw chars here for the masked secret field,
+      // so these no-op unless the focused field is actually secret.
+      connFormType: (ch) => {
+        const f = get().connForm;
+        if (!f || !f.fields[f.index]?.secret) return;
         const fields = f.fields.map((field, i) =>
           i === f.index ? { ...field, value: field.value + ch } : field,
         );
@@ -815,7 +841,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       connFormBackspace: () => {
         const f = get().connForm;
-        if (!f) return;
+        if (!f || !f.fields[f.index]?.secret) return;
         const fields = f.fields.map((field, i) =>
           i === f.index ? { ...field, value: field.value.slice(0, -1) } : field,
         );
@@ -825,13 +851,18 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       connFormMove: (delta) => {
         const f = get().connForm;
         if (!f) return;
-        const index = Math.max(0, Math.min(f.fields.length - 1, f.index + delta));
+        const index = Math.max(
+          DRIVER_ROW,
+          Math.min(f.fields.length - 1, f.index + delta),
+        );
         set({ connForm: { ...f, index } });
       },
 
+      // Only acts while the Driver row is focused — otherwise ←/→ belongs to the
+      // focused field's <input> cursor. Stays on the Driver row after cycling.
       connFormCycleDriver: (dir) => {
         const f = get().connForm;
-        if (!f) return;
+        if (!f || f.index !== DRIVER_ROW) return;
         const at = FORM_DRIVERS.indexOf(f.driver);
         const driver =
           FORM_DRIVERS[(at + dir + FORM_DRIVERS.length) % FORM_DRIVERS.length]!;
@@ -840,7 +871,13 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         const fields = fieldsForDriver(driver).map((x) =>
           x.key === 'name' ? { ...x, value: name } : x,
         );
-        set({ connForm: { ...f, driver, fields, index: 0 } });
+        set({ connForm: { ...f, driver, fields, index: DRIVER_ROW } });
+      },
+
+      connFormToggleReveal: () => {
+        const f = get().connForm;
+        if (!f) return;
+        set({ connForm: { ...f, reveal: !f.reveal } });
       },
 
       connFormCancel: () => set({ mode: 'normal', connForm: null }),

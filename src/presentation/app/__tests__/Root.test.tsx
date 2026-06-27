@@ -99,6 +99,52 @@ test('n opens the new-connection form and persists a profile', async () => {
   h.cleanup();
 });
 
+test('the Driver row cycles the driver with →, carrying the typed name', async () => {
+  const saved: ConnectionProfile[] = [];
+  const h = await renderTest(<Root connectionService={makeService(saved)} />);
+  await h.until((f) => f.includes('TestDB'));
+
+  h.press('n');
+  await h.until((f) => f.includes('PostgreSQL')); // opens on the default driver
+  await h.type('box'); // into the Name <input>
+  await h.flush();
+
+  h.arrow('up'); // focus the Driver row (above the fields)
+  h.arrow('right'); // cycle postgres → mysql
+  await h.until((f) => f.includes('MySQL'));
+
+  h.enter(); // save from the Driver row
+  await h.until((f) => f.includes('box'));
+  expect(saved).toHaveLength(1);
+  expect(saved[0]!.name).toBe('box'); // name carried across the driver change
+  expect(saved[0]!.driver).toBe('mysql');
+  h.cleanup();
+});
+
+test('the password field masks its value; ^R reveals it', async () => {
+  const h = await renderTest(<Root connectionService={makeService()} />);
+  await h.until((f) => f.includes('TestDB'));
+
+  h.press('n');
+  await h.until((f) => f.includes('PostgreSQL'));
+  // Name → Host → Port → User → Password (the secret field).
+  for (let i = 0; i < 4; i++) {
+    h.arrow('down');
+    await h.flush();
+  }
+  await h.until((f) => f.includes('› Password')); // focus parked on the secret field
+  await h.type('pw');
+  await h.flush();
+
+  const masked = h.frame();
+  expect(masked).toContain('••'); // shown as bullets…
+  expect(masked).not.toContain('pw'); // …never in the clear
+
+  h.ctrl('r'); // ^R reveal
+  await h.until((f) => f.includes('pw'));
+  h.cleanup();
+});
+
 test('NL→SQL fills the editor with generated SQL for review (never auto-runs)', async () => {
   const fakeGen: SqlGenerator = {
     generate: async () => ({

@@ -1,6 +1,6 @@
 /**
  * SqlGenerator backed by any OpenAI-compatible /chat/completions endpoint.
- * ONE adapter serves every OpenAI-compatible provider — Bailian (Qwen),
+ * ONE adapter serves every OpenAI-compatible provider — Alibaba (Qwen),
  * DeepSeek, Moonshot/Kimi, a local Ollama/vLLM — each is just a different
  * { baseURL, model, apiKey } preset (see presets.ts). Uses forced function
  * calling to get a typed { sql, explanation } back, with a defensive fallback
@@ -23,7 +23,7 @@ export interface OpenAiCompatibleConfig {
   /** Base URL up to and including `/v1` (no trailing slash). */
   readonly baseURL: string;
   readonly model: string;
-  /** Stable id for diagnostics / tests, e.g. 'bailian'. */
+  /** Stable id for diagnostics / tests, e.g. 'alibaba'. */
   readonly provider: string;
 }
 

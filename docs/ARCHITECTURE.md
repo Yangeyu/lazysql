@@ -304,7 +304,7 @@ src/
       prompt.ts                       # 跨 provider 共享的 system/user prompt
       providers/                      # 具体 provider 实现（dialects/drivers 类比）
         AnthropicSqlGenerator.ts      #   Claude，官方 @anthropic-ai/sdk
-        OpenAiCompatibleSqlGenerator.ts # 一类 provider：Bailian(Qwen)/DeepSeek/Ollama…
+        OpenAiCompatibleSqlGenerator.ts # 一类 provider：Alibaba(Qwen)/OpenAI/DeepSeek…
         presets.ts                    #   OpenAI 兼容 preset 注册表（OCP 扩展点）
     completion/SchemaAwareCompleter.ts
     persistence/

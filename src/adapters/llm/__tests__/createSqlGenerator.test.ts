@@ -17,9 +17,9 @@ test('nothing configured → null (NL→SQL stays disabled)', () => {
   expect(createSqlGenerator({})).toBeNull();
 });
 
-test('auto-detect prefers Qwen (Bailian) when DASHSCOPE_API_KEY is set', () => {
+test('auto-detect prefers Qwen (Alibaba) when DASHSCOPE_API_KEY is set', () => {
   const g = createSqlGenerator({ DASHSCOPE_API_KEY: 'sk-d' });
-  expect(diag(g).provider).toBe('bailian');
+  expect(diag(g).provider).toBe('alibaba');
   expect(diag(g).model).toBe('qwen3.7-plus');
   expect(diag(g).baseURL).toBe(DASHSCOPE_URL);
 });
@@ -31,7 +31,7 @@ test('auto-detect falls back to Claude when only ANTHROPIC_API_KEY is set', () =
 
 test('with both keys present, Qwen wins by default', () => {
   const g = createSqlGenerator({ DASHSCOPE_API_KEY: 'sk-d', ANTHROPIC_API_KEY: 'sk-a' });
-  expect(diag(g).provider).toBe('bailian');
+  expect(diag(g).provider).toBe('alibaba');
 });
 
 test('explicit LAZYSQL_LLM_PROVIDER=anthropic overrides auto-detect', () => {
@@ -44,7 +44,7 @@ test('explicit LAZYSQL_LLM_PROVIDER=anthropic overrides auto-detect', () => {
 });
 
 test('explicit provider without its API key → null', () => {
-  expect(createSqlGenerator({ LAZYSQL_LLM_PROVIDER: 'bailian' })).toBeNull();
+  expect(createSqlGenerator({ LAZYSQL_LLM_PROVIDER: 'alibaba' })).toBeNull();
 });
 
 test('unknown provider id → null (even if another key is present)', () => {
@@ -88,5 +88,5 @@ test('auto-detect precedence keeps Qwen ahead of OpenAI and DeepSeek', () => {
     OPENAI_API_KEY: 'sk-o',
     DEEPSEEK_API_KEY: 'sk-ds',
   });
-  expect(diag(g).provider).toBe('bailian');
+  expect(diag(g).provider).toBe('alibaba');
 });

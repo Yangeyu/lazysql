@@ -4,7 +4,7 @@
  * choice of provider out of the application core. (DIP / OCP — ADR-0004)
  *
  * Selection order:
- *   1. LAZYSQL_LLM_PROVIDER=anthropic|bailian|openai|deepseek|…   explicit choice
+ *   1. LAZYSQL_LLM_PROVIDER=anthropic|alibaba|openai|deepseek|…   explicit choice
  *   2. else auto-detect by which API key is present (AUTO_DETECT order, Anthropic last)
  *   3. else null → NL→SQL stays disabled (the ^G hint is hidden)
  *
@@ -16,7 +16,7 @@ import { AnthropicSqlGenerator } from './providers/AnthropicSqlGenerator.ts';
 import { OpenAiCompatibleSqlGenerator } from './providers/OpenAiCompatibleSqlGenerator.ts';
 import {
   OPENAI_COMPATIBLE_PRESETS,
-  BAILIAN,
+  ALIBABA,
   OPENAI,
   DEEPSEEK,
   type OpenAiCompatiblePreset,
@@ -24,7 +24,7 @@ import {
 
 /** Key-presence auto-detect precedence (Qwen kept first for back-compat). The
  *  first preset whose API key is set wins; Anthropic is tried after these. */
-const AUTO_DETECT: readonly OpenAiCompatiblePreset[] = [BAILIAN, OPENAI, DEEPSEEK];
+const AUTO_DETECT: readonly OpenAiCompatiblePreset[] = [ALIBABA, OPENAI, DEEPSEEK];
 
 type Env = Record<string, string | undefined>;
 

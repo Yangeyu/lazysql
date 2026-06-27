@@ -22,12 +22,13 @@ export interface OpenAiCompatiblePreset {
 }
 
 /**
- * Alibaba Cloud Bailian (Model Studio) — the Qwen family, served over DashScope's
- * OpenAI-compatible endpoint. Use the `-intl` host from outside mainland China.
+ * Alibaba Cloud (Model Studio / Bailian) — the Qwen family, served over
+ * DashScope's OpenAI-compatible endpoint. Use the `-intl` host from outside
+ * mainland China.
  */
-export const BAILIAN: OpenAiCompatiblePreset = {
-  id: 'bailian',
-  label: 'Bailian (Qwen)',
+export const ALIBABA: OpenAiCompatiblePreset = {
+  id: 'alibaba',
+  label: 'Alibaba Cloud (Qwen)',
   baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   apiKeyEnv: 'DASHSCOPE_API_KEY',
   defaultModel: 'qwen3.7-plus',
@@ -55,7 +56,7 @@ export const DEEPSEEK: OpenAiCompatiblePreset = {
 export const OPENAI_COMPATIBLE_PRESETS: Readonly<
   Record<string, OpenAiCompatiblePreset>
 > = {
-  [BAILIAN.id]: BAILIAN,
+  [ALIBABA.id]: ALIBABA,
   [OPENAI.id]: OPENAI,
   [DEEPSEEK.id]: DEEPSEEK,
 };

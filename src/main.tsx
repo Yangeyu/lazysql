@@ -84,7 +84,7 @@ const DEFAULT_APP_CONFIG = `# lazysql application settings (non-secret).
 # NL→SQL provider. Uncomment to pin one; otherwise it is auto-detected from
 # whichever API key is present. An exported LAZYSQL_LLM_* var overrides this.
 # llm:
-#   provider: openai        # bailian | openai | deepseek | anthropic
+#   provider: openai        # alibaba | openai | deepseek | anthropic
 #   model: gpt-4o           # optional model override
 #   baseUrl: https://api.openai.com/v1   # optional endpoint override
 `;

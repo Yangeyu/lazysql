@@ -18,6 +18,7 @@ import { sql } from '../../../../domain/query/Query.ts';
 import type {
   ObjectRef,
   ColumnDef,
+  ObjectKind,
 } from '../../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
 import type { RawResult } from '../Driver.ts';
@@ -46,22 +47,41 @@ export class PostgresDialect implements Dialect {
   readonly id = 'postgres';
 
   listObjectsQuery(): Query {
+    // One UNION yields a uniform (ns, name, kind) row per object across every
+    // catalog, so parseObjects reads the kind directly. User schemas only.
     return sql(
-      `SELECT table_schema, table_name, table_type
-       FROM information_schema.tables
-       WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-       ORDER BY table_schema, table_type, table_name`,
+      `SELECT table_schema AS ns, table_name AS name,
+              CASE table_type WHEN 'VIEW' THEN 'view' ELSE 'table' END AS kind
+         FROM information_schema.tables
+        WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+       UNION ALL
+       SELECT schemaname, indexname, 'index'
+         FROM pg_indexes
+        WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+       UNION ALL
+       SELECT sequence_schema, sequence_name, 'sequence'
+         FROM information_schema.sequences
+        WHERE sequence_schema NOT IN ('pg_catalog', 'information_schema')
+       UNION ALL
+       SELECT DISTINCT trigger_schema, trigger_name, 'trigger'
+         FROM information_schema.triggers
+        WHERE trigger_schema NOT IN ('pg_catalog', 'information_schema')
+       UNION ALL
+       SELECT routine_schema, routine_name, 'procedure'
+         FROM information_schema.routines
+        WHERE routine_schema NOT IN ('pg_catalog', 'information_schema')
+       ORDER BY ns, kind, name`,
     );
   }
 
   parseObjects(raw: RawResult): ObjectRef[] {
-    const iSchema = col(raw, 'table_schema');
-    const iName = col(raw, 'table_name');
-    const iType = col(raw, 'table_type');
+    const iNs = col(raw, 'ns');
+    const iName = col(raw, 'name');
+    const iKind = col(raw, 'kind');
     return raw.rows.map((r) => ({
-      namespace: String(r[iSchema]),
+      namespace: String(r[iNs]),
       name: String(r[iName]),
-      kind: r[iType] === 'VIEW' ? ('view' as const) : ('table' as const),
+      kind: String(r[iKind]) as ObjectKind,
     }));
   }
 
@@ -99,13 +119,49 @@ export class PostgresDialect implements Dialect {
   }
 
   sourceQuery(ref: ObjectRef): Query {
-    // Views are the only source-bearing kind introspected today; index/trigger/
-    // routine definitions (pg_get_*) arrive with their catalog introspection.
-    return sql(
-      `SELECT view_definition FROM information_schema.views
-       WHERE table_schema = $1 AND table_name = $2`,
-      [ref.namespace ?? DEFAULT_SCHEMA, ref.name],
-    );
+    const args = [ref.namespace ?? DEFAULT_SCHEMA, ref.name];
+    switch (ref.kind) {
+      case 'index':
+        return sql(
+          `SELECT pg_get_indexdef(c.oid)
+             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'i'`,
+          args,
+        );
+      case 'trigger':
+        return sql(
+          `SELECT pg_get_triggerdef(t.oid)
+             FROM pg_trigger t
+             JOIN pg_class c ON c.oid = t.tgrelid
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = $1 AND t.tgname = $2 AND NOT t.tgisinternal
+            LIMIT 1`,
+          args,
+        );
+      case 'procedure':
+        return sql(
+          `SELECT pg_get_functiondef(p.oid)
+             FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = $1 AND p.proname = $2
+            LIMIT 1`,
+          args,
+        );
+      case 'sequence':
+        return sql(
+          `SELECT format(
+              'CREATE SEQUENCE %I.%I START %s INCREMENT %s MINVALUE %s MAXVALUE %s%s;',
+              schemaname, sequencename, start_value, increment_by, min_value, max_value,
+              CASE WHEN cycle THEN ' CYCLE' ELSE '' END)
+             FROM pg_sequences WHERE schemaname = $1 AND sequencename = $2`,
+          args,
+        );
+      default: // view
+        return sql(
+          `SELECT view_definition FROM information_schema.views
+            WHERE table_schema = $1 AND table_name = $2`,
+          args,
+        );
+    }
   }
 
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {

@@ -64,12 +64,26 @@ beforeAll(async () => {
   // Seed via the adapter's own Queryable path (also exercises execute()).
   const queryable = asQueryable(source)!;
   const exec = (text: string) => queryable.execute(sql(text));
-  await exec('DROP TABLE IF EXISTS widget');
+  await exec('DROP TABLE IF EXISTS widget CASCADE'); // also drops its view/index/trigger
+  await exec('DROP SEQUENCE IF EXISTS counter');
+  await exec('DROP FUNCTION IF EXISTS inc(integer)');
+  await exec('DROP FUNCTION IF EXISTS trg()');
   await exec(
     'CREATE TABLE widget (id serial PRIMARY KEY, label text, qty integer)',
   );
   await exec(
     "INSERT INTO widget (label, qty) SELECT 'w' || g, g FROM generate_series(1, 25) g",
+  );
+  // The non-table kinds the catalog introspection + definition path must surface.
+  await exec('CREATE VIEW pricey AS SELECT id, label FROM widget WHERE qty > 10');
+  await exec('CREATE INDEX widget_label ON widget(label)');
+  await exec('CREATE SEQUENCE counter START 5');
+  await exec("CREATE FUNCTION inc(a integer) RETURNS integer LANGUAGE sql AS 'SELECT a + 1'");
+  await exec(
+    "CREATE FUNCTION trg() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NEW; END'",
+  );
+  await exec(
+    'CREATE TRIGGER widget_guard BEFORE UPDATE ON widget FOR EACH ROW EXECUTE FUNCTION trg()',
   );
 });
 
@@ -88,6 +102,37 @@ pgTest('listObjects finds the table in the public schema', async () => {
   const found = objects.find((o) => o.name === 'widget');
   expect(found).toBeDefined();
   expect(found?.namespace).toBe('public');
+});
+
+pgTest('listObjects surfaces every object kind by kind', async () => {
+  const objects = unwrap(await listObjects(source));
+  const kindOf = (name: string) => objects.find((o) => o.name === name)?.kind;
+  expect(kindOf('pricey')).toBe('view');
+  expect(kindOf('widget_label')).toBe('index');
+  expect(kindOf('counter')).toBe('sequence');
+  expect(kindOf('widget_guard')).toBe('trigger');
+  expect(kindOf('inc')).toBe('procedure');
+});
+
+const sourceText = async (ref: ObjectRef): Promise<string> => {
+  const schema = await asIntrospectable(source)!.describe(ref);
+  const s = schema.detail.find((d) => d.kind === 'source');
+  return s?.kind === 'source' ? s.text : '';
+};
+
+pgTest('describe yields each source-only kind its verbatim definition', async () => {
+  expect(await sourceText({ namespace: 'public', name: 'widget_label', kind: 'index' })).toMatch(/CREATE.*INDEX/i);
+  expect(await sourceText({ namespace: 'public', name: 'widget_guard', kind: 'trigger' })).toMatch(/CREATE.*TRIGGER/i);
+  expect(await sourceText({ namespace: 'public', name: 'inc', kind: 'procedure' })).toMatch(/CREATE.*FUNCTION/i);
+  expect(await sourceText({ namespace: 'public', name: 'counter', kind: 'sequence' })).toMatch(/CREATE SEQUENCE/i);
+});
+
+pgTest('describe gives a view both its columns and its defining source', async () => {
+  const view: ObjectRef = { namespace: 'public', name: 'pricey', kind: 'view' };
+  const schema = await asIntrospectable(source)!.describe(view);
+  expect(schema.detail.map((d) => d.kind)).toEqual(['columns', 'source']);
+  expect(columnsOf(schema).map((c) => c.name)).toEqual(['id', 'label']);
+  expect(await sourceText(view)).toMatch(/SELECT/i);
 });
 
 pgTest('describe reports the primary key and nullability', async () => {

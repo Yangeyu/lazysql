@@ -19,6 +19,7 @@ import { sql } from '../../../../domain/query/Query.ts';
 import type {
   ObjectRef,
   ColumnDef,
+  ObjectKind,
 } from '../../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
 import type { RawResult } from '../Driver.ts';
@@ -47,22 +48,34 @@ export class MySqlDialect implements Dialect {
   readonly id = 'mysql';
 
   listObjectsQuery(): Query {
+    // Uniform (ns, name, kind) across the current database's catalogs. Indexes
+    // are omitted: MySQL index names are per-table (PRIMARY repeats), so a flat
+    // by-name list would be ambiguous — they belong under their table, later.
     return sql(
-      `SELECT table_schema, table_name, table_type
-       FROM information_schema.tables
-       WHERE table_schema = DATABASE()
-       ORDER BY table_type, table_name`,
+      `SELECT table_schema AS ns, table_name AS name,
+              CASE table_type WHEN 'VIEW' THEN 'view' ELSE 'table' END AS kind
+         FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+       UNION ALL
+       SELECT trigger_schema, trigger_name, 'trigger'
+         FROM information_schema.triggers
+        WHERE trigger_schema = DATABASE()
+       UNION ALL
+       SELECT routine_schema, routine_name, 'procedure'
+         FROM information_schema.routines
+        WHERE routine_schema = DATABASE()
+       ORDER BY kind, name`,
     );
   }
 
   parseObjects(raw: RawResult): ObjectRef[] {
-    const iSchema = col(raw, 'table_schema');
-    const iName = col(raw, 'table_name');
-    const iType = col(raw, 'table_type');
+    const iNs = col(raw, 'ns');
+    const iName = col(raw, 'name');
+    const iKind = col(raw, 'kind');
     return raw.rows.map((r) => ({
-      namespace: String(r[iSchema]),
+      namespace: String(r[iNs]),
       name: String(r[iName]),
-      kind: r[iType] === 'VIEW' ? ('view' as const) : ('table' as const),
+      kind: String(r[iKind]) as ObjectKind,
     }));
   }
 
@@ -90,13 +103,30 @@ export class MySqlDialect implements Dialect {
   }
 
   sourceQuery(ref: ObjectRef): Query {
-    // Views are the only source-bearing kind introspected today; trigger/routine
-    // definitions arrive with their catalog introspection.
-    return sql(
-      `SELECT view_definition FROM information_schema.views
-       WHERE table_schema = DATABASE() AND table_name = ?`,
-      [ref.name],
-    );
+    // information_schema (parameterizable) rather than SHOW CREATE (which can't
+    // bind an identifier) for the definition text of each source-bearing kind.
+    switch (ref.kind) {
+      case 'trigger':
+        return sql(
+          `SELECT CONCAT(action_timing, ' ', event_manipulation, ' ON ',
+                         event_object_table, '\n', action_statement)
+             FROM information_schema.triggers
+            WHERE trigger_schema = DATABASE() AND trigger_name = ?`,
+          [ref.name],
+        );
+      case 'procedure':
+        return sql(
+          `SELECT routine_definition FROM information_schema.routines
+            WHERE routine_schema = DATABASE() AND routine_name = ?`,
+          [ref.name],
+        );
+      default: // view
+        return sql(
+          `SELECT view_definition FROM information_schema.views
+            WHERE table_schema = DATABASE() AND table_name = ?`,
+          [ref.name],
+        );
+    }
   }
 
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {

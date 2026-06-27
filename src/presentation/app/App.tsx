@@ -71,7 +71,6 @@ export const App = () => {
   const completions = useApp((s) => s.completions);
   const nlAvailable = useApp((s) => s.nlAvailable);
   const nlMode = useApp((s) => s.nlMode);
-  const nlDraft = useApp((s) => s.nlDraft);
   const generating = useApp((s) => s.generating);
   const nlExplanation = useApp((s) => s.nlExplanation);
   const nlKind = useApp((s) => s.nlKind);
@@ -153,7 +152,7 @@ export const App = () => {
             browsePreview={browseSql}
             focused={focus === 'editor'}
             nlMode={nlMode}
-            nlDraft={nlDraft}
+            onNlSubmit={(p) => void store.getState().generateFromNl(p)}
             completions={completions}
             generating={generating}
             nlExplanation={nlExplanation}

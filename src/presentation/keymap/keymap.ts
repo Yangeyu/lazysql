@@ -237,10 +237,10 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
   nl: {
     title: 'Ask AI',
     bindings: [
-      { keys: '⏎', hint: 'generate', desc: 'Generate SQL (always reviewed before running)', match: ['return'], run: (s) => void s.generateFromNl() },
+      // ⏎ is owned by the native <input> (onSubmit) — documentation-only here.
+      { keys: '⏎', hint: 'generate', desc: 'Generate SQL (always reviewed before running)' },
       { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelNl() },
     ],
-    field: { edit: (s, op) => s.editNl(op) },
   },
 };
 

@@ -28,7 +28,6 @@ import {
 } from '../../domain/query/classify.ts';
 import { theme } from '../theme/theme.ts';
 import { Caret } from './Caret.tsx';
-import { TextInput } from './TextInput.tsx';
 import { wrapWithCursor } from '../input/wrap.ts';
 import { rowWindow } from '../app/layout.ts';
 import type { TextField } from '../input/textField.ts';
@@ -43,7 +42,8 @@ interface Props {
   focused: boolean;
   /** The ask row is active (capturing the NL prompt). */
   nlMode: boolean;
-  nlDraft: TextField;
+  /** The NL prompt was submitted (Enter) — generate SQL from it. */
+  onNlSubmit: (prompt: string) => void;
   completions: string[];
   generating: boolean;
   nlExplanation: string | null;
@@ -69,7 +69,7 @@ const QueryEditorImpl = ({
   browsePreview,
   focused,
   nlMode,
-  nlDraft,
+  onNlSubmit,
   completions,
   generating,
   nlExplanation,
@@ -117,24 +117,36 @@ const QueryEditorImpl = ({
       paddingX={1}
       onMouseDown={onPaneClick}
     >
-      {/* ── ask row (NL→SQL) ── */}
-      <text wrapMode="none">
-        <b fg={theme.magenta}>✦ ask </b>
-        {nlMode ? (
-          <TextInput field={nlDraft} focused fg={theme.cyan} />
-        ) : nlExplanation ? (
-          <span fg={theme.magenta}>
-            {oneLine(nlExplanation)}
-            {nlKind && isDestructive(nlKind) ? (
-              <b fg={theme.red}>
-                {'  '}⚠ {nlKind.toUpperCase()}
-              </b>
-            ) : null}
-          </span>
-        ) : (
-          <span fg={theme.border}>press ^G to ask in natural language</span>
-        )}
-      </text>
+      {/* ── ask row (NL→SQL): a native input while asking, else the hint/echo ── */}
+      {nlMode ? (
+        <box flexDirection="row">
+          <text wrapMode="none">
+            <b fg={theme.magenta}>✦ ask </b>
+          </text>
+          <input
+            focused
+            onSubmit={onNlSubmit as never}
+            flexGrow={1}
+            textColor={theme.cyan}
+          />
+        </box>
+      ) : (
+        <text wrapMode="none">
+          <b fg={theme.magenta}>✦ ask </b>
+          {nlExplanation ? (
+            <span fg={theme.magenta}>
+              {oneLine(nlExplanation)}
+              {nlKind && isDestructive(nlKind) ? (
+                <b fg={theme.red}>
+                  {'  '}⚠ {nlKind.toUpperCase()}
+                </b>
+              ) : null}
+            </span>
+          ) : (
+            <span fg={theme.border}>press ^G to ask in natural language</span>
+          )}
+        </text>
+      )}
 
       {/* ── divider ── (truncate guards against any off-by-one overflow) */}
       <text fg={theme.border} wrapMode="none">

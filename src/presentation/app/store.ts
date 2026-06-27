@@ -183,7 +183,6 @@ export interface AppState {
   // ── NL→SQL ──
   nlAvailable: boolean;
   nlMode: boolean;
-  nlDraft: TextField;
   generating: boolean;
   nlExplanation: string | null;
   nlKind: StatementKind | null;
@@ -264,10 +263,9 @@ export interface AppState {
   historyNext: () => void;
   acceptCompletion: () => void;
   beginNl: () => void;
-  /** Apply a TextField edit to the NL prompt draft. */
-  editNl: (op: (tf: TextField) => TextField) => void;
   cancelNl: () => void;
-  generateFromNl: () => Promise<void>;
+  /** Generate SQL from the natural-language prompt typed in the native input. */
+  generateFromNl: (prompt: string) => Promise<void>;
 }
 
 export type AppStore = StoreApi<AppState>;
@@ -582,7 +580,6 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       nlAvailable: false,
       nlMode: false,
-      nlDraft: EMPTY,
       generating: false,
       nlExplanation: null,
       nlKind: null,
@@ -1123,21 +1120,19 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           set({ queryError: 'set ANTHROPIC_API_KEY to enable AI (NL→SQL)' });
           return;
         }
-        set({ nlMode: true, nlDraft: EMPTY, queryError: null });
+        set({ nlMode: true, queryError: null });
       },
 
-      editNl: (op) => set({ nlDraft: op(get().nlDraft) }),
+      cancelNl: () => set({ nlMode: false }),
 
-      cancelNl: () => set({ nlMode: false, nlDraft: EMPTY }),
-
-      generateFromNl: async () => {
-        const { nlDraft, catalog } = get();
-        const nl = nlDraft.value.trim();
+      generateFromNl: async (prompt) => {
+        const { catalog } = get();
+        const nl = prompt.trim();
         if (!generator || !nl) {
-          set({ nlMode: false, nlDraft: EMPTY });
+          set({ nlMode: false });
           return;
         }
-        set({ nlMode: false, nlDraft: EMPTY, generating: true, queryError: null });
+        set({ nlMode: false, generating: true, queryError: null });
         const schema: SchemaContext = {
           tables: catalog
             ? catalog.tables.map((t) => ({

@@ -9,7 +9,7 @@ import React from 'react';
 import { test, expect } from 'bun:test';
 import { renderTest } from '../../testing/renderTest.ts';
 import { QueryEditor } from '../QueryEditor.tsx';
-import { field, EMPTY } from '../../input/textField.ts';
+import { field } from '../../input/textField.ts';
 
 const SQL = "SELECT count(*) FROM documents WHERE source_name = '东方财富';";
 
@@ -21,7 +21,7 @@ test('renders the prompt and SQL without collapsing to one token per line', asyn
       focused
       completions={[]}
       nlMode={false}
-      nlDraft={EMPTY}
+      onNlSubmit={() => {}}
       generating={false}
       nlExplanation={null}
       nlKind={null}

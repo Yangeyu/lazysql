@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { TextAttributes } from '@opentui/core';
+import { TextAttributes, type MouseEvent } from '@opentui/core';
 import { DataGrid } from './DataGrid.tsx';
 import { StructureView } from './StructureView.tsx';
 import { theme } from '../theme/theme.ts';
@@ -27,6 +27,8 @@ interface Props {
   focused: boolean;
   /** The pane's chrome/empty space was clicked — focus it. */
   onPaneClick: () => void;
+  /** The wheel/trackpad scrolled over the pane (moves the grid cursor / column). */
+  onScroll: (direction: 'up' | 'down' | 'left' | 'right') => void;
   /** Whether the grid shows a browsed table or a read-only query result. */
   surface: SurfaceKind;
   /** Which face of a browsed object is showing (data │ ddl). */
@@ -56,6 +58,7 @@ interface Props {
 const ResultsPanelImpl = ({
   focused,
   onPaneClick,
+  onScroll,
   surface,
   mainTab,
   current,
@@ -80,6 +83,9 @@ const ResultsPanelImpl = ({
     borderColor={focused ? theme.borderFocus : theme.border}
     paddingX={1}
     onMouseDown={onPaneClick}
+    onMouseScroll={(e: MouseEvent) => {
+      if (e.scroll) onScroll(e.scroll.direction);
+    }}
   >
     {surface === 'query' ? (
       <box flexDirection="row">

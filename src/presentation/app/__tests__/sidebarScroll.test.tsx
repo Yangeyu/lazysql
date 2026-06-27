@@ -76,3 +76,19 @@ test('the sidebar scrolls the cursor into view, leaving early rows behind', asyn
   expect(frame).not.toContain('t00'); // …and the first object scrolled off
   h.cleanup();
 });
+
+test('the wheel scrolls the sidebar the same way the keys do', async () => {
+  const h = await render();
+  await h.until((f) => f.includes('t00'));
+  expect(h.frame()).not.toContain('t29');
+
+  // Wheel down inside the sidebar pane (x within SIDEBAR_WIDTH, y past the title).
+  // Flush per notch — each real wheel event is discrete, with a render between.
+  for (let i = 0; i < names.length + 2; i++) {
+    await h.scroll(4, 6, 'down');
+    await h.flush();
+  }
+
+  expect(h.frame()).toContain('t29'); // wheel moved the cursor and the view followed
+  h.cleanup();
+});

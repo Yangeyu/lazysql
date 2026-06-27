@@ -11,7 +11,7 @@
  */
 
 import React from 'react';
-import { TextAttributes } from '@opentui/core';
+import { TextAttributes, type MouseEvent } from '@opentui/core';
 import type { CellValue } from '../../domain/datasource/ResultSet.ts';
 import { formatCellValue } from './cellFormat.ts';
 import { theme } from '../theme/theme.ts';
@@ -23,9 +23,11 @@ interface Props {
   offset: number;
   termRows: number;
   termCols: number;
+  /** Wheel/trackpad scrolled the value (+1 down / −1 up). */
+  onScroll: (delta: number) => void;
 }
 
-const CellViewImpl = ({ column, value, offset, termRows, termCols }: Props) => {
+const CellViewImpl = ({ column, value, offset, termRows, termCols, onScroll }: Props) => {
   const { type, lines } = formatCellValue(value);
 
   // Fixed panel geometry, derived from the terminal once (not from the value).
@@ -44,7 +46,16 @@ const CellViewImpl = ({ column, value, offset, termRows, termCols }: Props) => {
     s.length > innerW ? s.slice(0, innerW) : s;
 
   return (
-    <Overlay termRows={termRows} termCols={termCols} width={width} height={height}>
+    <Overlay
+      termRows={termRows}
+      termCols={termCols}
+      width={width}
+      height={height}
+      onMouseScroll={(e: MouseEvent) => {
+        if (e.scroll?.direction === 'down') onScroll(1);
+        else if (e.scroll?.direction === 'up') onScroll(-1);
+      }}
+    >
       <text wrapMode="none">
         <span bg={theme.accent} fg={theme.onAccent} attributes={TextAttributes.BOLD}>
           {' ⊞ cell '}

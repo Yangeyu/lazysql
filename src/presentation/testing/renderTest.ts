@@ -37,6 +37,12 @@ export interface TestHandle {
   /** Left-drag from one cell to another (press · move · release) — for text
    *  selection. */
   drag: (x1: number, y1: number, x2: number, y2: number) => Promise<void>;
+  /** Wheel/trackpad scroll at a cell coordinate, in a direction. */
+  scroll: (
+    x: number,
+    y: number,
+    direction: 'up' | 'down' | 'left' | 'right',
+  ) => Promise<void>;
   /** The renderer's current selected text (aggregated across selectables). */
   selectedText: () => string;
   resize: (width: number, height: number) => void;
@@ -73,6 +79,7 @@ export const renderTest = async (
     ctrl: (key) => t.mockInput.pressKey(key, { ctrl: true }),
     click: (x, y) => t.mockMouse.click(x, y),
     drag: (x1, y1, x2, y2) => t.mockMouse.drag(x1, y1, x2, y2),
+    scroll: (x, y, direction) => t.mockMouse.scroll(x, y, direction),
     selectedText: () => t.renderer.getSelection()?.getSelectedText() ?? '',
     resize: (width, height) => t.resize(width, height),
     flush: () => t.flush(),

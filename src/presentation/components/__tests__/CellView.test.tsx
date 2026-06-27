@@ -33,6 +33,7 @@ test('pretty-prints a JSON cell with column + type header', async () => {
       offset={0}
       termRows={24}
       termCols={80}
+      onScroll={() => {}}
     />,
   );
   await h.flush();
@@ -49,7 +50,7 @@ test('windows a tall value and shows a "more" indicator', async () => {
   const h = await mount(
     14,
     44,
-    <CellView column="body" value={value} offset={0} termRows={14} termCols={44} />,
+    <CellView column="body" value={value} offset={0} termRows={14} termCols={44} onScroll={() => {}} />,
   );
   await h.flush();
   const frame = h.frame();
@@ -62,7 +63,7 @@ test('windows a tall value and shows a "more" indicator', async () => {
 test('the panel is a FIXED size — scrolling does not change its geometry', async () => {
   const value = Array.from({ length: 50 }, (_, i) => `line-${i}`).join('\n');
   const cell = (offset: number) => (
-    <CellView column="body" value={value} offset={offset} termRows={20} termCols={50} />
+    <CellView column="body" value={value} offset={offset} termRows={20} termCols={50} onScroll={() => {}} />
   );
   const dims = async (offset: number): Promise<[number, number]> => {
     const h = await mount(20, 50, cell(offset));

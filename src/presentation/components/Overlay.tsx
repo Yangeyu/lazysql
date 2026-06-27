@@ -13,6 +13,7 @@
  */
 
 import React from 'react';
+import type { MouseEvent } from '@opentui/core';
 import { theme } from '../theme/theme.ts';
 
 interface Props {
@@ -23,6 +24,8 @@ interface Props {
   width: number;
   height: number;
   borderColor?: string;
+  /** Wheel/trackpad scrolled over the panel (e.g. to scroll a tall value). */
+  onMouseScroll?: (event: MouseEvent) => void;
   children: React.ReactNode;
 }
 
@@ -32,6 +35,7 @@ const OverlayImpl = ({
   width,
   height,
   borderColor = theme.borderFocus,
+  onMouseScroll,
   children,
 }: Props) => {
   // Clamp to the screen, then center via absolute insets.
@@ -53,6 +57,7 @@ const OverlayImpl = ({
       borderColor={borderColor}
       backgroundColor={theme.bg}
       paddingX={1}
+      onMouseScroll={onMouseScroll}
     >
       {children}
     </box>

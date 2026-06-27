@@ -158,6 +158,9 @@ export const App = ({ clipboard }: AppProps) => {
         viewportRows={sidebarRows}
         onRowClick={(i) => store.getState().clickTree(i)}
         onPaneClick={() => store.getState().focusPane('sidebar')}
+        onScroll={(dir) =>
+          dir === 'up' ? store.getState().treeUp() : store.getState().treeDown()
+        }
       />
       {/* Right column: the SQL editor (top, ~1/4) directly over the results panel
           (~3/4), stacked flush with no gap. Both stretch to the full column width. */}
@@ -184,6 +187,15 @@ export const App = ({ clipboard }: AppProps) => {
         <ResultsPanel
           focused={gridFocused}
           onPaneClick={() => store.getState().focusPane('grid')}
+          onScroll={(dir) => {
+            // Only the data grid scrolls; the DDL view has no scroll of its own.
+            if (surface === 'browse' && mainTab === 'ddl') return;
+            const s = store.getState();
+            if (dir === 'up') s.gridUp();
+            else if (dir === 'down') s.gridDown();
+            else if (dir === 'left') s.gridLeft();
+            else s.gridRight();
+          }}
           surface={surface}
           mainTab={mainTab}
           current={current}
@@ -220,6 +232,7 @@ export const App = ({ clipboard }: AppProps) => {
       offset={cellView.offset}
       termRows={terminalRows}
       termCols={terminalCols}
+      onScroll={(delta) => store.getState().scrollCell(delta)}
     />
   ) : null;
 

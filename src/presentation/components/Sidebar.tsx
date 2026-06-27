@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { TextAttributes } from '@opentui/core';
+import { TextAttributes, type MouseEvent } from '@opentui/core';
 import type { ObjectKind } from '../../domain/datasource/schema.ts';
 import type { TreeRow } from '../tree/tree.ts';
 import { theme, driverColor } from '../theme/theme.ts';
@@ -26,6 +26,8 @@ interface Props {
   onRowClick: (index: number) => void;
   /** The pane's chrome/empty space was clicked — focus it. */
   onPaneClick: () => void;
+  /** The wheel/trackpad scrolled over the pane (moves the selection). */
+  onScroll: (direction: 'up' | 'down') => void;
 }
 
 const fold = (expanded: boolean): string => (expanded ? '▾' : '▸');
@@ -107,6 +109,7 @@ const SidebarImpl = ({
   viewportRows,
   onRowClick,
   onPaneClick,
+  onScroll,
 }: Props) => {
   // Vertical virtualization, identical to the DataGrid: render only the window
   // that fits, scrolled to keep the cursor in view. `i` stays the absolute index
@@ -123,6 +126,10 @@ const SidebarImpl = ({
       borderColor={focused ? theme.borderFocus : theme.border}
       paddingX={1}
       onMouseDown={onPaneClick}
+      onMouseScroll={(e: MouseEvent) => {
+        if (e.scroll && (e.scroll.direction === 'up' || e.scroll.direction === 'down'))
+          onScroll(e.scroll.direction);
+      }}
     >
       <text attributes={TextAttributes.BOLD} fg={focused ? theme.accent : theme.border}>
         CONNECTIONS

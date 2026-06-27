@@ -9,6 +9,8 @@
  * automatically.
  */
 
+import type { Focus, Mode } from '../app/store.ts';
+
 /** The focus/mode the UI is in — selects which group of keys is active. */
 export type KeyContext =
   | 'sidebar'
@@ -26,6 +28,39 @@ export interface KeyFlags {
   readonly queryable: boolean;
   readonly nlAvailable: boolean;
 }
+
+/** The minimal slice of UI state that selects the active key context. */
+export interface ContextInput {
+  readonly cellView: unknown | null;
+  readonly mode: Mode;
+  readonly nlMode: boolean;
+  readonly focus: Focus;
+}
+
+/**
+ * Which context's keys are active, as one linear precedence (highest first): an
+ * open cell inspector owns input, then the input-capturing modes, then the NL
+ * prompt, then plain pane focus. Pure — the single definition of "where are we",
+ * shared by the key dispatcher and the footer/help, and unit-testable on its own.
+ */
+export const deriveContext = (s: ContextInput): KeyContext =>
+  s.cellView
+    ? 'cell'
+    : s.mode === 'connform'
+      ? 'connform'
+      : s.mode === 'filter'
+        ? 'filter'
+        : s.mode === 'edit'
+          ? 'edit'
+          : s.mode === 'confirm'
+            ? 'confirm'
+            : s.nlMode
+              ? 'nl'
+              : s.focus === 'editor'
+                ? 'editor'
+                : s.focus === 'sidebar'
+                  ? 'sidebar'
+                  : 'grid';
 
 export interface KeyBinding {
   /** Display form of the key(s), e.g. '⏎', 'j/k', '^G'. */

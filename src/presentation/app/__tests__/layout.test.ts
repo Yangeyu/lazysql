@@ -1,8 +1,33 @@
 import { test, expect } from 'bun:test';
-import { rowWindow } from '../layout.ts';
+import { rowWindow, computeLayout, SIDEBAR_WIDTH } from '../layout.ts';
 
 // Screen→pane hit-testing is gone: OpenTUI dispatches native onMouseDown to the
-// box under the cursor, so the only geometry left to test is the row window.
+// box under the cursor, so the geometry left to test is the row window and the
+// static pane layout.
+
+test('computeLayout reserves the sidebar, its gap, and a panel chrome from the width', () => {
+  const { viewportCols } = computeLayout(100, 40, true);
+  expect(viewportCols).toBe(100 - SIDEBAR_WIDTH - 1 - 4);
+});
+
+test('computeLayout sizes the editor only for query-capable sources', () => {
+  expect(computeLayout(100, 40, false).editorRows).toBe(0);
+  expect(computeLayout(100, 40, true).editorRows).toBeGreaterThanOrEqual(6);
+});
+
+test('computeLayout deducts an extra row for the editor gap when queryable', () => {
+  const q = computeLayout(100, 40, true);
+  const noEditor = computeLayout(100, 40, false);
+  // queryable loses the editor block, the 1-row gap, and one more border row.
+  expect(q.gridBodyRows).toBe(40 - q.editorRows - 8);
+  expect(noEditor.gridBodyRows).toBe(40 - 7);
+});
+
+test('computeLayout floors every pane dimension so a tiny terminal never goes negative', () => {
+  const tiny = computeLayout(10, 6, true);
+  expect(tiny.viewportCols).toBeGreaterThanOrEqual(24);
+  expect(tiny.gridBodyRows).toBeGreaterThanOrEqual(3);
+});
 
 test('rowWindow anchors at the top until the cursor passes the fold', () => {
   expect(rowWindow(0, 10, 100)).toBe(0);

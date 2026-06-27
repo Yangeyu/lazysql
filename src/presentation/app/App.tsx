@@ -15,17 +15,12 @@ import { Header } from '../components/Header.tsx';
 import { HelpOverlay } from '../components/HelpOverlay.tsx';
 import { ConnectionForm } from '../components/ConnectionForm.tsx';
 import { CellView } from '../components/CellView.tsx';
-import {
-  helpGroups,
-  type KeyContext,
-  type KeyFlags,
-} from '../keymap/keymap.ts';
+import { helpGroups, deriveContext, type KeyFlags } from '../keymap/keymap.ts';
+import { SIDEBAR_WIDTH, computeLayout } from './layout.ts';
 import { buildTree, toConnNodes, dialectLabel, shortTag } from '../tree/tree.ts';
 import { theme } from '../theme/theme.ts';
 import { printableChar } from '../input/keys.ts';
 import type { Filter } from '../../domain/query/Query.ts';
-
-const SIDEBAR_WIDTH = 28;
 
 /** Compact one-line summary of an active filter, e.g. `label~foo`. */
 const filterSummary = (filter: Filter | null): string => {
@@ -242,22 +237,11 @@ export const App = () => {
     }
   });
 
-  // Interior width of a right-column panel: total minus the sidebar, the 1-cell
-  // gap to it, and the panel's own border + horizontal padding (4). Shared by the
-  // editor and the results panel, which are the same width.
-  const viewportCols = Math.max(24, terminalCols - SIDEBAR_WIDTH - 1 - 4);
-  // The right column stacks the SQL editor over the results panel (~1:3). The
-  // editor only exists for SQL-speaking sources (capability-driven); other sources
-  // give the results panel the column's full height.
-  const editorRows = queryable
-    ? Math.min(12, Math.max(6, Math.floor((terminalRows - 2) / 4)))
-    : 0;
-  // Grid body rows that fill the results panel exactly. Outside the panel: header
-  // (1) + status (1) + the editor (editorRows) + the 1-row gap below it when an
-  // editor is present. The panel's own chrome: full border (2, top+bottom) + tab
-  // row (1) + grid header (1) + grid divider (1) = 5. So queryable subtracts the
-  // editor, its gap, and 7 fixed rows; otherwise just the 7.
-  const gridBodyRows = Math.max(3, terminalRows - editorRows - (queryable ? 8 : 7));
+  const { viewportCols, editorRows, gridBodyRows } = computeLayout(
+    terminalCols,
+    terminalRows,
+    queryable,
+  );
   const gridFocused = focus === 'grid';
 
   // The active connection's display name + driver tag are derived from the
@@ -280,24 +264,7 @@ export const App = () => {
   );
 
   const flags: KeyFlags = { queryable, nlAvailable };
-  const context: KeyContext =
-    cellView
-      ? 'cell'
-      : mode === 'connform'
-        ? 'connform'
-        : mode === 'filter'
-          ? 'filter'
-          : mode === 'edit'
-            ? 'edit'
-            : mode === 'confirm'
-              ? 'confirm'
-              : nlMode
-                ? 'nl'
-                : focus === 'editor'
-                  ? 'editor'
-                  : focus === 'sidebar'
-                    ? 'sidebar'
-                    : 'grid';
+  const context = deriveContext({ cellView, mode, nlMode, focus });
 
   const rowsInPage = result?.rows.length ?? 0;
   const from = total === 0 ? 0 : page.offset + 1;

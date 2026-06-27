@@ -59,7 +59,7 @@ const StructureViewImpl = ({
       </box>
       <text fg={theme.border}>{'─'.repeat(4 + NAME_COL + TYPE_COL + 4)}</text>
       {structure.columns.map((c) => (
-        <text key={c.name} wrapMode="none">
+        <text key={c.name} wrapMode="none" selectable>
           <span fg={theme.yellow}>{(c.isPrimaryKey ? '🔑' : '').padEnd(4)}</span>
           <span fg={theme.cyan}>{c.name.padEnd(NAME_COL)}</span>
           <span fg={theme.green}>{c.dataType.padEnd(TYPE_COL)}</span>

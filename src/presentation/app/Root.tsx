@@ -15,6 +15,11 @@ import { App } from './App.tsx';
 import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
 import type { ConnectionProfile } from '../../domain/connection/ConnectionProfile.ts';
 import type { SqlGenerator } from '../../application/ports/SqlGenerator.ts';
+import type { Clipboard } from '../../application/ports/Clipboard.ts';
+
+/** No-op clipboard for when none is injected (tests / non-interactive). The real
+ *  one is supplied by the composition root, mirroring `generator`'s null default. */
+const NO_CLIPBOARD: Clipboard = { write: () => {} };
 
 interface Props {
   connectionService: ConnectionService;
@@ -22,12 +27,16 @@ interface Props {
   initial?: ConnectionProfile | null;
   /** NL→SQL generator, or null when no API key is configured. */
   generator?: SqlGenerator | null;
+  /** Where a mouse text selection is copied; the composition root injects the
+   *  system clipboard. Defaults to a no-op so tests never touch the real one. */
+  clipboard?: Clipboard;
 }
 
 export const Root = ({
   connectionService,
   initial = null,
   generator = null,
+  clipboard = NO_CLIPBOARD,
 }: Props) => {
   const renderer = useRenderer();
   const store = useMemo<AppStore>(
@@ -46,6 +55,22 @@ export const Root = ({
       renderer.off('destroy', onDestroy);
     };
   }, [renderer, store]);
+
+  // Native text selection → system clipboard, the way OpenCode does it: dragging
+  // over any `selectable` text builds a selection and the renderer emits
+  // 'selection' with it; we hand the aggregated text to the injected clipboard.
+  // (A plain click yields an empty selection — skipped, so click-to-select-cell
+  // is unaffected.)
+  useEffect(() => {
+    const onSelection = (selection: { getSelectedText: () => string }): void => {
+      const text = selection.getSelectedText();
+      if (text) clipboard.write(text);
+    };
+    renderer.on('selection', onSelection);
+    return () => {
+      renderer.off('selection', onSelection);
+    };
+  }, [renderer, clipboard]);
 
   return (
     <StoreContext.Provider value={store}>

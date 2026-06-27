@@ -112,6 +112,7 @@ const SidebarImpl = ({
           <text
             key={i}
             wrapMode="none"
+            selectable
             attributes={selected && focused ? TextAttributes.INVERSE : undefined}
             fg={selected && !focused ? theme.accent : undefined}
             onMouseDown={(e) => {

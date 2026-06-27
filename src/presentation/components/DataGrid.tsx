@@ -202,6 +202,7 @@ const line = (
   <text
     key={key}
     wrapMode="none"
+    selectable
     attributes={rowInverse ? TextAttributes.INVERSE : undefined}
     onMouseDown={onMouseDown}
   >

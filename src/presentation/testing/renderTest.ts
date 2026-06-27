@@ -34,6 +34,11 @@ export interface TestHandle {
   ctrl: (key: string) => void;
   /** Left-click at a 0-based cell coordinate. */
   click: (x: number, y: number) => Promise<void>;
+  /** Left-drag from one cell to another (press · move · release) — for text
+   *  selection. */
+  drag: (x1: number, y1: number, x2: number, y2: number) => Promise<void>;
+  /** The renderer's current selected text (aggregated across selectables). */
+  selectedText: () => string;
   resize: (width: number, height: number) => void;
   /** Drain pending renders. */
   flush: () => Promise<void>;
@@ -67,6 +72,8 @@ export const renderTest = async (
     arrow: (dir) => t.mockInput.pressArrow(dir),
     ctrl: (key) => t.mockInput.pressKey(key, { ctrl: true }),
     click: (x, y) => t.mockMouse.click(x, y),
+    drag: (x1, y1, x2, y2) => t.mockMouse.drag(x1, y1, x2, y2),
+    selectedText: () => t.renderer.getSelection()?.getSelectedText() ?? '',
     resize: (width, height) => t.resize(width, height),
     flush: () => t.flush(),
     waitForFrame: (pred) => t.waitForFrame(pred),

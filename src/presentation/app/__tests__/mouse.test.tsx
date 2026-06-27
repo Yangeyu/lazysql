@@ -102,6 +102,29 @@ test('clicking a cell selects its column, not just its row', async () => {
   h.cleanup();
 });
 
+test('dragging over grid text selects it and copies to the clipboard', async () => {
+  const copied: string[] = [];
+  const clipboard = { write: (t: string) => copied.push(t) };
+  const h = await renderTest(
+    <Root connectionService={svc} initial={profile} clipboard={clipboard} />,
+    { width: 120, height: 30 },
+  );
+  await h.until((f) => f.includes('Tables'));
+  h.enter(); // open table t → grid with rows
+  await h.until((f) => f.includes('gamma'));
+
+  // Drag across the `name` cell of the gamma row — selectable text builds a
+  // selection the renderer hands to the injected clipboard via Root.
+  const y = lineY(h, 'gamma');
+  const x = h.frame().split('\n')[y]!.indexOf('gamma');
+  await h.drag(x, y, x + 5, y);
+  await h.flush();
+
+  expect(h.selectedText()).toContain('gamma'); // selection formed…
+  expect(copied.some((t) => t.includes('gamma'))).toBe(true); // …and was copied
+  h.cleanup();
+});
+
 test('clicking a sidebar row selects that row (Enter then acts on it)', async () => {
   const h = await renderTest(<Root connectionService={svc} initial={profile} />, {
     width: 120,

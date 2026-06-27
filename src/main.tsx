@@ -19,6 +19,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { Root } from './presentation/app/Root.tsx';
 import { createDataSource } from './adapters/datasource/registry.ts';
+import { createSystemClipboard } from './adapters/clipboard/SystemClipboard.ts';
 import { YamlConnectionRepository } from './adapters/persistence/YamlConnectionRepository.ts';
 import { FileSecretStore } from './adapters/persistence/FileSecretStore.ts';
 import { KeychainSecretStore } from './adapters/persistence/KeychainSecretStore.ts';
@@ -167,5 +168,6 @@ createRoot(renderer).render(
     connectionService={connectionService}
     initial={initial}
     generator={generator}
+    clipboard={createSystemClipboard()}
   />,
 );

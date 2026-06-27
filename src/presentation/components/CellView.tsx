@@ -62,7 +62,7 @@ const CellViewImpl = ({ column, value, offset, termRows, termCols }: Props) => {
         </span>
       </text>
       {window.map((ln, i) => (
-        <text key={top + i} wrapMode="none">
+        <text key={top + i} wrapMode="none" selectable>
           {ln === '' ? ' ' : truncate(ln)}
         </text>
       ))}

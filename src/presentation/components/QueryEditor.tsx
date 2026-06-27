@@ -114,7 +114,7 @@ const QueryEditorImpl = ({
           />
         </box>
       ) : (
-        <text wrapMode="none">
+        <text wrapMode="none" selectable>
           <b fg={theme.magenta}>✦ ask </b>
           {nlExplanation ? (
             <span fg={theme.magenta}>

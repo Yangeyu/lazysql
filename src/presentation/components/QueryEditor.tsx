@@ -14,23 +14,27 @@
  * so it aligns exactly with the results grid below it. Running a query sends its
  * result to the shared grid — the editor never renders results itself (SRP).
  *
- * The SQL text is wrapped MANUALLY (wrapText) at a width derived from the known
- * viewport, then each line is its own <text>, so layout never collapses the SQL
- * to one character per line. Clicking the pane focuses it via `onPaneClick`.
+ * The SQL is laid out by wrapWithCursor (a width from the known viewport), which
+ * also reports the caret's line/column so it can be drawn mid-string; each line
+ * is its own <text>, so layout never collapses the SQL to one character per line.
+ * Clicking the pane focuses it via `onPaneClick`.
  */
 
 import React from 'react';
 import { TextAttributes } from '@opentui/core';
-import stringWidth from 'string-width';
 import {
   isDestructive,
   type StatementKind,
 } from '../../domain/query/classify.ts';
-import { theme, CARET } from '../theme/theme.ts';
+import { theme } from '../theme/theme.ts';
 import { Caret } from './Caret.tsx';
+import { TextInput } from './TextInput.tsx';
+import { wrapWithCursor } from '../input/wrap.ts';
+import { rowWindow } from '../app/layout.ts';
+import type { TextField } from '../input/textField.ts';
 
 interface Props {
-  queryText: string;
+  queryText: TextField;
   /** Read-only echo of the current browse statement, shown dimmed while the
    *  editor is empty so the SQL panel always reflects what the grid shows. Null
    *  when not browsing; the user's first keystroke takes over. */
@@ -39,7 +43,7 @@ interface Props {
   focused: boolean;
   /** The ask row is active (capturing the NL prompt). */
   nlMode: boolean;
-  nlDraft: string;
+  nlDraft: TextField;
   completions: string[];
   generating: boolean;
   nlExplanation: string | null;
@@ -60,37 +64,6 @@ const PROMPT = 'SQL> ';
  *  ask row off the top. */
 const oneLine = (s: string): string => s.replace(/\s*\n\s*/g, ' ');
 
-/** Greedy word-wrap to an exact display width, hard-breaking over-long words. */
-const wrapText = (text: string, width: number): string[] => {
-  const w = Math.max(1, width);
-  const lines: string[] = [];
-  let line = '';
-  let lineW = 0;
-  const flush = () => {
-    lines.push(line);
-    line = '';
-    lineW = 0;
-  };
-  for (const token of text.split(/(\s+)/)) {
-    if (token === '') continue;
-    const tw = stringWidth(token);
-    if (lineW > 0 && lineW + tw > w) flush();
-    if (tw <= w) {
-      line += token;
-      lineW += tw;
-    } else {
-      for (const ch of token) {
-        const cw = stringWidth(ch);
-        if (lineW + cw > w) flush();
-        line += ch;
-        lineW += cw;
-      }
-    }
-  }
-  if (line || lines.length === 0) lines.push(line);
-  return lines;
-};
-
 const QueryEditorImpl = ({
   queryText,
   browsePreview,
@@ -108,18 +81,23 @@ const QueryEditorImpl = ({
 }: Props) => {
   // Interior budget: ask row (1) + divider (1) + SQL rows + feedback (1).
   const sqlRows = Math.max(1, height - 5);
-  const caret = focused && !nlMode ? CARET : '';
-  const wrapped = wrapText(queryText + caret, Math.max(8, innerWidth - PROMPT.length));
-  // Keep the caret end visible: window to the last `sqlRows` lines, pad the rest
-  // so the feedback line stays pinned to the bottom.
-  const start = Math.max(0, wrapped.length - sqlRows);
-  const sql = wrapped.slice(start, start + sqlRows);
+  // Lay the query out and locate the caret, then window so the caret line stays
+  // visible (keeps the bottom feedback line pinned). The caret renders on its
+  // line below, so it isn't part of the wrapped text.
+  const { lines, caretLine, caretCol } = wrapWithCursor(
+    queryText.value,
+    queryText.cursor,
+    Math.max(8, innerWidth - PROMPT.length),
+  );
+  const start = rowWindow(caretLine, sqlRows, lines.length);
+  const sql = lines.slice(start, start + sqlRows);
   while (sql.length < sqlRows) sql.push('');
+  const showCaret = focused && !nlMode;
 
   // With nothing typed, the SQL section echoes the current browse statement
   // (dimmed, read-only) so the panel always shows what produced the grid; the
   // first keystroke (queryText non-empty) replaces it with the user's query.
-  const previewMode = !nlMode && queryText.length === 0 && !!browsePreview;
+  const previewMode = !nlMode && queryText.value.length === 0 && !!browsePreview;
 
   const borderColor = nlMode
     ? theme.magenta
@@ -143,10 +121,7 @@ const QueryEditorImpl = ({
       <text wrapMode="none">
         <b fg={theme.magenta}>✦ ask </b>
         {nlMode ? (
-          <>
-            <span fg={theme.cyan}>{nlDraft}</span>
-            <Caret focused />
-          </>
+          <TextInput field={nlDraft} focused fg={theme.cyan} />
         ) : nlExplanation ? (
           <span fg={theme.magenta}>
             {oneLine(nlExplanation)}
@@ -182,16 +157,28 @@ const QueryEditorImpl = ({
               )}
             </text>
           ))
-        : sql.map((ln, i) => (
-            <text key={i} wrapMode="none">
-              {start + i === 0 ? (
-                <b fg={theme.magenta}>{PROMPT}</b>
-              ) : (
-                ' '.repeat(PROMPT.length)
-              )}
-              {ln}
-            </text>
-          ))}
+        : sql.map((ln, i) => {
+            const abs = start + i;
+            const onCaretLine = showCaret && abs === caretLine;
+            return (
+              <text key={i} wrapMode="none">
+                {abs === 0 ? (
+                  <b fg={theme.magenta}>{PROMPT}</b>
+                ) : (
+                  ' '.repeat(PROMPT.length)
+                )}
+                {onCaretLine ? (
+                  <>
+                    {ln.slice(0, caretCol)}
+                    <Caret focused />
+                    {ln.slice(caretCol)}
+                  </>
+                ) : (
+                  ln
+                )}
+              </text>
+            );
+          })}
 
       {/* ── feedback: completions / generating / error / hint ── */}
       {error ? (

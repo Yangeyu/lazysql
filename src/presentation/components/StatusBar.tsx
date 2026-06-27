@@ -12,7 +12,8 @@ import { TextAttributes } from '@opentui/core';
 import type { Mode } from '../app/store.ts';
 import { footerHints, type KeyContext, type KeyFlags } from '../keymap/keymap.ts';
 import { theme } from '../theme/theme.ts';
-import { Caret } from './Caret.tsx';
+import { TextInput } from './TextInput.tsx';
+import type { TextField } from '../input/textField.ts';
 
 interface Props {
   width: number;
@@ -21,9 +22,9 @@ interface Props {
   context: KeyContext;
   flags: KeyFlags;
   mode: Mode;
-  filterDraft: string;
+  filterDraft: TextField;
   filterColumn: string | null;
-  editDraft: string;
+  editDraft: TextField;
   editColumn: string | null;
   pendingMessage: string | null;
 }
@@ -41,8 +42,6 @@ const Badge = ({
     {` ${label} `}
   </span>
 );
-
-const CURSOR = <Caret focused />;
 
 /** Short label for the resting context badge. */
 const contextBadge = (context: KeyContext): { label: string; bg: string } => {
@@ -93,8 +92,7 @@ const StatusBarImpl = ({
         <Badge label="edit" bg={theme.magenta} />
         <span> </span>
         <span fg={theme.border}>{editColumn ?? '?'} = </span>
-        <span fg={theme.cyan}>{editDraft}</span>
-        {CURSOR}
+        <TextInput field={editDraft} focused fg={theme.cyan} />
       </text>,
     );
   }
@@ -117,8 +115,7 @@ const StatusBarImpl = ({
         <Badge label="filter" bg={theme.yellow} />
         <span> </span>
         <span fg={theme.border}>{filterColumn ?? '?'} contains </span>
-        <span fg={theme.cyan}>{filterDraft}</span>
-        {CURSOR}
+        <TextInput field={filterDraft} focused fg={theme.cyan} />
       </text>,
     );
   }

@@ -2,6 +2,7 @@ import { test, expect, mock } from 'bun:test';
 import { deriveContext, footerHints, helpGroups, dispatchKey } from '../keymap.ts';
 import type { ContextInput } from '../keymap.ts';
 import type { AppState } from '../../app/store.ts';
+import { field, type TextField } from '../../input/textField.ts';
 
 const base: ContextInput = {
   cellView: null,
@@ -63,11 +64,11 @@ const stub = (over: Partial<AppState> = {}): AppState =>
     surface: 'browse',
     mainTab: 'data',
     completions: [],
-    queryText: '',
+    queryText: field(''),
     gridDown: mock(() => {}),
     toggleMainTab: mock(() => {}),
     focusPane: mock(() => {}),
-    updateQueryText: mock(() => {}),
+    editQuery: mock(() => {}),
     ...over,
   }) as unknown as AppState;
 
@@ -86,12 +87,16 @@ test('dispatchKey: a grid key runs its bound action', () => {
 });
 
 test('dispatchKey: in the editor, global glyphs are literal text, not commands', () => {
-  const s = stub({ focus: 'editor' });
+  // Capture what each edit op would insert into an empty field.
+  const typed: string[] = [];
+  const s = stub({
+    focus: 'editor',
+    editQuery: ((op: (tf: TextField) => TextField) => typed.push(op(field('')).value)) as never,
+  });
   const e = env();
   dispatchKey(s, key({ sequence: ':' }), e); // not focusPane
   dispatchKey(s, key({ name: 'q', sequence: 'q' }), e); // not quit
-  expect(s.updateQueryText).toHaveBeenNthCalledWith(1, ':');
-  expect(s.updateQueryText).toHaveBeenNthCalledWith(2, 'q');
+  expect(typed).toEqual([':', 'q']);
   expect(s.focusPane).not.toHaveBeenCalled();
   expect(e.quit).not.toHaveBeenCalled();
 });

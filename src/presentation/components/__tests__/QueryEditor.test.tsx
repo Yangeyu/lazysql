@@ -9,18 +9,19 @@ import React from 'react';
 import { test, expect } from 'bun:test';
 import { renderTest } from '../../testing/renderTest.ts';
 import { QueryEditor } from '../QueryEditor.tsx';
+import { field, EMPTY } from '../../input/textField.ts';
 
 const SQL = "SELECT count(*) FROM documents WHERE source_name = '东方财富';";
 
 test('renders the prompt and SQL without collapsing to one token per line', async () => {
   const h = await renderTest(
     <QueryEditor
-      queryText={SQL}
+      queryText={field(SQL)}
       browsePreview={null}
       focused
       completions={[]}
       nlMode={false}
-      nlDraft=""
+      nlDraft={EMPTY}
       generating={false}
       nlExplanation={null}
       nlKind={null}

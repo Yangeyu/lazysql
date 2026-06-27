@@ -6,6 +6,7 @@
  */
 
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { field, EMPTY, type TextField } from '../input/textField.ts';
 import {
   asBrowsePreviewable,
   asIntrospectable,
@@ -158,8 +159,8 @@ export interface AppState {
   gridRow: number;
   gridCol: number;
   mode: Mode;
-  filterDraft: string;
-  editDraft: string;
+  filterDraft: TextField;
+  editDraft: TextField;
   pkColumns: string[];
   pending: Pending | null;
   loading: boolean;
@@ -173,7 +174,7 @@ export interface AppState {
   // ── query editor ──
   /** Editor input text. The result of running it lands in the shared grid
    *  (`result`, surface 'query'); there is no separate query result slice. */
-  queryText: string;
+  queryText: TextField;
   queryError: string | null;
   queryElapsedMs: number | null;
   history: string[];
@@ -184,7 +185,7 @@ export interface AppState {
   // ── NL→SQL ──
   nlAvailable: boolean;
   nlMode: boolean;
-  nlDraft: string;
+  nlDraft: TextField;
   generating: boolean;
   nlExplanation: string | null;
   nlKind: StatementKind | null;
@@ -247,24 +248,28 @@ export interface AppState {
   pageNext: () => Promise<void>;
   pagePrev: () => Promise<void>;
   beginFilter: () => void;
-  updateFilterDraft: (text: string) => void;
+  /** Apply a TextField edit to the filter draft (typing, cursor moves, erase). */
+  editFilter: (op: (tf: TextField) => TextField) => void;
   cancelFilter: () => void;
   commitFilter: () => Promise<void>;
   beginEdit: () => void;
-  updateEditDraft: (text: string) => void;
+  /** Apply a TextField edit to the cell-edit draft. */
+  editEdit: (op: (tf: TextField) => TextField) => void;
   cancelEdit: () => void;
   submitEdit: () => void;
   beginDelete: () => void;
   confirmPending: () => Promise<void>;
   cancelPending: () => void;
 
-  updateQueryText: (text: string) => void;
+  /** Apply a TextField edit to the query editor (re-derives completions). */
+  editQuery: (op: (tf: TextField) => TextField) => void;
   executeQuery: () => Promise<void>;
   historyPrev: () => void;
   historyNext: () => void;
   acceptCompletion: () => void;
   beginNl: () => void;
-  updateNlDraft: (text: string) => void;
+  /** Apply a TextField edit to the NL prompt draft. */
+  editNl: (op: (tf: TextField) => TextField) => void;
   cancelNl: () => void;
   generateFromNl: () => Promise<void>;
 }
@@ -529,7 +534,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         structure: null,
         structureError: null,
         cellView: null,
-        queryText: '',
+        queryText: EMPTY,
         queryError: null,
         history: [],
         historyIndex: null,
@@ -564,8 +569,8 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       gridRow: 0,
       gridCol: 0,
       mode: 'normal',
-      filterDraft: '',
-      editDraft: '',
+      filterDraft: EMPTY,
+      editDraft: EMPTY,
       pkColumns: [],
       pending: null,
       loading: false,
@@ -573,7 +578,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       helpOpen: false,
       cellView: null,
 
-      queryText: '',
+      queryText: EMPTY,
       queryError: null,
       queryElapsedMs: null,
       history: [],
@@ -583,7 +588,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       nlAvailable: false,
       nlMode: false,
-      nlDraft: '',
+      nlDraft: EMPTY,
       generating: false,
       nlExplanation: null,
       nlKind: null,
@@ -954,19 +959,19 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         if (!current || !column) return;
         // Pre-fill the draft with the existing value for this column, if any.
         const existing = filter?.conditions.find((c) => c.column === column);
-        set({ mode: 'filter', filterDraft: existing?.value ?? '' });
+        set({ mode: 'filter', filterDraft: field(existing?.value ?? '') });
       },
 
-      updateFilterDraft: (text) => set({ filterDraft: text }),
+      editFilter: (op) => set({ filterDraft: op(get().filterDraft) }),
 
-      cancelFilter: () => set({ mode: 'normal', filterDraft: '' }),
+      cancelFilter: () => set({ mode: 'normal', filterDraft: EMPTY }),
 
       commitFilter: async () => {
         const { current, sort, result, gridCol, filterDraft } = get();
         const column = result?.columns[gridCol]?.name;
-        set({ mode: 'normal', filterDraft: '' });
+        set({ mode: 'normal', filterDraft: EMPTY });
         if (!current || !column) return;
-        const value = filterDraft.trim();
+        const value = filterDraft.value.trim();
         const filter: Filter | null = value
           ? { conditions: [{ column, op: 'contains', value }] }
           : null;
@@ -982,25 +987,25 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           return;
         }
         const cell = result.rows[gridRow]?.[gridCol];
-        set({ mode: 'edit', error: null, editDraft: cell == null ? '' : String(cell) });
+        set({ mode: 'edit', error: null, editDraft: field(cell == null ? '' : String(cell)) });
       },
 
-      updateEditDraft: (text) => set({ editDraft: text }),
+      editEdit: (op) => set({ editDraft: op(get().editDraft) }),
 
-      cancelEdit: () => set({ mode: 'normal', editDraft: '' }),
+      cancelEdit: () => set({ mode: 'normal', editDraft: EMPTY }),
 
       submitEdit: () => {
         const { current, result, gridCol, editDraft } = get();
         const column = result?.columns[gridCol]?.name;
         const key = currentRowKey();
         if (!current || !column || !key) {
-          set({ mode: 'normal', editDraft: '' });
+          set({ mode: 'normal', editDraft: EMPTY });
           return;
         }
-        const value = editDraft;
+        const value = editDraft.value;
         set({
           mode: 'confirm',
-          editDraft: '',
+          editDraft: EMPTY,
           pending: {
             message: `UPDATE ${current.name} SET ${column} = '${value}' WHERE ${keyText(key)}`,
             run: async () => {
@@ -1047,17 +1052,15 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       // ── query editor ──────────────────────────────────────────────────────
 
-      updateQueryText: (text) =>
-        set({
-          queryText: text,
-          historyIndex: null,
-          completions: completionsFor(text),
-        }),
+      editQuery: (op) => {
+        const queryText = op(get().queryText);
+        set({ queryText, historyIndex: null, completions: completionsFor(queryText.value) });
+      },
 
       executeQuery: async () => {
         if (!active) return;
         const { queryText, history } = get();
-        const text = queryText.trim();
+        const text = queryText.value.trim();
         if (!text) return;
         set({ loading: true, queryError: null });
         const r = await runQuery(active, text);
@@ -1098,28 +1101,29 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             ? history.length - 1
             : Math.max(0, historyIndex - 1);
         const text = history[idx] ?? '';
-        set({ historyIndex: idx, queryText: text, completions: [] });
+        set({ historyIndex: idx, queryText: field(text), completions: [] });
       },
 
       historyNext: () => {
         const { history, historyIndex } = get();
         if (historyIndex === null) return;
         if (historyIndex >= history.length - 1) {
-          set({ historyIndex: null, queryText: '', completions: [] });
+          set({ historyIndex: null, queryText: EMPTY, completions: [] });
           return;
         }
         const idx = historyIndex + 1;
         const text = history[idx] ?? '';
-        set({ historyIndex: idx, queryText: text, completions: [] });
+        set({ historyIndex: idx, queryText: field(text), completions: [] });
       },
 
       acceptCompletion: () => {
         const { queryText, completions } = get();
         const top = completions[0];
         if (!top) return;
-        const word = queryText.match(/([A-Za-z_][A-Za-z0-9_]*)$/)?.[1] ?? '';
-        const next = queryText.slice(0, queryText.length - word.length) + top;
-        set({ queryText: next, completions: completionsFor(next) });
+        const text = queryText.value;
+        const word = text.match(/([A-Za-z_][A-Za-z0-9_]*)$/)?.[1] ?? '';
+        const next = text.slice(0, text.length - word.length) + top;
+        set({ queryText: field(next), completions: completionsFor(next) });
       },
 
       // ── NL→SQL ────────────────────────────────────────────────────────────
@@ -1129,21 +1133,21 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           set({ queryError: 'set ANTHROPIC_API_KEY to enable AI (NL→SQL)' });
           return;
         }
-        set({ nlMode: true, nlDraft: '', queryError: null });
+        set({ nlMode: true, nlDraft: EMPTY, queryError: null });
       },
 
-      updateNlDraft: (text) => set({ nlDraft: text }),
+      editNl: (op) => set({ nlDraft: op(get().nlDraft) }),
 
-      cancelNl: () => set({ nlMode: false, nlDraft: '' }),
+      cancelNl: () => set({ nlMode: false, nlDraft: EMPTY }),
 
       generateFromNl: async () => {
         const { nlDraft, catalog } = get();
-        const nl = nlDraft.trim();
+        const nl = nlDraft.value.trim();
         if (!generator || !nl) {
-          set({ nlMode: false, nlDraft: '' });
+          set({ nlMode: false, nlDraft: EMPTY });
           return;
         }
-        set({ nlMode: false, nlDraft: '', generating: true, queryError: null });
+        set({ nlMode: false, nlDraft: EMPTY, generating: true, queryError: null });
         const schema: SchemaContext = {
           tables: catalog
             ? catalog.tables.map((t) => ({
@@ -1162,7 +1166,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         // Fill the editor for review — NEVER auto-execute (§5.2).
         set({
           generating: false,
-          queryText: r.value.sql,
+          queryText: field(r.value.sql),
           nlExplanation: r.value.explanation,
           nlKind: r.value.kind,
           completions: [],

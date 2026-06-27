@@ -15,6 +15,17 @@
 import type { KeyEvent } from '@opentui/core';
 import type { AppState, Focus, Mode, SurfaceKind, MainTab } from '../app/store.ts';
 import { printableChar } from '../input/keys.ts';
+import {
+  insert,
+  backspace,
+  del,
+  left,
+  right,
+  home,
+  end,
+  deleteWordBack,
+  type TextField,
+} from '../input/textField.ts';
 
 /** The focus/mode the UI is in — selects which group of keys is active. */
 export type KeyContext =
@@ -95,17 +106,26 @@ export interface KeyBinding {
   readonly enabled?: (f: KeyFlags) => boolean;
 }
 
-/** Free-text entry for the input-capturing contexts; their drafts live in the
- *  store. Kept off the documented `bindings` so it never clutters the footer. */
+/** Append-only text entry (a field with no cursor of its own, e.g. the
+ *  connection form, where ←/→ are bound to driver switching). Kept off the
+ *  documented `bindings` so it never clutters the footer. */
 export interface TextEntry {
   readonly onChar: (s: AppState, ch: string) => void;
   readonly onErase: (s: AppState) => void;
+}
+
+/** A cursored TextField field: every text-editing key routes through one `edit`
+ *  applying a pure TextField operation, so typing, erasing, and cursor movement
+ *  (←/→/Home/End/⌃W) all work uniformly without per-key store actions. */
+export interface FieldEntry {
+  readonly edit: (s: AppState, op: (tf: TextField) => TextField) => void;
 }
 
 export interface KeyGroup {
   readonly title: string;
   readonly bindings: readonly KeyBinding[];
   readonly text?: TextEntry;
+  readonly field?: FieldEntry;
 }
 
 /** Keys available whenever the UI isn't capturing text — i.e. the navigational
@@ -166,7 +186,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '^G', hint: 'ask AI', desc: 'Generate SQL from natural language', match: ['^g'], enabled: (f) => f.nlAvailable, run: (s) => s.beginNl() },
       { keys: 'esc', hint: 'grid', desc: 'Focus the results grid', match: ['escape'], run: (s) => s.focusPane('grid') },
     ],
-    text: { onChar: (s, ch) => s.updateQueryText(s.queryText + ch), onErase: (s) => s.updateQueryText(s.queryText.slice(0, -1)) },
+    field: { edit: (s, op) => s.editQuery(op) },
   },
   filter: {
     title: 'Filter',
@@ -174,7 +194,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '⏎', hint: 'apply', desc: 'Apply the filter (empty clears it)', match: ['return'], run: (s) => void s.commitFilter() },
       { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelFilter() },
     ],
-    text: { onChar: (s, ch) => s.updateFilterDraft(s.filterDraft + ch), onErase: (s) => s.updateFilterDraft(s.filterDraft.slice(0, -1)) },
+    field: { edit: (s, op) => s.editFilter(op) },
   },
   edit: {
     title: 'Edit cell',
@@ -182,7 +202,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '⏎', hint: 'review', desc: 'Review the change before applying', match: ['return'], run: (s) => s.submitEdit() },
       { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelEdit() },
     ],
-    text: { onChar: (s, ch) => s.updateEditDraft(s.editDraft + ch), onErase: (s) => s.updateEditDraft(s.editDraft.slice(0, -1)) },
+    field: { edit: (s, op) => s.editEdit(op) },
   },
   confirm: {
     title: 'Confirm',
@@ -217,7 +237,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '⏎', hint: 'generate', desc: 'Generate SQL (always reviewed before running)', match: ['return'], run: (s) => void s.generateFromNl() },
       { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelNl() },
     ],
-    text: { onChar: (s, ch) => s.updateNlDraft(s.nlDraft + ch), onErase: (s) => s.updateNlDraft(s.nlDraft.slice(0, -1)) },
+    field: { edit: (s, op) => s.editNl(op) },
   },
 };
 
@@ -294,6 +314,21 @@ export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void 
       if (usable(b, flags) && hits(b, key, ch)) return b.run(s, env);
     }
   }
+  // Cursored field: typing, erasing, and caret movement are all TextField ops.
+  if (group.field) {
+    const e = group.field.edit;
+    const n = key.name;
+    if (n === 'backspace') e(s, backspace);
+    else if (n === 'delete') e(s, del);
+    else if (n === 'left') e(s, left);
+    else if (n === 'right') e(s, right);
+    else if (n === 'home') e(s, home);
+    else if (n === 'end') e(s, end);
+    else if (key.ctrl && n === 'w') e(s, deleteWordBack);
+    else if (ch !== null) e(s, (tf) => insert(tf, ch));
+    return;
+  }
+  // Append-only field (no cursor of its own).
   if (group.text) {
     if (key.name === 'backspace' || key.name === 'delete') group.text.onErase(s);
     else if (ch !== null) group.text.onChar(s, ch);

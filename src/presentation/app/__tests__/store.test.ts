@@ -6,6 +6,7 @@
 
 import { test, expect } from 'bun:test';
 import { createAppStore } from '../store.ts';
+import { insert } from '../../input/textField.ts';
 import { CapabilitySet } from '../../../domain/datasource/capabilities.ts';
 import { ok } from '../../../shared/Result.ts';
 import type { DataSource } from '../../../domain/datasource/DataSource.ts';
@@ -49,11 +50,11 @@ test('generateFromNl fills the editor and classifies, never executing', async ()
   });
   await store.getState().init();
 
-  store.getState().updateNlDraft('deactivate user 5');
+  store.getState().editNl((tf) => insert(tf, 'deactivate user 5'));
   await store.getState().generateFromNl();
 
   const s = store.getState();
-  expect(s.queryText).toBe('UPDATE users SET active = 0 WHERE id = 5');
+  expect(s.queryText.value).toBe('UPDATE users SET active = 0 WHERE id = 5');
   expect(s.nlExplanation).toBe('deactivates user 5');
   expect(s.nlKind).toBe('write'); // flagged destructive
   expect(s.nlMode).toBe(false);

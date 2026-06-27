@@ -225,6 +225,10 @@ export interface AppState {
   treeCollapse: () => void;
   /** →/D from the sidebar on an object: open it showing its DDL/structure. */
   treeShowDdl: () => Promise<void>;
+  /** d from the sidebar on a table/view: draft a DROP for it into the editor and
+   *  focus it — review, then ⏎ runs it. Never executes on its own. No-op off an
+   *  object row or on a non-SQL source. */
+  draftDrop: () => void;
   /** Re-list saved connections and re-introspect the active one's objects, so
    *  schema changes made elsewhere (e.g. a CREATE TABLE run in the editor) show
    *  up. Keeps the current fold/cursor; the SQL completion catalog is rebuilt
@@ -763,6 +767,16 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         await openObject(row.ref);
         set({ mainTab: 'ddl' });
         await loadStructure();
+      },
+
+      draftDrop: () => {
+        const row = rowsNow()[get().treeIndex];
+        if (!row || row.type !== 'object' || !get().queryable) return;
+        const keyword = row.ref.kind === 'view' ? 'DROP VIEW' : row.ref.kind === 'table' ? 'DROP TABLE' : null;
+        if (!keyword) return;
+        const name = row.ref.namespace ? `${row.ref.namespace}.${row.ref.name}` : row.ref.name;
+        get().setQuery(`${keyword} ${name};`);
+        get().focusPane('editor');
       },
 
       refresh: async () => {

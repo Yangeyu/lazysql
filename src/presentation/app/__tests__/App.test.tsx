@@ -280,6 +280,18 @@ test('? opens the keybindings help overlay and toggles it off again', async () =
   h.cleanup();
 });
 
+test('d on a sidebar table drafts a DROP into the editor (does not run it)', async () => {
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget')); // cursor seated on the table object
+  h.press('d'); // draft the DROP, focus the editor
+  await h.until((f) => f.includes('DROP TABLE widget'));
+  const frame = h.frame();
+  expect(frame).toContain('DROP TABLE widget'); // pre-filled, awaiting review
+  expect(frame).toContain('SQL>'); // editor is focused
+  expect(frame).toContain('widget'); // the table still exists — nothing ran
+  h.cleanup();
+});
+
 test('schema-aware completion completes a table name on Tab', async () => {
   const h = await renderApp();
   await h.until((f) => f.includes('widget'));

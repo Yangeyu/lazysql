@@ -48,8 +48,11 @@ const objectIcon = (kind: ObjectKind): string => {
   }
 };
 
-/** Render one tree row's content (indentation + glyph + label) as inline spans. */
+/** Render one tree row's content (indentation + glyph + label) as inline spans.
+ *  Indentation is `row.depth` driven, so the schema tier nests objects deeper
+ *  without this view knowing whether they were grouped. */
 const rowContent = (row: TreeRow, selected: boolean): React.ReactNode => {
+  const indent = '  '.repeat(row.depth);
   if (row.type === 'connection') {
     return (
       <>
@@ -67,16 +70,26 @@ const rowContent = (row: TreeRow, selected: boolean): React.ReactNode => {
   if (row.type === 'category') {
     return (
       <>
-        {'  '}
+        {indent}
         <span fg={theme.border}>{fold(row.expanded)} </span>
         <span fg={selected ? undefined : theme.cyan}>{row.label}</span>
         <span fg={theme.border}> {row.count}</span>
       </>
     );
   }
+  if (row.type === 'schema') {
+    return (
+      <>
+        {indent}
+        <span fg={theme.border}>{fold(row.expanded)} </span>
+        <span fg={selected ? undefined : theme.muted}>[{row.label}]</span>
+        <span fg={theme.border}> {row.count}</span>
+      </>
+    );
+  }
   return (
     <>
-      {'    '}
+      {indent}
       <span fg={theme.border}>{objectIcon(row.ref.kind)} </span>
       {row.label}
     </>

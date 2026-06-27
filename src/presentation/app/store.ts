@@ -23,6 +23,9 @@ import {
   dialectLabel,
   firstCategoryKind,
   firstObjectIndex,
+  firstSchemaKey,
+  groupsBySchema,
+  schemaKey,
   toConnNodes,
   type TreeRow,
 } from '../tree/tree.ts';
@@ -141,6 +144,9 @@ export interface AppState {
   rootExpanded: boolean;
   /** Categories currently expanded (by object kind). */
   expandedCats: Set<ObjectKind>;
+  /** Schema rows currently expanded, keyed by `schemaKey(kind, namespace)`
+   *  (only Postgres grows this tier; see `groupsBySchema`). */
+  expandedSchemas: Set<string>;
   /** Cursor into the flattened visible tree rows. */
   treeIndex: number;
   focus: Focus;
@@ -348,14 +354,19 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
     const activeProfile = (): ConnectionProfile | null =>
       get().profiles.find((p) => p.id === get().activeId) ?? null;
 
-    /** Build the flattened tree rows from the current state (pure). */
+    /** Build the flattened tree rows from the current state (pure). The schema
+     *  tier is gated on the active driver — the store owns that policy so the
+     *  pure projection never names a driver. */
     const rowsNow = (): TreeRow[] => {
-      const { profiles, activeId, objects, rootExpanded, expandedCats } = get();
+      const { profiles, activeId, objects, rootExpanded, expandedCats, expandedSchemas } = get();
+      const profile = activeProfile();
       return buildTree({
         connections: toConnNodes(profiles, activeId),
         objects,
         rootExpanded,
         expandedCats,
+        expandedSchemas,
+        groupBySchema: profile ? groupsBySchema(profile.driver) : false,
       });
     };
 
@@ -504,13 +515,18 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         set({ status: 'error', error: res.error.message });
         return;
       }
-      // Expand the first present category and land the cursor on its first
-      // object, so a single Enter browses straight away.
+      // Expand the first present category — and, for a schema-tiered driver, its
+      // first schema — then land the cursor on the first object, so a single
+      // Enter browses straight away.
       const first = firstCategoryKind(res.value);
+      const profile = activeProfile();
+      const grouped = profile ? groupsBySchema(profile.driver) : false;
+      const schema = first && grouped ? firstSchemaKey(res.value, first) : null;
       set({
         status: 'ready',
         objects: res.value,
         expandedCats: new Set<ObjectKind>(first ? [first] : []),
+        expandedSchemas: new Set<string>(schema ? [schema] : []),
       });
       set({ treeIndex: firstObjectIndex(rowsNow()) });
     };
@@ -530,6 +546,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         objects: [],
         rootExpanded: true,
         expandedCats: new Set<ObjectKind>(),
+        expandedSchemas: new Set<string>(),
         treeIndex: 0,
         focus: 'sidebar',
         current: null,
@@ -560,6 +577,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       objects: [],
       rootExpanded: true,
       expandedCats: new Set<ObjectKind>(),
+      expandedSchemas: new Set<string>(),
       treeIndex: 0,
       focus: 'sidebar',
       current: null,
@@ -662,11 +680,15 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           // Active connection folds; an inactive one connects (switches to it).
           if (row.active) set((s) => ({ rootExpanded: !s.rootExpanded }));
           else void get().connect(row.id);
-        } else {
+        } else if (row.type === 'category') {
           const next = new Set(get().expandedCats);
-          if (next.has(row.kind)) next.delete(row.kind);
-          else next.add(row.kind);
+          next.has(row.kind) ? next.delete(row.kind) : next.add(row.kind);
           set({ expandedCats: next });
+        } else {
+          const key = schemaKey(row.kind, row.namespace);
+          const next = new Set(get().expandedSchemas);
+          next.has(key) ? next.delete(key) : next.add(key);
+          set({ expandedSchemas: next });
         }
         clampTree();
       },
@@ -679,8 +701,15 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         } else if (row.type === 'connection') {
           if (!row.active) void get().connect(row.id);
           else if (!get().rootExpanded) set({ rootExpanded: true });
-        } else if (!get().expandedCats.has(row.kind)) {
-          set({ expandedCats: new Set(get().expandedCats).add(row.kind) });
+        } else if (row.type === 'category') {
+          if (!get().expandedCats.has(row.kind)) {
+            set({ expandedCats: new Set(get().expandedCats).add(row.kind) });
+          }
+        } else {
+          const key = schemaKey(row.kind, row.namespace);
+          if (!get().expandedSchemas.has(key)) {
+            set({ expandedSchemas: new Set(get().expandedSchemas).add(key) });
+          }
         }
       },
 
@@ -689,14 +718,25 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         const i = get().treeIndex;
         const row = rows[i];
         if (!row) return;
-        const parentAbove = (type: TreeRow['type']): void => {
+        // Jump the cursor to the nearest ancestor row above matching `is`.
+        const parentAbove = (is: (r: TreeRow) => boolean): void => {
           for (let j = i - 1; j >= 0; j--) {
-            if (rows[j]!.type === type) return set({ treeIndex: j });
+            if (is(rows[j]!)) return set({ treeIndex: j });
           }
           set({ treeIndex: 0 });
         };
         if (row.type === 'object') {
-          parentAbove('category'); // jump to the parent category header
+          // Parent is the schema header when grouped, else the category header.
+          parentAbove((r) => r.type === 'schema' || r.type === 'category');
+        } else if (row.type === 'schema') {
+          if (get().expandedSchemas.has(schemaKey(row.kind, row.namespace))) {
+            const next = new Set(get().expandedSchemas);
+            next.delete(schemaKey(row.kind, row.namespace));
+            set({ expandedSchemas: next });
+            clampTree();
+          } else {
+            parentAbove((r) => r.type === 'category');
+          }
         } else if (row.type === 'category') {
           if (get().expandedCats.has(row.kind)) {
             const next = new Set(get().expandedCats);
@@ -704,7 +744,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             set({ expandedCats: next });
             clampTree();
           } else {
-            parentAbove('connection'); // jump to the owning connection root
+            parentAbove((r) => r.type === 'connection'); // jump to the owning root
           }
         } else if (row.active && get().rootExpanded) {
           set({ rootExpanded: false });

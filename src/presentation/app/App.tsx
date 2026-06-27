@@ -17,7 +17,7 @@ import { ConnectionForm } from '../components/ConnectionForm.tsx';
 import { CellView } from '../components/CellView.tsx';
 import { helpGroups, deriveContext, dispatchKey, type KeyFlags } from '../keymap/keymap.ts';
 import { SIDEBAR_WIDTH, computeLayout } from './layout.ts';
-import { buildTree, toConnNodes, dialectLabel, shortTag } from '../tree/tree.ts';
+import { buildTree, toConnNodes, dialectLabel, shortTag, groupsBySchema } from '../tree/tree.ts';
 import { theme } from '../theme/theme.ts';
 import type { Filter } from '../../domain/query/Query.ts';
 import type { Clipboard } from '../../application/ports/Clipboard.ts';
@@ -47,6 +47,7 @@ export const App = ({ clipboard }: AppProps) => {
   const objects = useApp((s) => s.objects);
   const rootExpanded = useApp((s) => s.rootExpanded);
   const expandedCats = useApp((s) => s.expandedCats);
+  const expandedSchemas = useApp((s) => s.expandedSchemas);
   const treeIndex = useApp((s) => s.treeIndex);
   const focus = useApp((s) => s.focus);
   const current = useApp((s) => s.current);
@@ -119,8 +120,10 @@ export const App = ({ clipboard }: AppProps) => {
         objects,
         rootExpanded,
         expandedCats,
+        expandedSchemas,
+        groupBySchema: activeProfile ? groupsBySchema(activeProfile.driver) : false,
       }),
-    [profiles, activeId, objects, rootExpanded, expandedCats],
+    [profiles, activeId, objects, rootExpanded, expandedCats, expandedSchemas, activeProfile],
   );
 
   const flags: KeyFlags = { queryable, nlAvailable };

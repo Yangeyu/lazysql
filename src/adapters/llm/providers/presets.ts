@@ -33,10 +33,29 @@ export const BAILIAN: OpenAiCompatiblePreset = {
   defaultModel: 'qwen3.7-plus',
 };
 
+/** OpenAI — the reference chat-completions API the others emulate. */
+export const OPENAI: OpenAiCompatiblePreset = {
+  id: 'openai',
+  label: 'OpenAI',
+  baseURL: 'https://api.openai.com/v1',
+  apiKeyEnv: 'OPENAI_API_KEY',
+  defaultModel: 'gpt-4o',
+};
+
+/** DeepSeek — OpenAI-compatible; `deepseek-chat` is the general-purpose model. */
+export const DEEPSEEK: OpenAiCompatiblePreset = {
+  id: 'deepseek',
+  label: 'DeepSeek',
+  baseURL: 'https://api.deepseek.com/v1',
+  apiKeyEnv: 'DEEPSEEK_API_KEY',
+  defaultModel: 'deepseek-chat',
+};
+
 /** Registry keyed by provider id — the lookup used by createSqlGenerator. */
 export const OPENAI_COMPATIBLE_PRESETS: Readonly<
   Record<string, OpenAiCompatiblePreset>
 > = {
   [BAILIAN.id]: BAILIAN,
-  // Future: deepseek · moonshot · openai · ollama — each a preset, zero new code.
+  [OPENAI.id]: OPENAI,
+  [DEEPSEEK.id]: DEEPSEEK,
 };

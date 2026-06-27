@@ -4,8 +4,8 @@
  * choice of provider out of the application core. (DIP / OCP — ADR-0004)
  *
  * Selection order:
- *   1. LAZYSQL_LLM_PROVIDER=anthropic|bailian|…   explicit choice
- *   2. else auto-detect by which API key is present (Qwen preferred)
+ *   1. LAZYSQL_LLM_PROVIDER=anthropic|bailian|openai|deepseek|…   explicit choice
+ *   2. else auto-detect by which API key is present (AUTO_DETECT order, Anthropic last)
  *   3. else null → NL→SQL stays disabled (the ^G hint is hidden)
  *
  * Overrides: LAZYSQL_LLM_MODEL, LAZYSQL_LLM_BASE_URL.
@@ -17,8 +17,14 @@ import { OpenAiCompatibleSqlGenerator } from './providers/OpenAiCompatibleSqlGen
 import {
   OPENAI_COMPATIBLE_PRESETS,
   BAILIAN,
+  OPENAI,
+  DEEPSEEK,
   type OpenAiCompatiblePreset,
 } from './providers/presets.ts';
+
+/** Key-presence auto-detect precedence (Qwen kept first for back-compat). The
+ *  first preset whose API key is set wins; Anthropic is tried after these. */
+const AUTO_DETECT: readonly OpenAiCompatiblePreset[] = [BAILIAN, OPENAI, DEEPSEEK];
 
 type Env = Record<string, string | undefined>;
 
@@ -58,9 +64,11 @@ export function createSqlGenerator(env: Env = process.env): SqlGenerator | null 
     return key ? buildOpenAiCompatible(preset, key, env) : null;
   }
 
-  // 2) auto-detect — prefer Qwen (Bailian) when its key is present
-  const dashscope = env[BAILIAN.apiKeyEnv];
-  if (dashscope) return buildOpenAiCompatible(BAILIAN, dashscope, env);
+  // 2) auto-detect by which API key is present, in a fixed precedence
+  for (const preset of AUTO_DETECT) {
+    const key = env[preset.apiKeyEnv];
+    if (key) return buildOpenAiCompatible(preset, key, env);
+  }
   if (env.ANTHROPIC_API_KEY) return buildAnthropic(env);
 
   // 3) nothing configured

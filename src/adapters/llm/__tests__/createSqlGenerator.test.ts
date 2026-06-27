@@ -62,3 +62,31 @@ test('model and base-URL overrides flow into the active provider', () => {
   expect(diag(g).model).toBe('qwen-max');
   expect(diag(g).baseURL).toBe('https://dashscope-intl.aliyuncs.com/compatible-mode/v1');
 });
+
+test('explicit LAZYSQL_LLM_PROVIDER=openai routes to the OpenAI endpoint', () => {
+  const g = createSqlGenerator({ LAZYSQL_LLM_PROVIDER: 'openai', OPENAI_API_KEY: 'sk-o' });
+  expect(diag(g).provider).toBe('openai');
+  expect(diag(g).model).toBe('gpt-4o');
+  expect(diag(g).baseURL).toBe('https://api.openai.com/v1');
+});
+
+test('explicit LAZYSQL_LLM_PROVIDER=deepseek routes to the DeepSeek endpoint', () => {
+  const g = createSqlGenerator({ LAZYSQL_LLM_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'sk-ds' });
+  expect(diag(g).provider).toBe('deepseek');
+  expect(diag(g).model).toBe('deepseek-chat');
+  expect(diag(g).baseURL).toBe('https://api.deepseek.com/v1');
+});
+
+test('auto-detect picks OpenAI / DeepSeek when only that key is present', () => {
+  expect(diag(createSqlGenerator({ OPENAI_API_KEY: 'sk-o' })).provider).toBe('openai');
+  expect(diag(createSqlGenerator({ DEEPSEEK_API_KEY: 'sk-ds' })).provider).toBe('deepseek');
+});
+
+test('auto-detect precedence keeps Qwen ahead of OpenAI and DeepSeek', () => {
+  const g = createSqlGenerator({
+    DASHSCOPE_API_KEY: 'sk-d',
+    OPENAI_API_KEY: 'sk-o',
+    DEEPSEEK_API_KEY: 'sk-ds',
+  });
+  expect(diag(g).provider).toBe('bailian');
+});

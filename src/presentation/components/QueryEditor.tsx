@@ -14,9 +14,9 @@
  * its own text + cursor (the cursor is the terminal's, no hand-rolled glyph), and
  * reports edits via onInput / submits via onSubmit. The store holds only the
  * committed query string (bound to the SQL input's `value`); history, completion
- * and NL all drive it through that prop. While the editor is empty the browse
- * statement shows as the input's dim placeholder. Running a query sends its
- * result to the shared grid — the editor never renders results itself (SRP).
+ * and NL all drive it through that prop. While the editor is empty the statement
+ * behind the current grid shows as the input's dim placeholder. Running a query
+ * sends its result to the shared grid — the editor never renders results itself (SRP).
  */
 
 import React from 'react';
@@ -30,9 +30,10 @@ import { theme, INPUT_CURSOR } from '../theme/theme.ts';
 interface Props {
   /** The committed query text the SQL input is bound to (it owns the cursor). */
   queryText: string;
-  /** Read-only echo of the current browse statement, shown as the input's dim
-   *  placeholder while it is empty so the panel reflects what the grid shows. */
-  browsePreview: string | null;
+  /** Read-only echo of the statement behind the current grid (browse SQL or the
+   *  executed query), shown as the input's dim placeholder while it is empty so
+   *  the panel always reflects how the result was produced. */
+  statement: string | null;
   /** Editor pane focused; the SQL input is active when not in `nlMode`. */
   focused: boolean;
   /** The ask row is active (capturing the NL prompt). */
@@ -65,7 +66,7 @@ const oneLine = (s: string): string => s.replace(/\s*\n\s*/g, ' ');
 
 const QueryEditorImpl = ({
   queryText,
-  browsePreview,
+  statement,
   focused,
   nlMode,
   onNlSubmit,
@@ -147,7 +148,7 @@ const QueryEditorImpl = ({
           onInput={onQueryInput}
           onSubmit={onQuerySubmit as never}
           focused={focused && !nlMode}
-          placeholder={browsePreview ?? ''}
+          placeholder={statement ?? ''}
           placeholderColor={theme.muted}
           textColor={theme.cyan}
           cursorStyle={INPUT_CURSOR}

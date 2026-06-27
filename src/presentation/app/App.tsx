@@ -72,7 +72,7 @@ export const App = ({ clipboard }: AppProps) => {
   const cellView = useApp((s) => s.cellView);
   const surface = useApp((s) => s.surface);
   const queryText = useApp((s) => s.queryText);
-  const browseSql = useApp((s) => s.browseSql);
+  const statement = useApp((s) => s.statement);
   const queryError = useApp((s) => s.queryError);
   const queryElapsedMs = useApp((s) => s.queryElapsedMs);
   const completions = useApp((s) => s.completions);
@@ -176,7 +176,7 @@ export const App = ({ clipboard }: AppProps) => {
         {queryable ? (
           <QueryEditor
             queryText={queryText}
-            browsePreview={browseSql}
+            statement={statement}
             focused={focus === 'editor'}
             nlMode={nlMode}
             onNlSubmit={(p) => void store.getState().generateFromNl(p)}

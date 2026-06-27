@@ -15,7 +15,7 @@ test('renders the prompt and the bound query text in the SQL input', async () =>
   const h = await renderTest(
     <QueryEditor
       queryText={SQL}
-      browsePreview={null}
+      statement={null}
       focused
       completions={[]}
       nlMode={false}

@@ -181,12 +181,12 @@ export interface AppState {
   sort: Sort | null;
   filter: Filter | null;
   total: number;
-  /** The current browse statement, value-inlined, for a read-only echo in the SQL
-   *  editor; null when not browsing or the source can't render one. A cached
-   *  projection of (current, sort, filter, page) — recomputed on every `load`, so
-   *  it never drifts from what executed. Cached (not a selector) because rendering
-   *  it needs the adapter's dialect, which only the store reaches. */
-  browseSql: string | null;
+  /** The statement behind whatever the grid currently shows — the value-inlined
+   *  browse SQL while browsing, or the executed query/write after a run. Echoed as
+   *  the editor's dim placeholder so you always see how the result was produced;
+   *  null when there's nothing open. Recomputed wherever the result is set (`load`
+   *  / `runEditorSql`), so it never drifts from what produced the grid. */
+  statement: string | null;
   gridRow: number;
   gridCol: number;
   /** Visible body rows of the grid, mirrored from the layout so cursor jumps
@@ -242,6 +242,9 @@ export interface AppState {
   treeBottom: () => void;
   /** Enter/Space: toggle a container's fold, or open an object. */
   treeToggle: () => Promise<void>;
+  /** Browse the selected object (or the open one) as a clean SELECT * — resets
+   *  sort/filter/page. The `a` key: a one-press "show me this table" from any pane. */
+  browseSelected: () => void;
   /** →/l: expand a container, or open an object. */
   treeExpand: () => Promise<void>;
   /** ←/h: collapse a container, or jump from an object to its category. */
@@ -456,6 +459,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         pkColumns: [],
         structure: null,
         structureError: null,
+        // Browsing is a fresh context: drop any leftover draft so the editor
+        // echoes this object's browse statement, not the last query you ran.
+        queryText: '',
+        historyIndex: null,
       });
       // One describe decides everything: an object with a column section has rows
       // (browse it into the grid); a source-only object (index/trigger/…) has
@@ -479,7 +486,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         await load(ref, { page: firstPage(PAGE_SIZE), sort: null, filter: null });
       } else {
         // No rows to browse — present the definition only.
-        set({ current: ref, result: null, total: 0, browseSql: null, mainTab: 'ddl' });
+        set({ current: ref, result: null, total: 0, statement: null, mainTab: 'ddl' });
       }
     };
 
@@ -520,7 +527,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         filter: res.value.spec.filter ?? null,
         // Echo the exact statement the adapter ran (value-inlined). Same source
         // (ref, spec) as the result above, so the echo always matches the view.
-        browseSql: asBrowsePreviewable(active)?.previewBrowse(ref, res.value.spec) ?? null,
+        statement: asBrowsePreviewable(active)?.previewBrowse(ref, res.value.spec) ?? null,
         gridRow: 0,
       });
     };
@@ -577,7 +584,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         surface: 'query',
         current: null,
         pkColumns: [],
-        browseSql: null, // a query result isn't a browse — no statement to echo
+        // The editor echoes the executed statement: clear the draft so the
+        // placeholder shows `text`, the SQL that produced this result.
+        statement: text,
+        queryText: '',
         result: r.value.result,
         total: r.value.result.rows.length,
         queryElapsedMs: r.value.elapsedMs,
@@ -675,7 +685,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         current: null,
         surface: 'browse',
         result: null,
-        browseSql: null,
+        statement: null,
         gridRow: 0,
         gridCol: 0,
         mainTab: 'data',
@@ -724,7 +734,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       sort: null,
       filter: null,
       total: 0,
-      browseSql: null,
+      statement: null,
       gridRow: 0,
       gridCol: 0,
       gridViewportRows: 0,
@@ -829,6 +839,18 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           set({ expandedSchemas: next });
         }
         clampTree();
+      },
+
+      browseSelected: () => {
+        const row = rowsNow()[get().treeIndex];
+        if (row?.type === 'object') {
+          void openObject(row.ref);
+          return;
+        }
+        // The cursor isn't on an object (e.g. moved to a category after a query):
+        // fall back to re-browsing whatever object is currently open.
+        const cur = get().current;
+        if (cur) void openObject(cur);
       },
 
       treeExpand: async () => {
@@ -968,7 +990,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           current: null,
           surface: 'browse',
           result: null,
-          browseSql: null,
+          statement: null,
           cellView: null,
           rootExpanded: true,
           treeIndex: 0,
@@ -1143,14 +1165,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       },
 
       cycleFocus: () =>
-        set((s) => {
-          // The editor is in the cycle only when the source speaks SQL.
-          const order: Focus[] = s.queryable
-            ? ['sidebar', 'editor', 'grid']
-            : ['sidebar', 'grid'];
-          const i = order.indexOf(s.focus);
-          return { focus: order[(i + 1) % order.length]! };
-        }),
+        // Tab toggles only the two persistent panes, tree ↔ results. The editor
+        // is reached deliberately (`:`) and left with Esc, so it stays off the
+        // cycle — Tab never lands you mid-compose.
+        set((s) => ({ focus: s.focus === 'sidebar' ? 'grid' : 'sidebar' })),
 
       gridUp: () => set((s) => ({ gridRow: Math.max(0, s.gridRow - 1) })),
 

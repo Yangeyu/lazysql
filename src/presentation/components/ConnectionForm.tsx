@@ -8,7 +8,8 @@
 import React from 'react';
 import { TextAttributes } from '@opentui/core';
 import type { ConnForm } from '../app/store.ts';
-import { theme, CARET } from '../theme/theme.ts';
+import { theme } from '../theme/theme.ts';
+import { Caret } from './Caret.tsx';
 
 const LABEL_COL = 12;
 
@@ -49,7 +50,7 @@ const ConnectionFormImpl = ({ form }: { form: ConnForm }) => {
                 {shown || ' '}
               </span>
               {placeholder ? <span fg={theme.muted}> {placeholder}</span> : null}
-              {selected ? <span fg={theme.accent}>{CARET}</span> : null}
+              <Caret focused={selected} />
             </text>
           );
         })}

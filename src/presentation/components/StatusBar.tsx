@@ -11,7 +11,8 @@ import React from 'react';
 import { TextAttributes } from '@opentui/core';
 import type { Mode } from '../app/store.ts';
 import { footerHints, type KeyContext, type KeyFlags } from '../keymap/keymap.ts';
-import { theme, CARET } from '../theme/theme.ts';
+import { theme } from '../theme/theme.ts';
+import { Caret } from './Caret.tsx';
 
 interface Props {
   width: number;
@@ -41,7 +42,7 @@ const Badge = ({
   </span>
 );
 
-const CURSOR = <span fg={theme.accent}>{CARET}</span>;
+const CURSOR = <Caret focused />;
 
 /** Short label for the resting context badge. */
 const contextBadge = (context: KeyContext): { label: string; bg: string } => {

@@ -27,6 +27,7 @@ import {
   type StatementKind,
 } from '../../domain/query/classify.ts';
 import { theme, CARET } from '../theme/theme.ts';
+import { Caret } from './Caret.tsx';
 
 interface Props {
   queryText: string;
@@ -144,7 +145,7 @@ const QueryEditorImpl = ({
         {nlMode ? (
           <>
             <span fg={theme.cyan}>{nlDraft}</span>
-            <span fg={theme.accent}>{CARET}</span>
+            <Caret focused />
           </>
         ) : nlExplanation ? (
           <span fg={theme.magenta}>
@@ -173,7 +174,7 @@ const QueryEditorImpl = ({
               {i === 0 ? (
                 <>
                   <b fg={theme.magenta}>{PROMPT}</b>
-                  {focused ? <span fg={theme.accent}>{CARET}</span> : null}
+                  <Caret focused={focused} />
                   <span fg={theme.muted}>{browsePreview}</span>
                 </>
               ) : (

@@ -1170,8 +1170,15 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       // ── query editor ──────────────────────────────────────────────────────
 
-      setQuery: (value) =>
-        set({ queryText: value, historyIndex: null, completions: completionsFor(value) }),
+      setQuery: (value) => {
+        // The controlled <input> re-fires onInput with the SAME text when history
+        // navigation writes queryText programmatically (a value-prop echo). That
+        // no-op write must NOT reset historyIndex — otherwise ↓ (historyNext) sees
+        // a null cursor and can never step forward. A real edit always changes the
+        // text, so ignoring an identical write is safe.
+        if (value === get().queryText) return;
+        set({ queryText: value, historyIndex: null, completions: completionsFor(value) });
+      },
 
       executeQuery: async () => {
         if (!active) return;

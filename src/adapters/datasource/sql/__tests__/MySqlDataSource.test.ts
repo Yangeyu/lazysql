@@ -62,12 +62,21 @@ beforeAll(async () => {
   unwrap(await source.connect());
 
   const exec = (text: string) => asQueryable(source)!.execute(sql(text));
-  await exec('DROP TABLE IF EXISTS widget');
+  await exec('DROP VIEW IF EXISTS pricey');
+  await exec('DROP PROCEDURE IF EXISTS inc');
+  await exec('DROP TABLE IF EXISTS widget'); // also drops its trigger
   await exec(
     'CREATE TABLE widget (id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(255), qty INT)',
   );
   const rows = Array.from({ length: 25 }, (_, i) => `('w${i + 1}', ${i + 1})`).join(',');
   await exec(`INSERT INTO widget (label, qty) VALUES ${rows}`);
+  // The non-table kinds MySQL introspects (no indexes — names are per-table).
+  await exec('CREATE VIEW pricey AS SELECT id, label FROM widget WHERE qty > 10');
+  await exec(
+    'CREATE TRIGGER widget_guard BEFORE UPDATE ON widget FOR EACH ROW SET NEW.label = NEW.label',
+  );
+  // One COM_QUERY carries the whole routine — DELIMITER is a CLI-only concern.
+  await exec('CREATE PROCEDURE inc(IN a INT) BEGIN SELECT a + 1; END');
 });
 
 afterAll(async () => {
@@ -85,6 +94,34 @@ myTest('listObjects finds the table in the current database', async () => {
   const found = objects.find((o) => o.name === 'widget');
   expect(found).toBeDefined();
   expect(found?.namespace).toBe('lazysql');
+});
+
+myTest('listObjects surfaces views, triggers and procedures by kind', async () => {
+  const objects = unwrap(await listObjects(source));
+  const kindOf = (name: string) => objects.find((o) => o.name === name)?.kind;
+  expect(kindOf('pricey')).toBe('view');
+  expect(kindOf('widget_guard')).toBe('trigger');
+  expect(kindOf('inc')).toBe('procedure');
+  expect(kindOf('widget')).toBe('table');
+});
+
+const mySourceText = async (ref: ObjectRef): Promise<string> => {
+  const schema = await asIntrospectable(source)!.describe(ref);
+  const s = schema.detail.find((d) => d.kind === 'source');
+  return s?.kind === 'source' ? s.text : '';
+};
+
+myTest('describe yields triggers and procedures their definition', async () => {
+  expect(await mySourceText({ namespace: 'lazysql', name: 'widget_guard', kind: 'trigger' })).toMatch(/UPDATE/i);
+  expect(await mySourceText({ namespace: 'lazysql', name: 'inc', kind: 'procedure' })).toMatch(/SELECT/i);
+});
+
+myTest('describe gives a view both its columns and its defining source', async () => {
+  const view: ObjectRef = { namespace: 'lazysql', name: 'pricey', kind: 'view' };
+  const schema = await asIntrospectable(source)!.describe(view);
+  expect(schema.detail.map((d) => d.kind)).toEqual(['columns', 'source']);
+  expect(columnsOf(schema).map((c) => c.name)).toEqual(['id', 'label']);
+  expect(await mySourceText(view)).toMatch(/select/i);
 });
 
 myTest('describe reports the primary key via COLUMN_KEY', async () => {

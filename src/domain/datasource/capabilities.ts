@@ -15,6 +15,8 @@ export const Capability = {
   Browse: 'browse',
   /** Render a browse operation as readable source text (display only). */
   BrowsePreview: 'browse:preview',
+  /** Render a catalog DDL operation (e.g. DROP) as a runnable, quoted statement. */
+  DdlScript: 'ddl:script',
   /** Row/document level create/update/delete. */
   RowEdit: 'row:edit',
   /** begin/commit/rollback. */

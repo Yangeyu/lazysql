@@ -145,6 +145,10 @@ export class MySqlDialect implements Dialect {
     );
   }
 
+  dropQuery(ref: ObjectRef): Query {
+    return sql(`DROP ${ref.kind === 'view' ? 'VIEW' : 'TABLE'} ${qualify(ref)};`);
+  }
+
   insertQuery(ref: ObjectRef, row: RowPatch): Query {
     const dml = buildInsert(qualify(ref), row, quoteIdent, ph);
     return sql(dml.text, dml.params);

@@ -103,6 +103,10 @@ export class SqliteDialect implements Dialect {
     );
   }
 
+  dropQuery(ref: ObjectRef): Query {
+    return sql(`DROP ${ref.kind === 'view' ? 'VIEW' : 'TABLE'} ${quoteIdent(ref.name)};`);
+  }
+
   insertQuery(ref: ObjectRef, row: RowPatch): Query {
     const dml = buildInsert(quoteIdent(ref.name), row, quoteIdent, ph);
     return sql(dml.text, dml.params);

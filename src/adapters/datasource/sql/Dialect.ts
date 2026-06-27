@@ -37,6 +37,10 @@ export interface Dialect {
   /** Query counting an object's rows under the same optional filter. */
   countQuery(ref: ObjectRef, filter?: Filter | null): Query;
 
+  /** A `DROP TABLE`/`DROP VIEW` statement for `ref` with the identifier quoted and
+   *  schema-qualified — a display draft the UI runs, never executed here. */
+  dropQuery(ref: ObjectRef): Query;
+
   /** Parameterized DML — every value bound, never a write without a key. */
   insertQuery(ref: ObjectRef, row: RowPatch): Query;
   updateQuery(ref: ObjectRef, key: RowKey, patch: RowPatch): Query;

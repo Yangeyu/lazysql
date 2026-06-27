@@ -94,6 +94,7 @@ export class SqlDataSource
       Capability.SchemaIntrospect,
       Capability.Browse,
       Capability.BrowsePreview,
+      Capability.DdlScript,
       Capability.RowEdit,
       Capability.Transaction,
     ]);
@@ -160,6 +161,14 @@ export class SqlDataSource
    *  what actually executes. */
   previewBrowse(ref: ObjectRef, spec: BrowseSpec): string {
     return inlineParams(this.dialect.browseQuery(ref, spec));
+  }
+
+  // ── DdlScriptable ─────────────────────────────────────────────────────────
+
+  /** A quoted, schema-qualified DROP for `ref` — the dialect handles reserved
+   *  words, so dropping an object named `window` is correct. */
+  dropStatement(ref: ObjectRef): string {
+    return this.dialect.dropQuery(ref).text;
   }
 
   // ── Transactional ─────────────────────────────────────────────────────────

@@ -70,6 +70,17 @@ export interface BrowsePreviewable {
   previewBrowse(ref: ObjectRef, spec: BrowseSpec): string;
 }
 
+/**
+ * Render a catalog operation as a runnable, correctly-quoted statement — DISPLAY
+ * draft, never executed by the adapter. The UI fills the editor with it for the
+ * user to review and run. SQL adapters quote/qualify identifiers via their
+ * dialect, so a reserved-word object name (e.g. `window`) drops cleanly.
+ */
+export interface DdlScriptable {
+  /** A `DROP TABLE`/`DROP VIEW` statement for `ref`, quoted and schema-qualified. */
+  dropStatement(ref: ObjectRef): string;
+}
+
 /** Row/document level writes. Every method targets a single row via its key. */
 export interface RowEditable {
   insert(ref: ObjectRef, row: RowPatch): Promise<EditResult>;
@@ -114,6 +125,13 @@ export const asBrowsePreviewable = (
 ): (DataSource & BrowsePreviewable) | null =>
   typeof (s as Partial<BrowsePreviewable>).previewBrowse === 'function'
     ? (s as DataSource & BrowsePreviewable)
+    : null;
+
+export const asDdlScriptable = (
+  s: DataSource,
+): (DataSource & DdlScriptable) | null =>
+  typeof (s as Partial<DdlScriptable>).dropStatement === 'function'
+    ? (s as DataSource & DdlScriptable)
     : null;
 
 export const asRowEditable = (

@@ -8,6 +8,7 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import {
   asBrowsePreviewable,
+  asDdlScriptable,
   asIntrospectable,
   asQueryable,
   type DataSource,
@@ -785,11 +786,13 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       draftDrop: () => {
         const row = rowsNow()[get().treeIndex];
-        if (!row || row.type !== 'object' || !get().queryable) return;
-        const keyword = row.ref.kind === 'view' ? 'DROP VIEW' : row.ref.kind === 'table' ? 'DROP TABLE' : null;
-        if (!keyword) return;
-        const name = row.ref.namespace ? `${row.ref.namespace}.${row.ref.name}` : row.ref.name;
-        get().setQuery(`${keyword} ${name};`);
+        if (!row || row.type !== 'object') return;
+        if (row.ref.kind !== 'table' && row.ref.kind !== 'view') return;
+        // The adapter builds a quoted, schema-qualified DROP, so a reserved-word
+        // name (e.g. `window`) is dropped correctly. Non-SQL sources lack it.
+        const scriptable = active ? asDdlScriptable(active) : null;
+        if (!scriptable) return;
+        get().setQuery(scriptable.dropStatement(row.ref));
         get().focusPane('editor');
       },
 

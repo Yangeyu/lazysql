@@ -19,6 +19,7 @@ import {
   asRowEditable,
   asQueryable,
   asIntrospectable,
+  asDdlScriptable,
 } from '../../../../domain/datasource/DataSource.ts';
 import { columnsOf } from '../../../../domain/datasource/schema.ts';
 import { Capability } from '../../../../domain/datasource/capabilities.ts';
@@ -172,6 +173,12 @@ test('contains filter binds the value (no interpolation)', async () => {
   );
   expect(result.total).toBe(1);
   expect(result.rows.rows[0]?.[1]).toBe('w25');
+});
+
+test('dropStatement quotes the identifier (reserved-word safe)', () => {
+  const ddl = asDdlScriptable(source)!;
+  expect(ddl.dropStatement({ name: 'order', kind: 'table' })).toBe('DROP TABLE "order";');
+  expect(ddl.dropStatement({ name: 'pricey', kind: 'view' })).toBe('DROP VIEW "pricey";');
 });
 
 test('a failed query surfaces the driver reason, not the echoed SQL', async () => {

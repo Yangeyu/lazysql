@@ -180,10 +180,10 @@ test('D flips the open object between the Data and DDL tabs', async () => {
   h.enter(); // open widget into the grid
   await h.until((f) => f.includes('label'));
   h.press('D'); // flip to the DDL/structure tab
-  await h.until((f) => f.includes('CREATE TABLE widget')); // synthesized DDL
+  await h.until((f) => f.includes('CREATE TABLE "widget"')); // synthesized DDL (quoted)
   const frame = h.frame();
   expect(frame).toContain('DDL'); // tab label
-  expect(frame).toContain('CREATE TABLE widget');
+  expect(frame).toContain('CREATE TABLE "widget"');
   expect(frame).toContain('label'); // a column name
 
   h.press('D'); // flip back to Data
@@ -284,9 +284,9 @@ test('d on a sidebar table drafts a DROP into the editor (does not run it)', asy
   const h = await renderApp();
   await h.until((f) => f.includes('widget')); // cursor seated on the table object
   h.press('d'); // draft the DROP, focus the editor
-  await h.until((f) => f.includes('DROP TABLE widget'));
+  await h.until((f) => f.includes('DROP TABLE "widget"'));
   const frame = h.frame();
-  expect(frame).toContain('DROP TABLE widget'); // pre-filled, awaiting review
+  expect(frame).toContain('DROP TABLE "widget"'); // quoted draft, awaiting review
   expect(frame).toContain('SQL>'); // editor is focused
   expect(frame).toContain('widget'); // the table still exists — nothing ran
   h.cleanup();

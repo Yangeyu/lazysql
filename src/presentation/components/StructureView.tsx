@@ -56,14 +56,18 @@ const sourceBlock = (text: string): React.ReactNode => (
   </box>
 );
 
+/** Display-only identifier quoting (standard SQL double-quotes), so the
+ *  synthesized CREATE reads correctly even for reserved-word names. */
+const q = (name: string): string => `"${name.replace(/"/g, '""')}"`;
+
 /** Representative CREATE synthesized from columns — the fallback when an object
  *  exposes no real `source` section (e.g. a plain table). */
 const synthDdl = (ref: ObjectRef, columns: ColumnDef[]): string => {
   const lines = columns.map(
     (c) =>
-      `  ${c.name} ${c.dataType}${c.nullable ? '' : ' NOT NULL'}${c.isPrimaryKey ? ' PRIMARY KEY' : ''}`,
+      `  ${q(c.name)} ${c.dataType}${c.nullable ? '' : ' NOT NULL'}${c.isPrimaryKey ? ' PRIMARY KEY' : ''}`,
   );
-  return `CREATE TABLE ${ref.name} (\n${lines.join(',\n')}\n);`;
+  return `CREATE TABLE ${q(ref.name)} (\n${lines.join(',\n')}\n);`;
 };
 
 const StructureViewImpl = ({ structure, loading, error, hasTable }: Props) => {

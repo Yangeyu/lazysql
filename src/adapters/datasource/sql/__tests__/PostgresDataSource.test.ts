@@ -18,6 +18,7 @@ import {
   asIntrospectable,
   asQueryable,
   asRowEditable,
+  asDdlScriptable,
 } from '../../../../domain/datasource/DataSource.ts';
 import { Capability } from '../../../../domain/datasource/capabilities.ts';
 import { listObjects } from '../../../../application/usecases/ListObjects.ts';
@@ -125,6 +126,20 @@ pgTest('describe yields each source-only kind its verbatim definition', async ()
   expect(await sourceText({ namespace: 'public', name: 'widget_guard', kind: 'trigger' })).toMatch(/CREATE.*TRIGGER/i);
   expect(await sourceText({ namespace: 'public', name: 'inc', kind: 'procedure' })).toMatch(/CREATE.*FUNCTION/i);
   expect(await sourceText({ namespace: 'public', name: 'counter', kind: 'sequence' })).toMatch(/CREATE SEQUENCE/i);
+});
+
+pgTest('dropStatement quotes a reserved-word table so it drops for real', async () => {
+  const q = asQueryable(source)!;
+  await q.execute(sql('CREATE TABLE "window" (id int)'));
+  const stmt = asDdlScriptable(source)!.dropStatement({
+    namespace: 'public',
+    name: 'window',
+    kind: 'table',
+  });
+  expect(stmt).toBe('DROP TABLE "public"."window";');
+  await q.execute(sql(stmt)); // runs without a syntax error — the whole point
+  const objects = unwrap(await listObjects(source));
+  expect(objects.find((o) => o.name === 'window')).toBeUndefined();
 });
 
 pgTest('describe gives a view both its columns and its defining source', async () => {

@@ -71,7 +71,7 @@ const stub = (over: Partial<AppState> = {}): AppState =>
     ...over,
   }) as unknown as AppState;
 
-const env = () => ({ quit: mock(() => {}) });
+const env = () => ({ quit: mock(() => {}), copy: mock(() => {}) });
 
 test('dispatchKey: ⌃C quits from any context', () => {
   const e = env();
@@ -95,6 +95,16 @@ test('dispatchKey: in the editor, glyphs are left to the native input', () => {
   expect(s.focusPane).not.toHaveBeenCalled();
   expect(s.setQuery).not.toHaveBeenCalled();
   expect(e.quit).not.toHaveBeenCalled();
+});
+
+test('dispatchKey: y in the cell inspector copies the full value', () => {
+  // The inspector owns input (cellView set → 'cell' context); y yanks the whole
+  // formatted value to the injected clipboard, not the truncated on-screen slice.
+  const s = stub({ cellView: { column: 'name', value: 'gamma', offset: 0 } } as Partial<AppState>);
+  const e = env();
+  dispatchKey(s, key({ name: 'y', sequence: 'y' }), e);
+  expect(e.copy).toHaveBeenCalledTimes(1);
+  expect(e.copy).toHaveBeenCalledWith('gamma');
 });
 
 test('dispatchKey: the DDL context only answers the tab toggle', () => {

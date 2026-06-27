@@ -20,6 +20,12 @@ import { SIDEBAR_WIDTH, computeLayout } from './layout.ts';
 import { buildTree, toConnNodes, dialectLabel, shortTag } from '../tree/tree.ts';
 import { theme } from '../theme/theme.ts';
 import type { Filter } from '../../domain/query/Query.ts';
+import type { Clipboard } from '../../application/ports/Clipboard.ts';
+
+interface AppProps {
+  /** Where keyboard copy commands write; injected from the composition root. */
+  readonly clipboard: Clipboard;
+}
 
 /** Compact one-line summary of an active filter, e.g. `label~foo`. */
 const filterSummary = (filter: Filter | null): string => {
@@ -29,7 +35,7 @@ const filterSummary = (filter: Filter | null): string => {
     .join(' & ');
 };
 
-export const App = () => {
+export const App = ({ clipboard }: AppProps) => {
   const renderer = useRenderer();
   const store = useStoreApi();
   const { width: terminalCols, height: terminalRows } = useTerminalDimensions();
@@ -82,8 +88,14 @@ export const App = () => {
   // All key handling is one delegation to the keymap dispatcher: it reads the
   // live store state, derives the active context, and runs the matching binding
   // (or routes a typed glyph into the focused text field). Quitting the renderer
-  // is the only effect the store doesn't own, so it's passed in.
-  useKeyboard((key) => dispatchKey(store.getState(), key, { quit: () => renderer.destroy() }));
+  // and writing the clipboard are the effects the store doesn't own, so they're
+  // passed in.
+  useKeyboard((key) =>
+    dispatchKey(store.getState(), key, {
+      quit: () => renderer.destroy(),
+      copy: (text) => clipboard.write(text),
+    }),
+  );
 
   const { viewportCols, editorRows, gridBodyRows } = computeLayout(
     terminalCols,

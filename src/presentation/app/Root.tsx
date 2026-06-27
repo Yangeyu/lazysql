@@ -74,7 +74,7 @@ export const Root = ({
 
   return (
     <StoreContext.Provider value={store}>
-      <App />
+      <App clipboard={clipboard} />
     </StoreContext.Provider>
   );
 };

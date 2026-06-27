@@ -67,7 +67,7 @@ const CellViewImpl = ({ column, value, offset, termRows, termCols }: Props) => {
         </text>
       ))}
       <text fg={theme.border} wrapMode="none">
-        {top < maxOffset ? '↓ more  ·  ' : ''}esc/⏎ close · j/k scroll
+        {top < maxOffset ? '↓ more  ·  ' : ''}esc/⏎ close · j/k scroll · y copy
       </text>
     </Overlay>
   );

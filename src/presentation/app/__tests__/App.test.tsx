@@ -60,11 +60,11 @@ afterAll(async () => {
   rmSync(DB, { force: true });
 });
 
-const renderApp = () => {
+const renderApp = (clipboard: { write: (t: string) => void } = { write: () => {} }) => {
   const store = createAppStore({ connectionService: service, initial: profile });
   return renderTest(
     <StoreContext.Provider value={store}>
-      <App />
+      <App clipboard={clipboard} />
     </StoreContext.Provider>,
     { width: 120, height: 40 },
   );
@@ -290,5 +290,24 @@ test('schema-aware completion completes a table name on Tab', async () => {
   h.tab(); // Tab → accept the top candidate
   await h.until((f) => f.includes('FROM widget')); // completed to "widget"
   expect(h.frame()).toContain('FROM widget');
+  h.cleanup();
+});
+
+test('y in the cell inspector copies the full value to the clipboard', async () => {
+  const copied: string[] = [];
+  const h = await renderApp({ write: (t) => copied.push(t) });
+  await h.until((f) => f.includes('widget'));
+  h.enter(); // open widget → grid, cursor on row 0 col 0 (id)
+  await h.until((f) => f.includes('label')); // grid populated
+  h.press('l'); // → the label column (values are w2..w25)
+  h.enter(); // ⏎ on the focused cell → cell inspector
+  await h.until((f) => f.includes('⊞ cell'));
+  h.press('y'); // yank the full value
+  await h.flush();
+  // The DB is shared and mutated by earlier tests, so assert the shape, not a
+  // fixed value: exactly one copy, and it's a `w…` label, proving y yanked the
+  // inspected cell's real value through the injected clipboard.
+  expect(copied.length).toBe(1);
+  expect(copied[0]).toMatch(/^w\d+$/);
   h.cleanup();
 });

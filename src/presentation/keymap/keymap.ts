@@ -15,6 +15,7 @@
 import type { KeyEvent } from '@opentui/core';
 import type { AppState, Focus, Mode, SurfaceKind, MainTab } from '../app/store.ts';
 import { printableChar } from '../input/keys.ts';
+import { formatCellValue } from '../components/cellFormat.ts';
 
 /** The focus/mode the UI is in — selects which group of keys is active. */
 export type KeyContext =
@@ -35,9 +36,12 @@ export interface KeyFlags {
   readonly nlAvailable: boolean;
 }
 
-/** The one effect a binding may need that isn't a store action. */
+/** The effects a binding may need that the store doesn't own: leaving the
+ *  renderer, and writing to the system clipboard (an out-of-store side effect,
+ *  injected at the composition root like `quit`). */
 export interface DispatchEnv {
   readonly quit: () => void;
+  readonly copy: (text: string) => void;
 }
 
 /** The minimal slice of UI state that selects the active key context. */
@@ -213,6 +217,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
     bindings: [
       { keys: 'j/k ↑/↓', hint: 'scroll', desc: 'Scroll the value', match: ['down', 'j'], run: (s) => s.scrollCell(1) },
       { keys: 'j/k ↑/↓', hint: 'scroll', desc: 'Scroll the value', match: ['up', 'k'], run: (s) => s.scrollCell(-1) },
+      { keys: 'y', hint: 'copy', desc: 'Copy the full value to the clipboard', match: ['y'], run: (s, env) => { if (s.cellView) env.copy(formatCellValue(s.cellView.value).lines.join('\n')); } },
       { keys: 'esc/⏎', hint: 'close', desc: 'Close the inspector', match: ['escape', 'return'], run: (s) => s.closeCell() },
     ],
   },

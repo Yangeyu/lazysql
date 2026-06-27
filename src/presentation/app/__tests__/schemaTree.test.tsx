@@ -83,3 +83,36 @@ test('h collapses the schema, then the category, walking the tier up', async () 
   expect(h.frame()).toContain('Tables');
   h.cleanup();
 });
+
+test('r re-introspects, surfacing an object created since connect', async () => {
+  // A source that grows a new table once `created` flips — mimicking a CREATE
+  // TABLE run in the editor that the connect-time snapshot can't show.
+  let created = false;
+  const growing: DataSource & SchemaIntrospectable = {
+    ...fakePg,
+    introspect: async () => ({
+      objects: [
+        { name: 'users', kind: 'table', namespace: 'public' },
+        ...(created ? [{ name: 'temp_data', kind: 'table' as const, namespace: 'public' }] : []),
+      ],
+    }),
+  };
+  const store = createAppStore({
+    connectionService: { ...service, open: async () => ok(growing) },
+    initial: pgProfile,
+  });
+  const h = await renderTest(
+    <StoreContext.Provider value={store}>
+      <App clipboard={{ write: () => {} }} />
+    </StoreContext.Provider>,
+    { width: 100, height: 30 },
+  );
+  await h.until((f) => f.includes('users'));
+  expect(h.frame()).not.toContain('temp_data'); // not in the connect snapshot
+
+  created = true;
+  h.press('r'); // refresh the tree (sidebar is focused after connect)
+  await h.until((f) => f.includes('temp_data')); // the new table now shows
+  expect(h.frame()).toContain('users'); // existing fold/cursor preserved
+  h.cleanup();
+});

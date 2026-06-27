@@ -225,6 +225,11 @@ export interface AppState {
   treeCollapse: () => void;
   /** →/D from the sidebar on an object: open it showing its DDL/structure. */
   treeShowDdl: () => Promise<void>;
+  /** Re-list saved connections and re-introspect the active one's objects, so
+   *  schema changes made elsewhere (e.g. a CREATE TABLE run in the editor) show
+   *  up. Keeps the current fold/cursor; the SQL completion catalog is rebuilt
+   *  lazily on next editor focus. */
+  refresh: () => Promise<void>;
   setMainTab: (tab: MainTab) => void;
   toggleMainTab: () => void;
   // ── connections / new-connection form ──
@@ -758,6 +763,19 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         await openObject(row.ref);
         set({ mainTab: 'ddl' });
         await loadStructure();
+      },
+
+      refresh: async () => {
+        set({ profiles: await connectionService.list() });
+        if (!active) {
+          clampTree();
+          return;
+        }
+        const res = await listObjects(active);
+        // Refresh in place: swap the objects but keep the fold/cursor (clamped),
+        // and drop the completion catalog so it rebuilds with the new schema.
+        if (res.ok) set({ objects: res.value, catalog: null });
+        clampTree();
       },
 
       setMainTab: (tab) => {

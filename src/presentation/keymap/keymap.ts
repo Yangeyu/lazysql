@@ -137,6 +137,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '→/l', hint: 'expand', desc: 'Expand a node · open an object', match: ['right', 'l'], run: (s) => void s.treeExpand() },
       { keys: '←/h', hint: 'collapse', desc: 'Collapse a node · jump to parent', match: ['left', 'h'], run: (s) => s.treeCollapse() },
       { keys: 'D', hint: 'ddl', desc: 'Open the object showing its DDL/structure', match: ['D'], run: (s) => void s.treeShowDdl() },
+      { keys: 'r', hint: 'refresh', desc: 'Reload connections and re-read the object tree', match: ['r'], run: (s) => void s.refresh() },
       { keys: 'n', hint: 'new', desc: 'New connection', match: ['n'], run: (s) => s.beginNewConnection() },
       { keys: 'e', hint: 'edit', desc: 'Edit the selected connection’s config', match: ['e'], run: (s) => s.beginEditConnection() },
     ],

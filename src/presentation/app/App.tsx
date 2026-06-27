@@ -252,12 +252,12 @@ export const App = () => {
   const editorRows = queryable
     ? Math.min(12, Math.max(6, Math.floor((terminalRows - 2) / 4)))
     : 0;
-  // Grid body rows that fill the results panel exactly. Chrome = header(1) +
-  // status(1) + tab(1) + grid header(1) + grid divider(1) + the results border —
-  // which is 2 (top+bottom) on its own, but only 1 when the panel sits flush under
-  // the editor and borrows its bottom edge as the shared seam (joinedAbove). Plus
-  // the editor itself.
-  const gridBodyRows = Math.max(3, terminalRows - editorRows - (queryable ? 6 : 7));
+  // Grid body rows that fill the results panel exactly. Outside the panel: header
+  // (1) + status (1) + the editor (editorRows) + the 1-row gap below it when an
+  // editor is present. The panel's own chrome: full border (2, top+bottom) + tab
+  // row (1) + grid header (1) + grid divider (1) = 5. So queryable subtracts the
+  // editor, its gap, and 7 fixed rows; otherwise just the 7.
+  const gridBodyRows = Math.max(3, terminalRows - editorRows - (queryable ? 8 : 7));
   const gridFocused = focus === 'grid';
 
   // The active connection's display name + driver tag are derived from the
@@ -312,11 +312,12 @@ export const App = () => {
       <text fg={theme.yellow}>◢◣◤◥ connecting…</text>
     </box>
   ) : (
-    // Self-contained bordered panels; App is pure layout here. A 1-cell `gap`
-    // sets the sidebar off from the main column. The editor and results, being
-    // two sections of the SAME work area, sit FLUSH and share a single seam line
-    // (the editor's bottom edge — the results panel drops its own top), so the
-    // vertical rhythm reads tighter than the sidebar gap, never doubled.
+    // Three self-contained bordered panels; App is pure layout here. Every panel
+    // owns its full border and keeps a constant identity. A uniform 1-cell `gap`
+    // separates them on BOTH axes — the sidebar from the main column, and the SQL
+    // editor from the results panel — so the spacing reads the same everywhere and
+    // borders never double up. One row is the minimum clean separation between two
+    // bordered boxes (zero would collide their edges into a doubled line).
     <box flexDirection="row" flexGrow={1} gap={1}>
       <Sidebar
         rows={treeRows}
@@ -326,9 +327,10 @@ export const App = () => {
         onRowClick={(i) => store.getState().clickTree(i)}
         onPaneClick={() => store.getState().focusPane('sidebar')}
       />
-      {/* Right column: the SQL editor (top, ~1/4) flush over the results panel
-          (~3/4); they share one seam line. Both stretch to the full width. */}
-      <box flexDirection="column" flexGrow={1}>
+      {/* Right column: the SQL editor (top, ~1/4) over the results panel (~3/4),
+          each a distinct bordered panel split by the same 1-row gap. Both stretch
+          to the full column width. */}
+      <box flexDirection="column" flexGrow={1} gap={1}>
         {queryable ? (
           <QueryEditor
             queryText={queryText}
@@ -348,7 +350,6 @@ export const App = () => {
         ) : null}
         <ResultsPanel
           focused={gridFocused}
-          joinedAbove={queryable}
           onPaneClick={() => store.getState().focusPane('grid')}
           surface={surface}
           mainTab={mainTab}

@@ -1,9 +1,10 @@
 /**
  * ResultsPanel — the bottom-right pane: ONE self-contained bordered container
- * that owns its own chrome (border + focus colour), its title/tab row, and its
- * body. It is a peer of Sidebar and QueryEditor: App composes the three as a
+ * that owns its own chrome (full border + focus colour), its title/tab row, and
+ * its body. It is a peer of Sidebar and QueryEditor: App composes the three as a
  * pure layout and each panel renders its own region (no panel's border is drawn
- * by the parent). A pure projection of store state passed as props.
+ * by the parent, and the panel never reshapes its border to fit a neighbour —
+ * its identity is constant). A pure projection of store state passed as props.
  *
  * The title row has three faces, mutually exclusive by state:
  *   • a read-only SQL result  → a magenta "Result" badge + row count / elapsed;
@@ -24,10 +25,6 @@ import type { Sort } from '../../domain/query/Query.ts';
 
 interface Props {
   focused: boolean;
-  /** An editor panel sits flush directly above. When true the panel drops its own
-   *  top border and borrows the editor's bottom edge as the shared seam, so the
-   *  two read as one work area with no doubled line and no gap between them. */
-  joinedAbove: boolean;
   /** The pane's chrome/empty space was clicked — focus it. */
   onPaneClick: () => void;
   /** Whether the grid shows a browsed table or a read-only query result. */
@@ -58,7 +55,6 @@ interface Props {
 
 const ResultsPanelImpl = ({
   focused,
-  joinedAbove,
   onPaneClick,
   surface,
   mainTab,
@@ -79,7 +75,7 @@ const ResultsPanelImpl = ({
   <box
     flexGrow={1}
     flexDirection="column"
-    border={joinedAbove ? ['right', 'bottom', 'left'] : true}
+    border
     borderStyle="rounded"
     borderColor={focused ? theme.borderFocus : theme.border}
     paddingX={1}

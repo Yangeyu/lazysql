@@ -232,12 +232,14 @@ interface KeyBinding {
 footer、帮助、真实行为永不漂移。`deriveContext(state)` 是「在哪个上下文」的唯一纯函数。
 `App` 的输入处理器退为一行 `useKeyboard(k => dispatchKey(store.getState(), k, { quit }))`。
 
-文本输入建立在 `TextField { value, cursor }` 纯模型上（一处定义可编辑文本的行为）：store 的草稿存
-`TextField`（光标与值同处一份），文本上下文携 `field.edit`，`dispatchKey` 把打字/退格/←→/Home/End/⌃W
-统一路由为 `TextField` 操作——全字段获得**串内编辑**。视图侧 `<TextInput>` 在光标处切分围绕 `<Caret>`
-渲染，多行 SQL 经 `wrapWithCursor` 在折行文本里定位光标。
+文本输入用 OpenTUI **原生 `<input>`**（过滤 / 单元格编辑 / NL ask / SQL 编辑器，详见 ADR 0008）：widget
+自己持有文本 + 光标（光标是终端的，不跳），`onInput` 报告编辑、`onSubmit` 提交。store 只留**已提交值**
+（SQL 编辑器经 `value` 受控 + `onInput` 同步），不再存草稿。聚焦的 widget 自吃文本键与 `⏎`，`dispatchKey`
+只处理它不消费的应用级键（`Esc`/`^G`/`Tab`/`^C`）；这些 widget 自管的键在表里留作展示行
+（`KeyBinding.match/run` 可选）。连接表单仍用 append-only 渲染。
 
-收益：① footer/帮助自动生成且永不漂移；② 派发是纯逻辑、脱离终端可测；③ 加功能 = 加一行（数据结构优于控制流）。
+收益：① footer/帮助自动生成且永不漂移；② 派发是纯逻辑、脱离终端可测；③ 光标 / 编辑（undo、词操作、选区）
+由经验证的原生内核提供，不自造轮子。
 
 ### 6.3 状态流（单向数据流）
 

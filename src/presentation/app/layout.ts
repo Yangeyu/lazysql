@@ -30,7 +30,10 @@ export interface Layout {
  */
 export const computeLayout = (cols: number, rows: number, queryable: boolean): Layout => {
   const viewportCols = Math.max(24, cols - SIDEBAR_WIDTH - 1 - 4);
-  const editorRows = queryable ? Math.min(12, Math.max(6, Math.floor((rows - 2) / 4))) : 0;
+  // The editor is a fixed 6 rows: ask + divider + the single-line SQL input +
+  // feedback, inside its border. (The SQL input is single-line now, so the panel
+  // no longer grows with the query.)
+  const editorRows = queryable ? 6 : 0;
   const gridBodyRows = Math.max(3, rows - editorRows - (queryable ? 8 : 7));
   return { viewportCols, editorRows, gridBodyRows };
 };

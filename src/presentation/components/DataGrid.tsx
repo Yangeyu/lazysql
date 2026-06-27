@@ -9,13 +9,13 @@
  *
  * The whole grid is built from ONE primitive — `line()` — used identically for
  * the header and every data row, from the SAME windowed column set and the SAME
- * display-width-padded cells. Alignment is therefore correct by construction:
- * there is no separate "header" layout that can drift from the rows (the bug a
- * Box-row-of-Texts header had, where the header wrapped while rows truncated).
+ * display-width-padded cells. Alignment is therefore correct by construction.
+ * Data rows carry an `onMouseDown` so a click selects them; the index is known
+ * at render time, so there is no coordinate hit-testing.
  */
 
 import React from 'react';
-import { Text } from 'ink';
+import { TextAttributes, type MouseEvent } from '@opentui/core';
 import stringWidth from 'string-width';
 import type { ResultSet, CellValue } from '../../domain/datasource/ResultSet.ts';
 import type { Sort } from '../../domain/query/Query.ts';
@@ -36,6 +36,8 @@ interface Props {
   /** Columns (terminal cells) of horizontal space available. */
   viewportCols: number;
   focused: boolean;
+  /** A data row was clicked (absolute row index). */
+  onRowClick: (index: number) => void;
 }
 
 /** Per-column cap and the inter-column separator (display width 3). */
@@ -43,6 +45,17 @@ const MAX_COL = 32;
 const SEP = ' │ ';
 const SEP_W = 3;
 const GUTTER_W = 2;
+/**
+ * Longest prefix of a cell value the grid ever inspects. A cell can show at most
+ * MAX_COL display columns, so measuring/formatting more of a huge value (e.g. a
+ * multi-KB JSON blob in a `nodes`/`edges` column) is pure waste that would stall
+ * EVERY render — `stringWidth` walks each glyph, on each keystroke. Bounding the
+ * preview to 2×MAX_COL keeps that work O(MAX_COL) regardless of value size while
+ * still leaving enough to fill the widest cell even when every glyph is wide
+ * (CJK). The row keeps the full value untouched — the cell inspector reads it on
+ * ⏎ (store.openCell); only this shallow view is bounded.
+ */
+const PREVIEW_CHARS = MAX_COL * 2;
 
 const dispWidth = (s: string): number => stringWidth(s);
 
@@ -50,8 +63,11 @@ const formatCell = (v: CellValue): string => {
   if (v === null) return '∅';
   if (v instanceof Uint8Array) return `<blob ${v.length}b>`;
   if (typeof v === 'boolean') return v ? 'true' : 'false';
-  // Collapse newlines so a multi-line value never breaks the row grid.
-  return String(v).replace(/\s*\n\s*/g, ' ');
+  const s = String(v);
+  // Slice BEFORE the newline-collapse + width measurement so neither ever touches
+  // more than PREVIEW_CHARS of a large value.
+  const head = s.length > PREVIEW_CHARS ? s.slice(0, PREVIEW_CHARS) : s;
+  return head.replace(/\s*\n\s*/g, ' ');
 };
 
 /** Pad/truncate `s` to an exact *display* width (wide CJK glyphs count as 2). */
@@ -103,8 +119,7 @@ export const columnWindow = (
 
 /**
  * Visual selection state of a grid cell — the SINGLE decision the renderer maps
- * to styling, kept pure so the highlight logic is unit-tested directly (ink emits
- * no colour under `bun test`, so the rendered frame can't reveal it):
+ * to styling, kept pure so the highlight logic is unit-tested directly:
  *
  *   • 'cell'     — the active cell, grid focused → strong inverse
  *   • 'cell-dim' — the active cell, grid unfocused → accent tint (still locatable)
@@ -136,10 +151,18 @@ interface Cell {
   inverse?: boolean;
 }
 
+/** Combine a cell's bold/inverse flags into an OpenTUI attributes bitmask. */
+const cellAttributes = (c: Cell): number | undefined => {
+  const a =
+    (c.bold ? TextAttributes.BOLD : 0) | (c.inverse ? TextAttributes.INVERSE : 0);
+  return a || undefined;
+};
+
 /**
  * Render a gutter + windowed cells as a single, non-wrapping line. Highlight is
  * applied PER CELL (so the column cursor lands on one cell, not the whole row);
  * `rowInverse` is the fallback for grids with no column cursor (query results).
+ * `onMouseDown`, when given, makes the line clickable (data rows).
  */
 const line = (
   key: React.Key,
@@ -147,21 +170,27 @@ const line = (
   gutterColor: string,
   cells: Cell[],
   rowInverse: boolean,
+  onMouseDown?: (event: MouseEvent) => void,
 ): React.ReactNode => (
-  <Text key={key} wrap="truncate" inverse={rowInverse}>
-    <Text color={gutterColor}>{gutter}</Text>
+  <text
+    key={key}
+    wrapMode="none"
+    attributes={rowInverse ? TextAttributes.INVERSE : undefined}
+    onMouseDown={onMouseDown}
+  >
+    <span fg={gutterColor}>{gutter}</span>
     {cells.map((c, i) => (
       <React.Fragment key={i}>
-        {i > 0 ? <Text color={theme.border}>{SEP}</Text> : null}
-        <Text color={c.color} bold={c.bold} inverse={c.inverse}>
+        {i > 0 ? <span fg={theme.border}>{SEP}</span> : null}
+        <span fg={c.color} attributes={cellAttributes(c)}>
           {c.text}
-        </Text>
+        </span>
       </React.Fragment>
     ))}
-  </Text>
+  </text>
 );
 
-const DataGridImpl: React.FC<Props> = ({
+const DataGridImpl = ({
   result,
   cursor,
   selectedCol,
@@ -171,27 +200,26 @@ const DataGridImpl: React.FC<Props> = ({
   viewportRows,
   viewportCols,
   focused,
-}) => {
-  if (loading) return <Text color={theme.yellow}>Loading…</Text>;
+  onRowClick,
+}: Props) => {
+  if (loading) return <text fg={theme.yellow}>Loading…</text>;
   if (!hasTable)
     return (
-      <Text color={theme.border}>
+      <text fg={theme.border}>
         Select a table in the sidebar and press Enter.
-      </Text>
+      </text>
     );
   if (!result || result.rows.length === 0)
-    return <Text color={theme.border}>(no rows)</Text>;
+    return <text fg={theme.border}>(no rows)</text>;
 
   const { columns, rows } = result;
   const vh = Math.max(1, viewportRows);
 
-  // Vertical window: keep the row cursor inside the visible slice. Derived by the
-  // shared geometry helper so mouse hit-testing maps screen rows the same way.
+  // Vertical window: keep the row cursor inside the visible slice.
   const top = rowWindow(cursor, vh, rows.length);
   const visible = rows.slice(top, top + vh);
 
   // Column widths from the visible window only — O(viewport), not O(table).
-  // The sorted column reserves 2 cells for its ▲/▼ marker so rows stay aligned.
   const widths = columns.map((c, i) => {
     let w = dispWidth(c.name) + (sort?.column === c.name ? 2 : 0);
     for (const row of visible) w = Math.max(w, dispWidth(formatCell(row[i] ?? null)));
@@ -210,6 +238,13 @@ const DataGridImpl: React.FC<Props> = ({
     win.reduce((a, c, i) => a + widths[start + i]!, 0) +
     Math.max(0, win.length - 1) * SEP_W;
 
+  // The "more columns to the right" indicator sits at the END of the divider rule,
+  // on the SAME line. The rule is trimmed to leave room for it within the viewport
+  // so the pair never overflows and wraps onto a second row (which would steal a
+  // data row). `wrapMode="none"` on the divider is the hard guard.
+  const moreRightLabel = moreRight ? ` › +${columns.length - end}` : '';
+  const ruleWidth = Math.max(0, Math.min(sepWidth, viewportCols - dispWidth(moreRightLabel)));
+
   return (
     <>
       {line(
@@ -223,10 +258,10 @@ const DataGridImpl: React.FC<Props> = ({
         })),
         false,
       )}
-      <Text color={theme.border}>
-        {'─'.repeat(sepWidth)}
-        {moreRight ? <Text color={theme.accent}>{` › +${columns.length - end}`}</Text> : null}
-      </Text>
+      <text fg={theme.border} wrapMode="none">
+        {'─'.repeat(ruleWidth)}
+        {moreRightLabel ? <span fg={theme.accent}>{moreRightLabel}</span> : null}
+      </text>
       {visible.map((row, i) => {
         const absolute = top + i;
         const onCursor = absolute === cursor;
@@ -255,6 +290,10 @@ const DataGridImpl: React.FC<Props> = ({
             };
           }),
           rowInverse,
+          (e) => {
+            e.stopPropagation();
+            onRowClick(absolute);
+          },
         );
       })}
     </>

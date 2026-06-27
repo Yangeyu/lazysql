@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { Box, Text } from 'ink';
+import { TextAttributes } from '@opentui/core';
 import { theme, driverColor } from '../theme/theme.ts';
 
 interface Props {
@@ -24,7 +24,7 @@ interface Props {
   nlAvailable: boolean;
 }
 
-const HeaderImpl: React.FC<Props> = ({
+const HeaderImpl = ({
   width,
   connectionName,
   driverTag,
@@ -35,56 +35,54 @@ const HeaderImpl: React.FC<Props> = ({
   total,
   filterSummary,
   nlAvailable,
-}) => (
-  <Box width={width} justifyContent="space-between" paddingX={1}>
-    <Box>
-      <Text backgroundColor={theme.accent} color={theme.onAccent} bold>
+}: Props) => (
+  <box flexDirection="row" width={width} justifyContent="space-between" paddingX={1}>
+    <box flexDirection="row">
+      <text bg={theme.accent} fg={theme.onAccent} attributes={TextAttributes.BOLD}>
         {' ⛁ lazysql '}
-      </Text>
-      <Text> </Text>
+      </text>
+      <text> </text>
       {connectionName ? (
-        <Text wrap="truncate">
-          <Text color={connected ? theme.green : theme.border}>
+        <text wrapMode="none">
+          <span fg={connected ? theme.green : theme.border}>
             {connected ? '●' : '○'}{' '}
-          </Text>
-          <Text bold>{connectionName} </Text>
+          </span>
+          <b>{connectionName} </b>
           {driverTag ? (
-            <Text backgroundColor={driverColor(driverTag)} color={theme.onAccent}>
+            <span bg={driverColor(driverTag)} fg={theme.onAccent}>
               {` ${driverTag} `}
-            </Text>
+            </span>
           ) : null}
           {objectName ? (
-            <Text>
-              <Text color={theme.border}>{'  ▸  '}</Text>
-              <Text color={theme.cyan} bold>
-                {objectName}
-              </Text>
-            </Text>
+            <span>
+              <span fg={theme.border}>{'  ▸  '}</span>
+              <b fg={theme.cyan}>{objectName}</b>
+            </span>
           ) : null}
-        </Text>
+        </text>
       ) : (
-        <Text color={theme.border}>no connection · press n to add one</Text>
+        <text fg={theme.border}>no connection · press n to add one</text>
       )}
-    </Box>
+    </box>
 
-    <Box>
+    <box flexDirection="row">
       {objectName && total >= 0 ? (
-        <Text color={theme.border}>
+        <text fg={theme.border}>
           {from}–{to}
-          <Text> of </Text>
-          <Text color={theme.cyan}>{total}</Text>
-          <Text> rows</Text>
-        </Text>
+          <span> of </span>
+          <span fg={theme.cyan}>{total}</span>
+          <span> rows</span>
+        </text>
       ) : null}
       {filterSummary ? (
-        <Text color={theme.yellow}>
+        <text fg={theme.yellow}>
           {'  ⛃ '}
           {filterSummary}
-        </Text>
+        </text>
       ) : null}
-      {nlAvailable ? <Text color={theme.magenta}>{'  ✦ AI'}</Text> : null}
-    </Box>
-  </Box>
+      {nlAvailable ? <text fg={theme.magenta}>{'  ✦ AI'}</text> : null}
+    </box>
+  </box>
 );
 
 export const Header = React.memo(HeaderImpl);

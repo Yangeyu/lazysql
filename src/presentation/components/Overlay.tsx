@@ -3,21 +3,16 @@
  * workbench, the way lazygit shows its menus (the background stays visible
  * around it instead of being replaced).
  *
- * Terminals have no z-buffer, so we composite by hand with TWO absolutely
- * positioned layers at the same rect: an opaque space-fill behind, then the
- * bordered content in front. Ink's renderer writes later siblings over earlier
- * ones but leaves untouched cells transparent — so the fill is what stops the
- * busy background from bleeding through the panel's gaps.
- *
- * Being out of flow, the overlay adds NO height to the base frame: Ink keeps
- * doing incremental redraws (never a full-screen clear), and because the panel
- * is a FIXED size its geometry is identical every frame — so scrolling content
- * inside it repaints only the changed lines and never flickers. (Both the
- * lazygit-background and the no-flicker properties depend on this.)
+ * OpenTUI gives us real compositing: an `position: "absolute"` box is out of
+ * flow and, drawn last in the tree, paints over its siblings; its
+ * `backgroundColor` fills the panel rect opaquely so the busy background never
+ * bleeds through. That replaces the two hand-painted layers (an opaque
+ * space-fill behind the bordered content) the Ink version needed — one box now
+ * does both. Fixed size + cell-diff rendering mean scrolling inside it repaints
+ * only the changed lines.
  */
 
 import React from 'react';
-import { Box, Text } from 'ink';
 import { theme } from '../theme/theme.ts';
 
 interface Props {
@@ -31,49 +26,36 @@ interface Props {
   children: React.ReactNode;
 }
 
-const OverlayImpl: React.FC<Props> = ({
+const OverlayImpl = ({
   termRows,
   termCols,
   width,
   height,
   borderColor = theme.borderFocus,
   children,
-}) => {
-  // Clamp to the screen, then center. Height stays ≤ termRows-1 so the absolute
-  // layer never reaches the terminal height (which would trip Ink's full clear).
+}: Props) => {
+  // Clamp to the screen, then center via absolute insets.
   const w = Math.max(4, Math.min(width, termCols));
-  const h = Math.max(3, Math.min(height, termRows - 1));
-  const mx = Math.max(0, Math.floor((termCols - w) / 2));
-  const my = Math.max(0, Math.floor((termRows - h) / 2));
+  const h = Math.max(3, Math.min(height, termRows));
+  const left = Math.max(0, Math.floor((termCols - w) / 2));
+  const top = Math.max(0, Math.floor((termRows - h) / 2));
 
   return (
-    <>
-      {/* layer 1 — opaque background, so the panel is solid */}
-      <Box
-        position="absolute"
-        marginLeft={mx}
-        marginTop={my}
-        flexDirection="column"
-      >
-        {Array.from({ length: h }, (_, i) => (
-          <Text key={i}>{' '.repeat(w)}</Text>
-        ))}
-      </Box>
-      {/* layer 2 — the bordered content, same rect, drawn on top */}
-      <Box
-        position="absolute"
-        marginLeft={mx}
-        marginTop={my}
-        width={w}
-        height={h}
-        borderStyle="round"
-        borderColor={borderColor}
-        paddingX={1}
-        flexDirection="column"
-      >
-        {children}
-      </Box>
-    </>
+    <box
+      position="absolute"
+      left={left}
+      top={top}
+      width={w}
+      height={h}
+      flexDirection="column"
+      border
+      borderStyle="rounded"
+      borderColor={borderColor}
+      backgroundColor={theme.bg}
+      paddingX={1}
+    >
+      {children}
+    </box>
   );
 };
 

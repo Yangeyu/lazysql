@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { Box, Text } from 'ink';
+import { TextAttributes } from '@opentui/core';
 import type { ObjectSchema } from '../../domain/datasource/schema.ts';
 import { theme } from '../theme/theme.ts';
 
@@ -33,51 +33,50 @@ const synthDdl = (schema: ObjectSchema): string => {
   return `CREATE ${keyword} ${schema.ref.name} (\n${lines.join(',\n')}\n);`;
 };
 
-const StructureViewImpl: React.FC<Props> = ({
+const StructureViewImpl = ({
   structure,
   loading,
   error,
   hasTable,
-}) => {
+}: Props) => {
   if (!hasTable)
     return (
-      <Text color={theme.border}>
+      <text fg={theme.border}>
         Select an object and press Enter, then ⇥ DDL.
-      </Text>
+      </text>
     );
-  if (loading) return <Text color={theme.yellow}>Loading structure…</Text>;
-  if (error) return <Text color={theme.red}>error: {error}</Text>;
-  if (!structure) return <Text color={theme.border}>(no structure)</Text>;
+  if (loading) return <text fg={theme.yellow}>Loading structure…</text>;
+  if (error) return <text fg={theme.red}>error: {error}</text>;
+  if (!structure) return <text fg={theme.border}>(no structure)</text>;
 
   return (
-    <Box flexDirection="column">
-      <Box>
-        <Text bold color={theme.border}>{'pk'.padEnd(4)}</Text>
-        <Text bold color={theme.border}>{'column'.padEnd(NAME_COL)}</Text>
-        <Text bold color={theme.border}>{'type'.padEnd(TYPE_COL)}</Text>
-        <Text bold color={theme.border}>null</Text>
-      </Box>
-      <Text color={theme.border}>{'─'.repeat(4 + NAME_COL + TYPE_COL + 4)}</Text>
+    <box flexDirection="column">
+      <box flexDirection="row">
+        <text attributes={TextAttributes.BOLD} fg={theme.border}>{'pk'.padEnd(4)}</text>
+        <text attributes={TextAttributes.BOLD} fg={theme.border}>{'column'.padEnd(NAME_COL)}</text>
+        <text attributes={TextAttributes.BOLD} fg={theme.border}>{'type'.padEnd(TYPE_COL)}</text>
+        <text attributes={TextAttributes.BOLD} fg={theme.border}>null</text>
+      </box>
+      <text fg={theme.border}>{'─'.repeat(4 + NAME_COL + TYPE_COL + 4)}</text>
       {structure.columns.map((c) => (
-        <Text key={c.name} wrap="truncate">
-          <Text color={theme.yellow}>{(c.isPrimaryKey ? '🔑' : '').padEnd(4)}</Text>
-          <Text color={theme.cyan}>{c.name.padEnd(NAME_COL)}</Text>
-          <Text color={theme.green}>{c.dataType.padEnd(TYPE_COL)}</Text>
-          <Text color={theme.border}>{c.nullable ? 'yes' : 'no'}</Text>
-        </Text>
+        <text key={c.name} wrapMode="none">
+          <span fg={theme.yellow}>{(c.isPrimaryKey ? '🔑' : '').padEnd(4)}</span>
+          <span fg={theme.cyan}>{c.name.padEnd(NAME_COL)}</span>
+          <span fg={theme.green}>{c.dataType.padEnd(TYPE_COL)}</span>
+          <span fg={theme.border}>{c.nullable ? 'yes' : 'no'}</span>
+        </text>
       ))}
-      <Text> </Text>
-      <Text color={theme.border} wrap="truncate">
+      <text> </text>
+      <box flexDirection="column">
         {synthDdl(structure)
           .split('\n')
           .map((l, i) => (
-            <Text key={i}>
-              {l}
-              {'\n'}
-            </Text>
+            <text key={i} fg={theme.border} wrapMode="none">
+              {l === '' ? ' ' : l}
+            </text>
           ))}
-      </Text>
-    </Box>
+      </box>
+    </box>
   );
 };
 

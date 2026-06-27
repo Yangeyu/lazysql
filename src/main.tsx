@@ -12,13 +12,12 @@
  *   bun start --list          list saved connections and exit
  */
 
-import React from 'react';
-import { render } from 'ink';
+import { createCliRenderer } from '@opentui/core';
+import { createRoot } from '@opentui/react';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { Root } from './presentation/app/Root.tsx';
-import { enableSynchronizedOutput } from './presentation/term/synchronizedOutput.ts';
 import { createDataSource } from './adapters/datasource/registry.ts';
 import { YamlConnectionRepository } from './adapters/persistence/YamlConnectionRepository.ts';
 import { FileSecretStore } from './adapters/persistence/FileSecretStore.ts';
@@ -149,45 +148,24 @@ const connectionService: ConnectionService = {
 // Provider is picked by createSqlGenerator (LAZYSQL_LLM_PROVIDER, else by key).
 const generator: SqlGenerator | null = createSqlGenerator();
 
-// Fullscreen: switch to the terminal's alternate screen buffer so lazysql owns
-// the whole window (like vim/lazygit) and leaves the user's scrollback intact
-// on exit. `?1049h` enters + clears; `?1049l` restores the prior screen. Guarded
-// to a TTY so piped/CI runs are unaffected.
-// `?1049h` alt screen + `?1000h`/`?1006h` SGR mouse click reporting (decoded by
-// the useMouse hook). The composition root owns these terminal modes so they are
-// always paired with a restore on exit.
-const isTty = Boolean(process.stdout.isTTY);
-const enterAltScreen = (): void => {
-  if (isTty) process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H\x1b[?1000h\x1b[?1006h');
-};
-const leaveAltScreen = (): void => {
-  if (isTty) process.stdout.write('\x1b[?1000l\x1b[?1006l\x1b[?1049l');
-};
+// OpenTUI owns the terminal: createCliRenderer sets up the alternate screen,
+// mouse reporting and the double-buffered (cell-diffed) render loop, and restores
+// everything on destroy() — so there is no manual ANSI here, and no flicker. We
+// only disable its built-in ^C so the app decides what ^C means in context
+// (cancel a modal vs. quit). The single exit path is renderer.destroy(), reached
+// from App's `q`/^C handler and from SIGINT/SIGTERM.
+const renderer = await createCliRenderer({ exitOnCtrlC: false });
 
-// Synchronized output (DEC mode 2026) — the flicker fix. Ink repaints the whole
-// frame on every render with no cell diffing, so a scroll's erase→repaint flashes
-// the blank intermediate state. Wrapping each frame so the terminal applies it
-// atomically removes the flash. See ./presentation/term/synchronizedOutput.ts.
-let restoreSynchronizedOutput: (() => void) | null = null;
+// Exit once teardown has run. Deferred to a microtask so the 'destroy'
+// subscribers (Root releases the DB connection) run first, in the same emit.
+renderer.on('destroy', () => {
+  queueMicrotask(() => process.exit(0));
+});
 
-enterAltScreen();
-if (isTty) restoreSynchronizedOutput = enableSynchronizedOutput(process.stdout);
-// Belt-and-braces: restore the screen however the process ends (clean exit,
-// ^C, or an unexpected throw), so the terminal is never left in alt mode.
-process.on('exit', leaveAltScreen);
-
-const { waitUntilExit } = render(
+createRoot(renderer).render(
   <Root
     connectionService={connectionService}
     initial={initial}
     generator={generator}
   />,
 );
-
-try {
-  await waitUntilExit();
-} finally {
-  process.off('exit', leaveAltScreen);
-  restoreSynchronizedOutput?.();
-  leaveAltScreen();
-}

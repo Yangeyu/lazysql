@@ -6,31 +6,33 @@
  */
 
 import React from 'react';
-import { Box, Text } from 'ink';
+import { TextAttributes } from '@opentui/core';
 import type { ConnForm } from '../app/store.ts';
+import { theme, CARET } from '../theme/theme.ts';
 
 const LABEL_COL = 12;
 
-const ConnectionFormImpl: React.FC<{ form: ConnForm }> = ({ form }) => {
+const ConnectionFormImpl = ({ form }: { form: ConnForm }) => {
   const editing = form.editingId !== null;
   return (
-    <Box flexDirection="column" flexGrow={1} alignItems="center">
-      <Box
+    <box flexDirection="column" flexGrow={1} alignItems="center">
+      <box
         flexDirection="column"
-        borderStyle="round"
+        border
+        borderStyle="rounded"
         borderColor="cyan"
         paddingX={2}
         paddingY={1}
         width={54}
       >
-        <Text bold color="cyan">
+        <text attributes={TextAttributes.BOLD} fg="cyan">
           {editing ? 'Edit connection' : 'New connection'}
-        </Text>
-        <Text> </Text>
-        <Text>
-          <Text dimColor>{'Driver'.padEnd(LABEL_COL)}</Text>
-          <Text color="yellow">◂ {form.driver} ▸</Text>
-        </Text>
+        </text>
+        <text> </text>
+        <text>
+          <span fg={theme.muted}>{'Driver'.padEnd(LABEL_COL)}</span>
+          <span fg="yellow">◂ {form.driver} ▸</span>
+        </text>
         {form.fields.map((f, i) => {
           const selected = i === form.index;
           const shown = f.secret ? '•'.repeat(f.value.length) : f.value;
@@ -38,21 +40,24 @@ const ConnectionFormImpl: React.FC<{ form: ConnForm }> = ({ form }) => {
           const placeholder =
             f.secret && editing && f.value.length === 0 ? '(unchanged)' : '';
           return (
-            <Text key={f.key} wrap="truncate">
-              <Text dimColor>{f.label.padEnd(LABEL_COL)}</Text>
-              <Text inverse={selected} color={selected ? 'cyan' : undefined}>
+            <text key={f.key} wrapMode="none">
+              <span fg={theme.muted}>{f.label.padEnd(LABEL_COL)}</span>
+              <span
+                attributes={selected ? TextAttributes.INVERSE : undefined}
+                fg={selected ? 'cyan' : undefined}
+              >
                 {shown || ' '}
-              </Text>
-              {placeholder ? <Text dimColor> {placeholder}</Text> : null}
-              {selected ? <Text>▌</Text> : null}
-            </Text>
+              </span>
+              {placeholder ? <span fg={theme.muted}> {placeholder}</span> : null}
+              {selected ? <span fg={theme.accent}>{CARET}</span> : null}
+            </text>
           );
         })}
-        {form.error ? <Text color="red">{form.error}</Text> : null}
-        <Text> </Text>
-        <Text dimColor>↑/↓ field · ←/→ driver · ⏎ save · esc cancel</Text>
-      </Box>
-    </Box>
+        {form.error ? <text fg="red">{form.error}</text> : null}
+        <text> </text>
+        <text fg={theme.muted}>↑/↓ field · ←/→ driver · ⏎ save · esc cancel</text>
+      </box>
+    </box>
   );
 };
 

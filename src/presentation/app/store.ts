@@ -7,6 +7,7 @@
 
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import {
+  asBrowsePreviewable,
   asIntrospectable,
   asQueryable,
   type DataSource,
@@ -148,6 +149,12 @@ export interface AppState {
   sort: Sort | null;
   filter: Filter | null;
   total: number;
+  /** The current browse statement, value-inlined, for a read-only echo in the SQL
+   *  editor; null when not browsing or the source can't render one. A cached
+   *  projection of (current, sort, filter, page) — recomputed on every `load`, so
+   *  it never drifts from what executed. Cached (not a selector) because rendering
+   *  it needs the adapter's dialect, which only the store reaches. */
+  browseSql: string | null;
   gridRow: number;
   gridCol: number;
   mode: Mode;
@@ -411,6 +418,9 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         page: res.value.spec.page,
         sort: res.value.spec.sort ?? null,
         filter: res.value.spec.filter ?? null,
+        // Echo the exact statement the adapter ran (value-inlined). Same source
+        // (ref, spec) as the result above, so the echo always matches the view.
+        browseSql: asBrowsePreviewable(active)?.previewBrowse(ref, res.value.spec) ?? null,
         gridRow: 0,
       });
     };
@@ -512,6 +522,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         current: null,
         surface: 'browse',
         result: null,
+        browseSql: null,
         gridRow: 0,
         gridCol: 0,
         mainTab: 'data',
@@ -549,6 +560,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       sort: null,
       filter: null,
       total: 0,
+      browseSql: null,
       gridRow: 0,
       gridCol: 0,
       mode: 'normal',
@@ -738,6 +750,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           current: null,
           surface: 'browse',
           result: null,
+          browseSql: null,
           cellView: null,
           rootExpanded: true,
           treeIndex: 0,
@@ -1060,6 +1073,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           surface: 'query',
           current: null,
           pkColumns: [],
+          browseSql: null, // a query result isn't a browse — no statement to echo
           result: r.value.result,
           total: r.value.result.rows.length,
           queryElapsedMs: r.value.elapsedMs,

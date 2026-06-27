@@ -7,12 +7,11 @@
  *
  * The panel is a FIXED size (derived once from the terminal, not from the value)
  * and the scroll window is padded to a constant line count, so moving the cursor
- * repaints only the changed text lines — never the panel's geometry. That is what
- * removes the flicker the old full-height, content-sized inspector had.
+ * repaints only the changed text lines — never the panel's geometry.
  */
 
 import React from 'react';
-import { Text } from 'ink';
+import { TextAttributes } from '@opentui/core';
 import type { CellValue } from '../../domain/datasource/ResultSet.ts';
 import { formatCellValue } from './cellFormat.ts';
 import { theme } from '../theme/theme.ts';
@@ -26,13 +25,7 @@ interface Props {
   termCols: number;
 }
 
-const CellViewImpl: React.FC<Props> = ({
-  column,
-  value,
-  offset,
-  termRows,
-  termCols,
-}) => {
+const CellViewImpl = ({ column, value, offset, termRows, termCols }: Props) => {
   const { type, lines } = formatCellValue(value);
 
   // Fixed panel geometry, derived from the terminal once (not from the value).
@@ -52,30 +45,30 @@ const CellViewImpl: React.FC<Props> = ({
 
   return (
     <Overlay termRows={termRows} termCols={termCols} width={width} height={height}>
-      <Text wrap="truncate">
-        <Text backgroundColor={theme.accent} color={theme.onAccent} bold>
+      <text wrapMode="none">
+        <span bg={theme.accent} fg={theme.onAccent} attributes={TextAttributes.BOLD}>
           {' ⊞ cell '}
-        </Text>
-        <Text bold color={theme.cyan}>
+        </span>
+        <b fg={theme.cyan}>
           {' '}
           {column}
-        </Text>
-        <Text color={theme.border}>
+        </b>
+        <span fg={theme.border}>
           {'  '}
           {type}
           {lines.length > bodyRows
             ? `  ·  ${top + 1}-${Math.min(top + bodyRows, lines.length)}/${lines.length}`
             : ''}
-        </Text>
-      </Text>
+        </span>
+      </text>
       {window.map((ln, i) => (
-        <Text key={top + i} wrap="truncate">
+        <text key={top + i} wrapMode="none">
           {ln === '' ? ' ' : truncate(ln)}
-        </Text>
+        </text>
       ))}
-      <Text color={theme.border} wrap="truncate">
+      <text fg={theme.border} wrapMode="none">
         {top < maxOffset ? '↓ more  ·  ' : ''}esc/⏎ close · j/k scroll
-      </Text>
+      </text>
     </Overlay>
   );
 };

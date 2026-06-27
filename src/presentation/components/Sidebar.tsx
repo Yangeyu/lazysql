@@ -4,11 +4,12 @@
  * projection of the flattened `TreeRow[]` the store computes; all folding and
  * cursor logic lives in the store, so this component only draws rows. A selected
  * row gets an accent gutter (and inverse when the panel is focused) so the
- * cursor is always obvious.
+ * cursor is always obvious. Clicking a row (or the pane) is reported up via
+ * `onRowClick` / `onPaneClick` — no coordinate math, the index is known here.
  */
 
 import React from 'react';
-import { Box, Text } from 'ink';
+import { TextAttributes } from '@opentui/core';
 import type { ObjectKind } from '../../domain/datasource/schema.ts';
 import type { TreeRow } from '../tree/tree.ts';
 import { theme, driverColor } from '../theme/theme.ts';
@@ -18,6 +19,10 @@ interface Props {
   selectedIndex: number;
   focused: boolean;
   width: number;
+  /** A row was clicked (0-based index into `rows`). */
+  onRowClick: (index: number) => void;
+  /** The pane's chrome/empty space was clicked — focus it. */
+  onPaneClick: () => void;
 }
 
 const fold = (expanded: boolean): string => (expanded ? '▾' : '▸');
@@ -43,17 +48,19 @@ const objectIcon = (kind: ObjectKind): string => {
   }
 };
 
-/** Render one tree row's content (indentation + glyph + label). */
+/** Render one tree row's content (indentation + glyph + label) as inline spans. */
 const rowContent = (row: TreeRow, selected: boolean): React.ReactNode => {
   if (row.type === 'connection') {
     return (
       <>
-        <Text color={theme.border}>{fold(row.expanded)} </Text>
-        <Text color={row.active ? theme.green : theme.border}>
+        <span fg={theme.border}>{fold(row.expanded)} </span>
+        <span fg={row.active ? theme.green : theme.border}>
           {row.active ? '●' : '○'}{' '}
-        </Text>
-        <Text bold={row.active}>{row.label} </Text>
-        <Text color={driverColor(row.tag)}>[{row.tag}]</Text>
+        </span>
+        <span attributes={row.active ? TextAttributes.BOLD : undefined}>
+          {row.label}{' '}
+        </span>
+        <span fg={driverColor(row.tag)}>[{row.tag}]</span>
       </>
     );
   }
@@ -61,56 +68,64 @@ const rowContent = (row: TreeRow, selected: boolean): React.ReactNode => {
     return (
       <>
         {'  '}
-        <Text color={theme.border}>{fold(row.expanded)} </Text>
-        <Text color={selected ? undefined : theme.cyan}>{row.label}</Text>
-        <Text color={theme.border}> {row.count}</Text>
+        <span fg={theme.border}>{fold(row.expanded)} </span>
+        <span fg={selected ? undefined : theme.cyan}>{row.label}</span>
+        <span fg={theme.border}> {row.count}</span>
       </>
     );
   }
   return (
     <>
       {'    '}
-      <Text color={theme.border}>{objectIcon(row.ref.kind)} </Text>
+      <span fg={theme.border}>{objectIcon(row.ref.kind)} </span>
       {row.label}
     </>
   );
 };
 
-const SidebarImpl: React.FC<Props> = ({
+const SidebarImpl = ({
   rows,
   selectedIndex,
   focused,
   width,
-}) => (
-  <Box
+  onRowClick,
+  onPaneClick,
+}: Props) => (
+  <box
     flexDirection="column"
     width={width}
-    borderStyle="round"
+    border
+    borderStyle="rounded"
     borderColor={focused ? theme.borderFocus : theme.border}
     paddingX={1}
+    onMouseDown={onPaneClick}
   >
-    <Text bold color={focused ? theme.accent : theme.border}>
+    <text attributes={TextAttributes.BOLD} fg={focused ? theme.accent : theme.border}>
       CONNECTIONS
-    </Text>
+    </text>
     {rows.length === 0 ? (
-      <Text color={theme.border}>(no connection)</Text>
+      <text fg={theme.border}>(no connection)</text>
     ) : (
       rows.map((row, i) => {
         const selected = i === selectedIndex;
         return (
-          <Text
+          <text
             key={i}
-            inverse={selected && focused}
-            color={selected && !focused ? theme.accent : undefined}
-            wrap="truncate"
+            wrapMode="none"
+            attributes={selected && focused ? TextAttributes.INVERSE : undefined}
+            fg={selected && !focused ? theme.accent : undefined}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              onRowClick(i);
+            }}
           >
-            {selected && !focused ? <Text color={theme.accent}>▎</Text> : ' '}
+            {selected && !focused ? <span fg={theme.accent}>▎</span> : ' '}
             {rowContent(row, selected)}
-          </Text>
+          </text>
         );
       })
     )}
-  </Box>
+  </box>
 );
 
 export const Sidebar = React.memo(SidebarImpl);

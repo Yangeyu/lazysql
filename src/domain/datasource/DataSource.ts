@@ -59,6 +59,17 @@ export interface Browsable {
   ): Promise<number>;
 }
 
+/**
+ * Render a browse operation as human-readable source text — DISPLAY ONLY, never
+ * executed. SQL adapters return the value-inlined `SELECT … LIMIT …` they would
+ * run, so the UI can echo "what produced this view". Optional (ISP): a source
+ * with no meaningful textual form simply doesn't implement it. A future Mongo/
+ * Redis browse can render its own native query here without touching callers.
+ */
+export interface BrowsePreviewable {
+  previewBrowse(ref: ObjectRef, spec: BrowseSpec): string;
+}
+
 /** Row/document level writes. Every method targets a single row via its key. */
 export interface RowEditable {
   insert(ref: ObjectRef, row: RowPatch): Promise<EditResult>;
@@ -96,6 +107,13 @@ export const asIntrospectable = (
 export const asBrowsable = (s: DataSource): (DataSource & Browsable) | null =>
   typeof (s as Partial<Browsable>).browse === 'function'
     ? (s as DataSource & Browsable)
+    : null;
+
+export const asBrowsePreviewable = (
+  s: DataSource,
+): (DataSource & BrowsePreviewable) | null =>
+  typeof (s as Partial<BrowsePreviewable>).previewBrowse === 'function'
+    ? (s as DataSource & BrowsePreviewable)
     : null;
 
 export const asRowEditable = (

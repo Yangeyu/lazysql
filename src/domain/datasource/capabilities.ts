@@ -13,6 +13,8 @@ export const Capability = {
   SchemaIntrospect: 'schema:introspect',
   /** Read a paginated window of an object's rows/documents (source-agnostic). */
   Browse: 'browse',
+  /** Render a browse operation as readable source text (display only). */
+  BrowsePreview: 'browse:preview',
   /** Row/document level create/update/delete. */
   RowEdit: 'row:edit',
   /** begin/commit/rollback. */

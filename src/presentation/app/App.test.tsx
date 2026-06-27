@@ -1,18 +1,21 @@
 /**
- * Headless TUI acceptance for Phase 0: render the full App against a real
- * (temp) SQLite database via ink-testing-library, drive it with keystrokes, and
+ * Headless TUI acceptance: render the full App against a real (temp) SQLite
+ * database through the OpenTUI test renderer, drive it with keystrokes, and
  * assert the rendered frames. This exercises every layer end-to-end —
- * registry → store → use cases → adapter → bun:sqlite → Ink output.
+ * registry → store → use cases → adapter → bun:sqlite → OpenTUI output.
+ *
+ * The tests share one DB and run in order; the edit test renames a row before
+ * the delete test counts the remaining rows.
  */
 
 import React from 'react';
 import { test, expect, beforeAll, afterAll } from 'bun:test';
-import { render } from 'ink-testing-library';
 import { Database } from 'bun:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 
+import { renderTest } from '../testing/renderTest.ts';
 import { StoreContext } from './context.ts';
 import { App } from './App.tsx';
 import { createAppStore } from './store.ts';
@@ -24,8 +27,6 @@ import { ok, unwrap } from '../../shared/Result.ts';
 
 const DB = join(tmpdir(), `lazysql-tui-${process.pid}.db`);
 let source: DataSource;
-
-const tick = (ms = 60) => Bun.sleep(ms);
 
 const profile: ConnectionProfile = {
   id: 'tui',
@@ -61,207 +62,180 @@ afterAll(async () => {
 
 const renderApp = () => {
   const store = createAppStore({ connectionService: service, initial: profile });
-  return render(
+  return renderTest(
     <StoreContext.Provider value={store}>
       <App />
     </StoreContext.Provider>,
+    { width: 120, height: 40 },
   );
 };
 
 test('sidebar shows the connection tree with objects after init', async () => {
-  const { lastFrame, unmount } = renderApp();
-  await tick();
-  const frame = lastFrame() ?? '';
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  const frame = h.frame();
   expect(frame).toContain('Tables'); // category header
   expect(frame).toContain('widget'); // object under it
-  unmount();
+  h.cleanup();
 });
 
 test('the sidebar tree folds a category with h and reopens it with l', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
   // Cursor starts on the first object (widget). h → parent category (Tables).
-  stdin.write('h');
-  await tick();
-  stdin.write('h'); // h again → collapse Tables
-  await tick();
-  expect(lastFrame() ?? '').not.toContain('widget'); // object hidden when folded
+  h.press('h');
+  h.press('h'); // h again → collapse Tables
+  await h.until((f) => !f.includes('widget')); // object hidden when folded
 
-  stdin.write('l'); // l → expand Tables again
-  await tick();
-  expect(lastFrame() ?? '').toContain('widget'); // object visible again
-  unmount();
+  h.press('l'); // l → expand Tables again
+  await h.until((f) => f.includes('widget')); // object visible again
+  h.cleanup();
 });
 
 test('pressing Enter browses the table into the grid', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-
-  stdin.write('\r'); // Enter → open selected table
-  await tick();
-
-  const frame = lastFrame() ?? '';
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  h.enter(); // Enter → open selected table
+  await h.until((f) => f.includes('label'));
+  const frame = h.frame();
   expect(frame).toContain('label'); // column header
   expect(frame).toContain('w1'); // first row value
   expect(frame).toContain('of 25 rows'); // status bar totals
-  unmount();
+  h.cleanup();
 });
 
 test('grid receives focus and cursor moves on arrow keys', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-  stdin.write('\r'); // open table (also moves focus to grid)
-  await tick();
-  stdin.write('[B'); // Down arrow → move cursor
-  await tick();
-
-  // Frame still renders rows after navigation (no crash, cursor advanced).
-  expect(lastFrame() ?? '').toContain('w2');
-  unmount();
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  h.enter(); // open table (also moves focus to grid)
+  await h.until((f) => f.includes('w1'));
+  h.arrow('down'); // Down arrow → move cursor
+  await h.until((f) => f.includes('w2'));
+  expect(h.frame()).toContain('w2');
+  h.cleanup();
 });
 
 test('pressing s sorts the current column and shows an indicator', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-  stdin.write('\r'); // open table (focus → grid)
-  await tick();
-  stdin.write('s'); // sort current column (id) ascending
-  await tick();
-  expect(lastFrame() ?? '').toContain('▲');
-  unmount();
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  h.enter(); // open table (focus → grid)
+  await h.until((f) => f.includes('w1'));
+  h.press('s'); // sort current column (id) ascending
+  await h.until((f) => f.includes('▲'));
+  expect(h.frame()).toContain('▲');
+  h.cleanup();
 });
 
 test('filtering a column narrows the grid via the input mode', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-  stdin.write('\r'); // open table → grid focus, gridCol 0 (id)
-  await tick();
-  stdin.write('l'); // → label column (gridCol 1)
-  await tick();
-  stdin.write('/'); // enter filter input mode
-  await tick();
-  stdin.write('2');
-  stdin.write('5'); // draft "25"
-  await tick();
-  stdin.write('\r'); // commit → label contains 25
-  await tick();
-
-  const frame = lastFrame() ?? '';
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  h.enter(); // open table → grid focus, gridCol 0 (id)
+  await h.until((f) => f.includes('w1'));
+  h.press('l'); // → label column (gridCol 1)
+  h.press('/'); // enter filter input mode
+  await h.until((f) => f.includes('contains'));
+  await h.type('25'); // draft "25"
+  await h.flush();
+  h.enter(); // commit → label contains 25
+  await h.until((f) => f.includes('of 1 rows'));
+  const frame = h.frame();
   expect(frame).toContain('w25');
   expect(frame).toContain('of 1 rows'); // count reflects the filter
   expect(frame).toContain('label~25'); // active-filter summary
-  unmount();
+  h.cleanup();
 });
 
 test('editing a cell updates it after confirmation', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-  stdin.write('\r'); // open widget → grid, gridCol 0 (id)
-  await tick();
-  stdin.write('l'); // → label column
-  await tick();
-  stdin.write('e'); // edit → draft prefilled "w1"
-  await tick();
-  stdin.write('Z'); // draft "w1Z"
-  await tick();
-  stdin.write('\r'); // submit → confirm
-  await tick();
-  expect(lastFrame() ?? '').toContain('confirm'); // confirmation footer
-
-  stdin.write('y'); // apply the update
-  await tick(160);
-  expect(lastFrame() ?? '').toContain('w1Z'); // grid reflects the write
-  unmount();
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  h.enter(); // open widget → grid, gridCol 0 (id)
+  await h.until((f) => f.includes('w1'));
+  h.press('l'); // → label column
+  h.press('e'); // edit → draft prefilled "w1"
+  await h.until((f) => f.includes('edit'));
+  await h.type('Z'); // draft "w1Z"
+  await h.flush();
+  h.enter(); // submit → confirm
+  await h.until((f) => f.includes('confirm')); // confirmation footer
+  h.press('y'); // apply the update
+  await h.until((f) => f.includes('w1Z')); // grid reflects the write
+  h.cleanup();
 });
 
 test('deleting a row removes it after confirmation', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-  stdin.write('\r'); // open widget (25 rows after the edit test)
-  await tick();
-  stdin.write('d'); // delete row under cursor → confirm
-  await tick();
-  expect(lastFrame() ?? '').toContain('DELETE');
-
-  stdin.write('y'); // apply the delete
-  await tick(160);
-  expect(lastFrame() ?? '').toContain('of 24 rows'); // one fewer row
-  unmount();
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  h.enter(); // open widget (25 rows after the edit test)
+  await h.until((f) => f.includes('of 25 rows'));
+  h.press('d'); // delete row under cursor → confirm
+  await h.until((f) => f.includes('DELETE'));
+  h.press('y'); // apply the delete
+  await h.until((f) => f.includes('of 24 rows')); // one fewer row
+  h.cleanup();
 });
 
 test('D flips the open object between the Data and DDL tabs', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-  stdin.write('\r'); // open widget into the grid
-  await tick();
-  stdin.write('D'); // flip to the DDL/structure tab
-  await tick(140); // describe() resolves
-  const frame = lastFrame() ?? '';
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  h.enter(); // open widget into the grid
+  await h.until((f) => f.includes('label'));
+  h.press('D'); // flip to the DDL/structure tab
+  await h.until((f) => f.includes('CREATE TABLE widget')); // synthesized DDL
+  const frame = h.frame();
   expect(frame).toContain('DDL'); // tab label
-  expect(frame).toContain('CREATE TABLE widget'); // synthesized DDL
+  expect(frame).toContain('CREATE TABLE widget');
   expect(frame).toContain('label'); // a column name
 
-  stdin.write('D'); // flip back to Data
-  await tick();
-  expect(lastFrame() ?? '').toContain('w1'); // grid data is shown again
-  unmount();
+  h.press('D'); // flip back to Data
+  await h.until((f) => f.includes('w1')); // grid data is shown again
+  h.cleanup();
 });
 
 test('the SQL editor runs a typed query and shows the result', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-  stdin.write(':'); // enter the query editor view
-  await tick();
-  expect(lastFrame() ?? '').toContain('SQL>'); // editor prompt
-
-  stdin.write('SELECT 42 AS answer'); // type a query (data-independent)
-  await tick();
-  stdin.write('\r'); // execute
-  await tick(160);
-
-  const frame = lastFrame() ?? '';
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  h.press(':'); // enter the query editor view
+  await h.until((f) => f.includes('SQL>')); // editor prompt
+  await h.type('SELECT 42 AS answer'); // type a query (data-independent)
+  await h.flush();
+  h.enter(); // execute
+  await h.until((f) => f.includes('answer'));
+  const frame = h.frame();
   expect(frame).toContain('answer'); // result column header
   expect(frame).toContain('42'); // result value
   expect(frame).toContain('1 rows'); // result summary
-  unmount();
+  h.cleanup();
 });
 
-test('editor is persistent; running a query fills the shared grid, then a table re-select returns to browse', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-  // The SQL editor pane is ALWAYS present (3-pane layout) — visible before `:`.
-  expect(lastFrame() ?? '').toContain('SQL>');
+test('editor is persistent; a query fills the shared grid, then re-selecting a table returns to browse', async () => {
+  const h = await renderApp();
+  await h.until((f) => f.includes('SQL>')); // editor always present (3-pane layout)
 
-  stdin.write('\r'); // browse the table → grid shows table data (browse surface)
-  await tick();
-  expect(lastFrame() ?? '').toContain('label'); // a table column header (browse)
+  h.enter(); // browse the table → grid shows table data (browse surface)
+  await h.until((f) => f.includes('label'));
 
-  stdin.write(':'); // focus the editor pane
-  await tick();
-  stdin.write('SELECT 7 AS lucky'); // a data-independent query
-  await tick();
-  stdin.write('\r'); // run → the result takes over the SAME grid (query surface)
-  await tick(160);
-  const q = lastFrame() ?? '';
-  expect(q).toContain('lucky'); // query result column in the shared grid
-  expect(q).toContain('Result'); // grid header switched to the query surface
+  h.press(':'); // focus the editor pane
+  await h.flush();
+  await h.type('SELECT 7 AS lucky'); // a data-independent query
+  await h.flush();
+  h.enter(); // run → the result takes over the SAME grid (query surface)
+  await h.until((f) => f.includes('lucky'));
+  expect(h.frame()).toContain('Result'); // grid header switched to the query surface
 
   // Re-selecting the table in the sidebar returns the grid to the browse surface.
-  stdin.write('\t'); // grid → sidebar (Tab cycles sidebar→editor→grid→sidebar)
-  await tick();
-  stdin.write('\r'); // open the table again (cursor is still on it)
-  await tick(120);
-  const b = lastFrame() ?? '';
+  h.tab(); // grid → sidebar
+  h.enter(); // open the table again (cursor still on it)
+  await h.until((f) => f.includes('Data') && !f.includes('Result'));
+  const b = h.frame();
   expect(b).toContain('Data'); // the Data/DDL tab → browse surface is back…
   expect(b).not.toContain('Result'); // …and the grid left the query surface
-  // (the editor keeps `SELECT 7 AS lucky` so you can tweak and re-run it)
-  unmount();
+  h.cleanup();
 });
 
 test('the SQL editor and the results grid share one width (aligned right edge)', async () => {
-  const { lastFrame, unmount } = renderApp();
-  await tick();
-  const lines = (lastFrame() ?? '').replace(/\[[0-9;]*m/g, '').split('\n');
+  const h = await renderApp();
+  await h.until((f) => f.includes('SQL>'));
+  const lines = h.frame().split('\n');
   // Every box corner on the RIGHT side (past the sidebar) must sit in one column
   // — i.e. the editor pane and the grid pane are exactly the same width.
   const rightEdges = new Set<number>();
@@ -272,74 +246,49 @@ test('the SQL editor and the results grid share one width (aligned right edge)',
     }
   }
   expect(rightEdges.size).toBe(1); // editor box + grid box end at the same column
-  unmount();
-});
-
-test('the browse frame stays within the terminal height (no full-clear flicker)', async () => {
-  const cols = process.stdout.columns;
-  const rows = process.stdout.rows;
-  (process.stdout as { columns: number }).columns = 120;
-  (process.stdout as { rows: number }).rows = 30;
-  try {
-    const { lastFrame, stdin, unmount } = renderApp();
-    await tick();
-    stdin.write('\r'); // browse the table → grid fills with rows
-    await tick(120);
-    // The rendered frame must stay below the terminal height; the moment it
-    // reaches it, Ink full-clears every render and the grid flickers on j/k.
-    const lineCount = (lastFrame() ?? '').split('\n').length;
-    expect(lineCount).toBeLessThan(30);
-    unmount();
-  } finally {
-    (process.stdout as { columns?: number }).columns = cols;
-    (process.stdout as { rows?: number }).rows = rows;
-  }
+  h.cleanup();
 });
 
 test('a query error keeps the ask row pinned, not scrolled off the top', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-  stdin.write(':'); // focus the editor
-  await tick();
-  stdin.write('NOT VALID SQL');
-  await tick();
-  stdin.write('\r'); // run → error in the feedback line
-  await tick(140);
-  const f = lastFrame() ?? '';
+  const h = await renderApp();
+  await h.until((f) => f.includes('SQL>'));
+  h.press(':'); // focus the editor
+  await h.flush();
+  await h.type('NOT VALID SQL');
+  await h.flush();
+  h.enter(); // run → error in the feedback line
+  await h.until((f) => f.includes('error'));
+  const f = h.frame();
   expect(f).toContain('ask'); // the ask row survives above the SQL + error
   expect(f).toContain('error'); // and the (single-line) error is shown
-  unmount();
+  h.cleanup();
 });
 
 test('? opens the keybindings help overlay and toggles it off again', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-  stdin.write('?'); // open help
-  await tick();
-  const frame = lastFrame() ?? '';
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  h.press('?'); // open help
+  await h.until((f) => f.includes('Keybindings'));
+  const frame = h.frame();
   expect(frame).toContain('Keybindings');
   expect(frame).toContain('Global'); // global group is listed
   expect(frame).toContain('Move the selection'); // sidebar binding description
 
-  stdin.write('?'); // close help
-  await tick();
-  const after = lastFrame() ?? '';
-  expect(after).not.toContain('Keybindings');
-  expect(after).toContain('widget'); // back to the object list
-  unmount();
+  h.press('?'); // close help
+  await h.until((f) => !f.includes('Keybindings'));
+  expect(h.frame()).toContain('widget'); // back to the object list
+  h.cleanup();
 });
 
 test('schema-aware completion completes a table name on Tab', async () => {
-  const { lastFrame, stdin, unmount } = renderApp();
-  await tick();
-  stdin.write(':'); // query view → catalog builds (introspect + describe)
-  await tick(140);
-  stdin.write('SELECT * FROM wi'); // partial table name
-  await tick();
-  expect(lastFrame() ?? '').toContain('⇥'); // completion hint is shown
-
-  stdin.write('\t'); // Tab → accept the top candidate
-  await tick();
-  expect(lastFrame() ?? '').toContain('FROM widget'); // completed to "widget"
-  unmount();
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  h.press(':'); // query view → catalog builds (introspect + describe)
+  await h.until((f) => f.includes('SQL>'));
+  await h.type('SELECT * FROM wi'); // partial table name
+  await h.until((f) => f.includes('⇥')); // completion hint is shown
+  h.tab(); // Tab → accept the top candidate
+  await h.until((f) => f.includes('FROM widget')); // completed to "widget"
+  expect(h.frame()).toContain('FROM widget');
+  h.cleanup();
 });

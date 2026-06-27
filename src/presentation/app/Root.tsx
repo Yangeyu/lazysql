@@ -2,11 +2,13 @@
  * Root — the thin composition shell. It builds the single long-lived workbench
  * store around the injected ConnectionService and renders App; the store owns
  * the connection lifecycle (list / connect / disconnect / save), so Root keeps
- * no connection state of its own. It only disconnects the active source on
- * teardown.
+ * no connection state of its own. It releases the active source when the renderer
+ * is destroyed (the single exit path: `q` / ^C / a signal all call
+ * renderer.destroy()).
  */
 
-import React, { useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+import { useRenderer } from '@opentui/react';
 import { StoreContext } from './context.ts';
 import { createAppStore, type AppStore } from './store.ts';
 import { App } from './App.tsx';
@@ -22,18 +24,28 @@ interface Props {
   generator?: SqlGenerator | null;
 }
 
-export const Root: React.FC<Props> = ({
+export const Root = ({
   connectionService,
   initial = null,
   generator = null,
-}) => {
+}: Props) => {
+  const renderer = useRenderer();
   const store = useMemo<AppStore>(
     () => createAppStore({ connectionService, generator, initial }),
     [connectionService, generator, initial],
   );
 
-  // Tear down the active connection (if any) when the app exits.
-  useEffect(() => () => store.getState().disconnect(), [store]);
+  // Release the active connection when the renderer tears down, so the DB handle
+  // is closed before the process exits.
+  useEffect(() => {
+    const onDestroy = (): void => {
+      void store.getState().disconnect();
+    };
+    renderer.on('destroy', onDestroy);
+    return () => {
+      renderer.off('destroy', onDestroy);
+    };
+  }, [renderer, store]);
 
   return (
     <StoreContext.Provider value={store}>

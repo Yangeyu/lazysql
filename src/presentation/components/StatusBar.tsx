@@ -8,10 +8,10 @@
  */
 
 import React from 'react';
-import { Box, Text } from 'ink';
+import { TextAttributes } from '@opentui/core';
 import type { Mode } from '../app/store.ts';
 import { footerHints, type KeyContext, type KeyFlags } from '../keymap/keymap.ts';
-import { theme } from '../theme/theme.ts';
+import { theme, CARET } from '../theme/theme.ts';
 
 interface Props {
   width: number;
@@ -27,17 +27,21 @@ interface Props {
   pendingMessage: string | null;
 }
 
-const Badge: React.FC<{ label: string; bg: string; fg?: string }> = ({
+const Badge = ({
   label,
   bg,
   fg = theme.onAccent,
+}: {
+  label: string;
+  bg: string;
+  fg?: string;
 }) => (
-  <Text backgroundColor={bg} color={fg} bold>
+  <span bg={bg} fg={fg} attributes={TextAttributes.BOLD}>
     {` ${label} `}
-  </Text>
+  </span>
 );
 
-const CURSOR = <Text color={theme.accent}>▌</Text>;
+const CURSOR = <span fg={theme.accent}>{CARET}</span>;
 
 /** Short label for the resting context badge. */
 const contextBadge = (context: KeyContext): { label: string; bg: string } => {
@@ -55,7 +59,7 @@ const contextBadge = (context: KeyContext): { label: string; bg: string } => {
   }
 };
 
-const StatusBarImpl: React.FC<Props> = ({
+const StatusBarImpl = ({
   width,
   status,
   error,
@@ -67,73 +71,72 @@ const StatusBarImpl: React.FC<Props> = ({
   editDraft,
   editColumn,
   pendingMessage,
-}) => {
-  // The hint list must stay on ONE line: if it wrapped, the frame would grow past
-  // the terminal height and trip Ink's full-screen clear (flicker). It truncates
-  // from the right, so the active context's keys (listed first) always survive.
+}: Props) => {
+  // The hint list stays on ONE line: it truncates from the right, so the active
+  // context's keys (listed first) always survive.
   const bar = (left: React.ReactNode): React.ReactNode => (
-    <Box width={width} justifyContent="space-between" paddingX={1}>
-      <Box flexShrink={0}>{left}</Box>
-      <Box flexShrink={1} marginLeft={2}>
-        <Text wrap="truncate" color={theme.border}>
+    <box flexDirection="row" width={width} justifyContent="space-between" paddingX={1}>
+      <box flexShrink={0}>{left}</box>
+      <box flexShrink={1} marginLeft={2}>
+        <text wrapMode="none" fg={theme.border}>
           {footerHints(context, flags)}
-        </Text>
-      </Box>
-    </Box>
+        </text>
+      </box>
+    </box>
   );
 
   // Cell-edit input mode: show the value being typed.
   if (mode === 'edit') {
     return bar(
-      <Text>
+      <text>
         <Badge label="edit" bg={theme.magenta} />
-        <Text> </Text>
-        <Text color={theme.border}>{editColumn ?? '?'} = </Text>
-        <Text color={theme.cyan}>{editDraft}</Text>
+        <span> </span>
+        <span fg={theme.border}>{editColumn ?? '?'} = </span>
+        <span fg={theme.cyan}>{editDraft}</span>
         {CURSOR}
-      </Text>,
+      </text>,
     );
   }
 
   // Confirmation: show the exact statement intent before it runs.
   if (mode === 'confirm') {
     return bar(
-      <Text wrap="truncate">
+      <text wrapMode="none">
         <Badge label="confirm" bg={theme.red} fg="#ffffff" />
-        <Text> </Text>
-        <Text color={theme.yellow}>{pendingMessage}</Text>
-      </Text>,
+        <span> </span>
+        <span fg={theme.yellow}>{pendingMessage}</span>
+      </text>,
     );
   }
 
   // Filter input mode owns the bar: live prompt.
   if (mode === 'filter') {
     return bar(
-      <Text>
+      <text>
         <Badge label="filter" bg={theme.yellow} />
-        <Text> </Text>
-        <Text color={theme.border}>{filterColumn ?? '?'} contains </Text>
-        <Text color={theme.cyan}>{filterDraft}</Text>
+        <span> </span>
+        <span fg={theme.border}>{filterColumn ?? '?'} contains </span>
+        <span fg={theme.cyan}>{filterDraft}</span>
         {CURSOR}
-      </Text>,
+      </text>,
     );
   }
 
   if (error) {
     return bar(
-      <Text wrap="truncate">
+      <text wrapMode="none">
         <Badge label="error" bg={theme.red} fg="#ffffff" />
-        <Text color={theme.red}> {error}</Text>
-      </Text>,
+        <span fg={theme.red}> {error}</span>
+      </text>,
     );
   }
 
   const badge = contextBadge(context);
   return bar(
-    <Text>
+    <text>
       <Badge label={badge.label} bg={badge.bg} />
-      <Text color={theme.border}> {status === 'connecting' ? 'connecting…' : ''}</Text>
-    </Text>,
+      <span fg={theme.border}> {status === 'connecting' ? 'connecting…' : ''}</span>
+    </text>,
   );
 };
 

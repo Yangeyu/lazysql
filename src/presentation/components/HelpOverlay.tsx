@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { Box, Text } from 'ink';
+import { TextAttributes } from '@opentui/core';
 import type { KeyGroup } from '../keymap/keymap.ts';
 import { theme } from '../theme/theme.ts';
 import { Overlay } from './Overlay.tsx';
@@ -21,7 +21,7 @@ interface Props {
 const KEY_COL = 14;
 const PANEL_WIDTH = 58;
 
-const HelpOverlayImpl: React.FC<Props> = ({ groups, termRows, termCols }) => {
+const HelpOverlayImpl = ({ groups, termRows, termCols }: Props) => {
   // Height is derived from the (static-while-open) content: header (title +
   // blank), then each group's title + bindings + a trailing blank, then footer.
   const contentLines =
@@ -36,24 +36,24 @@ const HelpOverlayImpl: React.FC<Props> = ({ groups, termRows, termCols }) => {
       width={PANEL_WIDTH}
       height={contentLines + 2}
     >
-      <Text bold color={theme.accent}>
+      <text attributes={TextAttributes.BOLD} fg={theme.accent}>
         ⌨  Keybindings
-      </Text>
-      <Text> </Text>
+      </text>
+      <text> </text>
       {groups.map((group) => (
-        <Box key={group.title} flexDirection="column" marginBottom={1}>
-          <Text bold color={theme.yellow}>
+        <box key={group.title} flexDirection="column" marginBottom={1}>
+          <text attributes={TextAttributes.BOLD} fg={theme.yellow}>
             {group.title}
-          </Text>
+          </text>
           {group.bindings.map((b) => (
-            <Text key={b.keys + b.hint} wrap="truncate">
-              <Text color={theme.green}>{b.keys.padEnd(KEY_COL)}</Text>
+            <text key={b.keys + b.hint} wrapMode="none">
+              <span fg={theme.green}>{b.keys.padEnd(KEY_COL)}</span>
               {b.desc}
-            </Text>
+            </text>
           ))}
-        </Box>
+        </box>
       ))}
-      <Text color={theme.border}>esc / ? close</Text>
+      <text fg={theme.border}>esc / ? close</text>
     </Overlay>
   );
 };

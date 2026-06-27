@@ -11,6 +11,7 @@ import type {
   Queryable,
   SchemaIntrospectable,
   Browsable,
+  BrowsePreviewable,
   RowEditable,
   Transactional,
   Tx,
@@ -39,6 +40,7 @@ import { ConnectionError, QueryError } from '../../../domain/errors/errors.ts';
 import { ok, err, type Result } from '../../../shared/Result.ts';
 import type { SqlDriver, RawResult } from './Driver.ts';
 import type { Dialect } from './Dialect.ts';
+import { inlineParams } from './inlineParams.ts';
 
 export class SqlDataSource
   implements
@@ -46,6 +48,7 @@ export class SqlDataSource
     Queryable,
     SchemaIntrospectable,
     Browsable,
+    BrowsePreviewable,
     RowEditable,
     Transactional
 {
@@ -88,6 +91,7 @@ export class SqlDataSource
       Capability.Query,
       Capability.SchemaIntrospect,
       Capability.Browse,
+      Capability.BrowsePreview,
       Capability.RowEdit,
       Capability.Transaction,
     ]);
@@ -135,6 +139,15 @@ export class SqlDataSource
     throwIfAborted(signal);
     const raw = await this.runQuery(this.dialect.countQuery(ref, filter));
     return Number(raw.rows[0]?.[0] ?? 0);
+  }
+
+  // ── BrowsePreviewable ─────────────────────────────────────────────────────
+
+  /** The exact statement `browse()` runs, value-inlined for display (never run).
+   *  Derives from the dialect's `browseQuery`, so the echo can never drift from
+   *  what actually executes. */
+  previewBrowse(ref: ObjectRef, spec: BrowseSpec): string {
+    return inlineParams(this.dialect.browseQuery(ref, spec));
   }
 
   // ── Transactional ─────────────────────────────────────────────────────────

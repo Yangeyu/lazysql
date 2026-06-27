@@ -4,13 +4,12 @@
  * that arrives in Phase 3); rendering is pure projection of store state.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Text, useApp as useInkApp, useInput } from 'ink';
+import React, { useEffect, useMemo } from 'react';
+import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/react';
 import { useApp, useStoreApi } from './context.ts';
 import { Sidebar } from '../components/Sidebar.tsx';
-import { DataGrid } from '../components/DataGrid.tsx';
+import { ResultsPanel } from '../components/ResultsPanel.tsx';
 import { QueryEditor } from '../components/QueryEditor.tsx';
-import { StructureView } from '../components/StructureView.tsx';
 import { StatusBar } from '../components/StatusBar.tsx';
 import { Header } from '../components/Header.tsx';
 import { HelpOverlay } from '../components/HelpOverlay.tsx';
@@ -23,31 +22,10 @@ import {
 } from '../keymap/keymap.ts';
 import { buildTree, toConnNodes, dialectLabel, shortTag } from '../tree/tree.ts';
 import { theme } from '../theme/theme.ts';
-import { hitTest, rowWindow } from './layout.ts';
-import { useMouse } from '../hooks/useMouse.ts';
+import { printableChar } from '../input/keys.ts';
 import type { Filter } from '../../domain/query/Query.ts';
 
 const SIDEBAR_WIDTH = 28;
-
-/** Live terminal dimensions, so the workbench fills the screen and reflows. */
-const useTerminalSize = (): { rows: number; cols: number } => {
-  const [size, setSize] = useState({
-    rows: process.stdout.rows || 24,
-    cols: process.stdout.columns || 80,
-  });
-  useEffect(() => {
-    const onResize = () =>
-      setSize({
-        rows: process.stdout.rows || 24,
-        cols: process.stdout.columns || 80,
-      });
-    process.stdout.on('resize', onResize);
-    return () => {
-      process.stdout.off('resize', onResize);
-    };
-  }, []);
-  return size;
-};
 
 /** Compact one-line summary of an active filter, e.g. `label~foo`. */
 const filterSummary = (filter: Filter | null): string => {
@@ -57,9 +35,10 @@ const filterSummary = (filter: Filter | null): string => {
     .join(' & ');
 };
 
-export const App: React.FC = () => {
-  const ink = useInkApp();
+export const App = () => {
+  const renderer = useRenderer();
   const store = useStoreApi();
+  const { width: terminalCols, height: terminalRows } = useTerminalDimensions();
 
   const status = useApp((s) => s.status);
   const error = useApp((s) => s.error);
@@ -94,6 +73,7 @@ export const App: React.FC = () => {
   const cellView = useApp((s) => s.cellView);
   const surface = useApp((s) => s.surface);
   const queryText = useApp((s) => s.queryText);
+  const browseSql = useApp((s) => s.browseSql);
   const queryError = useApp((s) => s.queryError);
   const queryElapsedMs = useApp((s) => s.queryElapsedMs);
   const completions = useApp((s) => s.completions);
@@ -108,206 +88,176 @@ export const App: React.FC = () => {
     void store.getState().init();
   }, [store]);
 
-  // A click selects the list row it lands on (sidebar tree item or grid row) and
-  // focuses that pane; a click on the editor pane just focuses it.
-  useMouse((e) => {
-    const hit = hitTest(
-      {
-        rows: terminalRows,
-        cols: terminalCols,
-        sidebarWidth: SIDEBAR_WIDTH,
-        editorRows,
-        gridTop,
-        treeLen: treeRows.length,
-        gridLen,
-      },
-      e.x,
-      e.y,
-    );
-    if (!hit) return;
+  // One context-switched key handler. OpenTUI delivers a KeyEvent: special keys
+  // are read off `key.name`, the typed glyph (for the hand-rolled text fields)
+  // off `printableChar`, which returns null for chords so a binding like `q`
+  // never fires on ⌃q.
+  useKeyboard((key) => {
     const s = store.getState();
-    if (hit.pane === 'sidebar') s.clickTree(hit.row);
-    else if (hit.pane === 'editor') s.focusPane('editor');
-    else s.clickGrid(hit.row);
-  });
-
-  useInput((input, key) => {
-    const s = store.getState();
-
-    // Mouse escape sequences arrive here as a stray "[<…M" input (Ink strips the
-    // ESC); useMouse handles the real event, so we just drop them as keys.
-    if (input.startsWith('[<')) return;
+    const ch = printableChar(key);
+    const quit = (): void => {
+      renderer.destroy();
+    };
 
     // Cell inspector owns all input while open: Esc/⏎ closes, j/k scrolls.
     if (s.cellView) {
-      if (key.ctrl && input === 'c') ink.exit();
-      else if (key.escape || key.return) s.closeCell();
-      else if (key.downArrow || input === 'j') s.scrollCell(1);
-      else if (key.upArrow || input === 'k') s.scrollCell(-1);
+      if (key.ctrl && key.name === 'c') quit();
+      else if (key.name === 'escape' || key.name === 'return') s.closeCell();
+      else if (key.name === 'down' || ch === 'j') s.scrollCell(1);
+      else if (key.name === 'up' || ch === 'k') s.scrollCell(-1);
       return;
     }
 
     // Help overlay owns all input while open: ? or Esc closes, ^C still quits.
     if (s.helpOpen) {
-      if (key.ctrl && input === 'c') ink.exit();
-      else if (input === '?' || key.escape) s.toggleHelp();
+      if (key.ctrl && key.name === 'c') quit();
+      else if (ch === '?' || key.name === 'escape') s.toggleHelp();
       return;
     }
 
     // NL→SQL prompt captures all keys until generate/cancel (an editor sub-mode).
     if (s.nlMode) {
-      if (key.ctrl && input === 'c') ink.exit();
-      else if (key.return) void s.generateFromNl();
-      else if (key.escape) s.cancelNl();
-      else if (key.backspace || key.delete) s.updateNlDraft(s.nlDraft.slice(0, -1));
-      else if (input && !key.ctrl && !key.meta) s.updateNlDraft(s.nlDraft + input);
+      if (key.ctrl && key.name === 'c') quit();
+      else if (key.name === 'return') void s.generateFromNl();
+      else if (key.name === 'escape') s.cancelNl();
+      else if (key.name === 'backspace' || key.name === 'delete')
+        s.updateNlDraft(s.nlDraft.slice(0, -1));
+      else if (ch !== null) s.updateNlDraft(s.nlDraft + ch);
       return;
     }
     if (s.generating) return; // ignore input while the model works
 
     // Filter input mode captures all keys until commit/cancel.
     if (s.mode === 'filter') {
-      if (key.return) void s.commitFilter();
-      else if (key.escape) s.cancelFilter();
-      else if (key.backspace || key.delete)
+      if (key.name === 'return') void s.commitFilter();
+      else if (key.name === 'escape') s.cancelFilter();
+      else if (key.name === 'backspace' || key.name === 'delete')
         s.updateFilterDraft(s.filterDraft.slice(0, -1));
-      else if (input && !key.ctrl && !key.meta)
-        s.updateFilterDraft(s.filterDraft + input);
+      else if (ch !== null) s.updateFilterDraft(s.filterDraft + ch);
       return;
     }
 
     // Cell-edit input mode: type a new value, Enter → confirm, Esc → cancel.
     if (s.mode === 'edit') {
-      if (key.return) s.submitEdit();
-      else if (key.escape) s.cancelEdit();
-      else if (key.backspace || key.delete)
+      if (key.name === 'return') s.submitEdit();
+      else if (key.name === 'escape') s.cancelEdit();
+      else if (key.name === 'backspace' || key.name === 'delete')
         s.updateEditDraft(s.editDraft.slice(0, -1));
-      else if (input && !key.ctrl && !key.meta)
-        s.updateEditDraft(s.editDraft + input);
+      else if (ch !== null) s.updateEditDraft(s.editDraft + ch);
       return;
     }
 
     // New-connection form owns all input while open.
     if (s.mode === 'connform') {
-      if (key.return) void s.connFormSubmit();
-      else if (key.escape) s.connFormCancel();
-      else if (key.upArrow) s.connFormMove(-1);
-      else if (key.downArrow || key.tab) s.connFormMove(1);
-      else if (key.leftArrow) s.connFormCycleDriver(-1);
-      else if (key.rightArrow) s.connFormCycleDriver(1);
-      else if (key.backspace || key.delete) s.connFormBackspace();
-      else if (input && !key.ctrl && !key.meta) s.connFormType(input);
+      if (key.name === 'return') void s.connFormSubmit();
+      else if (key.name === 'escape') s.connFormCancel();
+      else if (key.name === 'up') s.connFormMove(-1);
+      else if (key.name === 'down' || key.name === 'tab') s.connFormMove(1);
+      else if (key.name === 'left') s.connFormCycleDriver(-1);
+      else if (key.name === 'right') s.connFormCycleDriver(1);
+      else if (key.name === 'backspace' || key.name === 'delete') s.connFormBackspace();
+      else if (ch !== null) s.connFormType(ch);
       return;
     }
 
     // Confirmation: y runs the pending write, n/Esc cancels.
     if (s.mode === 'confirm') {
-      if (input === 'y' || input === 'Y') void s.confirmPending();
-      else if (input === 'n' || input === 'N' || key.escape) s.cancelPending();
+      if (ch === 'y' || ch === 'Y') void s.confirmPending();
+      else if (ch === 'n' || ch === 'N' || key.name === 'escape') s.cancelPending();
       return;
     }
 
     // ^C always quits, even from the editor.
-    if (key.ctrl && input === 'c') {
-      ink.exit();
+    if (key.ctrl && key.name === 'c') {
+      quit();
       return;
     }
 
     // Editor focus captures typing — handled BEFORE the global letter shortcuts,
     // so `q`/`:`/`?` are literal characters while you write SQL.
     if (s.focus === 'editor') {
-      if (key.escape) s.focusPane('grid');
-      else if (key.return) void s.executeQuery();
-      else if (key.ctrl && input === 'g') s.beginNl(); // ask the AI
-      else if (key.upArrow) s.historyPrev();
-      else if (key.downArrow) s.historyNext();
-      else if (key.tab) {
+      if (key.name === 'escape') s.focusPane('grid');
+      else if (key.name === 'return') void s.executeQuery();
+      else if (key.ctrl && key.name === 'g') s.beginNl(); // ask the AI
+      else if (key.name === 'up') s.historyPrev();
+      else if (key.name === 'down') s.historyNext();
+      else if (key.name === 'tab') {
         // Tab completes the current word, else cycles to the next pane.
         if (s.completions.length > 0) s.acceptCompletion();
         else s.cycleFocus();
-      } else if (key.backspace || key.delete)
+      } else if (key.name === 'backspace' || key.name === 'delete')
         s.updateQueryText(s.queryText.slice(0, -1));
-      else if (input && !key.ctrl && !key.meta)
-        s.updateQueryText(s.queryText + input);
+      else if (ch !== null) s.updateQueryText(s.queryText + ch);
       return;
     }
 
     // Global keys (sidebar / grid focus only).
-    if (input === 'q') {
-      ink.exit();
+    if (ch === 'q') {
+      quit();
       return;
     }
-    if (input === '`') {
+    if (ch === '`') {
       s.disconnect();
       return;
     }
-    if (input === '?') {
+    if (ch === '?') {
       s.toggleHelp();
       return;
     }
-    if (input === ':') {
+    if (ch === ':') {
       s.focusPane('editor'); // activate the SQL editor pane
       return;
     }
-    if (key.tab) {
+    if (key.name === 'tab') {
       s.cycleFocus();
       return;
     }
     if (s.focus === 'sidebar') {
-      if (key.upArrow || input === 'k') s.treeUp();
-      else if (key.downArrow || input === 'j') s.treeDown();
-      else if (key.return || input === ' ') void s.treeToggle();
-      else if (key.rightArrow || input === 'l') void s.treeExpand();
-      else if (key.leftArrow || input === 'h') s.treeCollapse();
-      else if (input === 'D') void s.treeShowDdl();
-      else if (input === 'n') s.beginNewConnection();
-      else if (input === 'e') s.beginEditConnection();
+      if (key.name === 'up' || ch === 'k') s.treeUp();
+      else if (key.name === 'down' || ch === 'j') s.treeDown();
+      else if (key.name === 'return' || ch === ' ') void s.treeToggle();
+      else if (key.name === 'right' || ch === 'l') void s.treeExpand();
+      else if (key.name === 'left' || ch === 'h') s.treeCollapse();
+      else if (ch === 'D') void s.treeShowDdl();
+      else if (ch === 'n') s.beginNewConnection();
+      else if (ch === 'e') s.beginEditConnection();
     } else {
       // Grid focus. A 'browse' surface is editable; a 'query' result is read-only
       // (navigation + cell inspect only). `D` flips Data/DDL on a browsed table.
-      if (s.surface === 'browse' && input === 'D') s.toggleMainTab();
+      if (s.surface === 'browse' && ch === 'D') s.toggleMainTab();
       else if (s.surface === 'browse' && s.mainTab === 'ddl') return; // static face
-      else if (key.return) s.openCell();
-      else if (key.upArrow || input === 'k') s.gridUp();
-      else if (key.downArrow || input === 'j') s.gridDown();
-      else if (key.leftArrow || input === 'h') s.gridLeft();
-      else if (key.rightArrow || input === 'l') s.gridRight();
+      else if (key.name === 'return') s.openCell();
+      else if (key.name === 'up' || ch === 'k') s.gridUp();
+      else if (key.name === 'down' || ch === 'j') s.gridDown();
+      else if (key.name === 'left' || ch === 'h') s.gridLeft();
+      else if (key.name === 'right' || ch === 'l') s.gridRight();
       else if (s.surface === 'browse') {
-        if (input === 's') void s.applySort();
-        else if (input === '/') s.beginFilter();
-        else if (input === 'e') s.beginEdit();
-        else if (input === 'd') s.beginDelete();
-        else if (input === 'n') void s.pageNext();
-        else if (input === 'p') void s.pagePrev();
+        if (ch === 's') void s.applySort();
+        else if (ch === '/') s.beginFilter();
+        else if (ch === 'e') s.beginEdit();
+        else if (ch === 'd') s.beginDelete();
+        else if (ch === 'n') void s.pageNext();
+        else if (ch === 'p') void s.pagePrev();
       }
     }
   });
 
-  const { rows: terminalRows, cols: terminalCols } = useTerminalSize();
-  // Width available to the main pane: total minus the sidebar and the panel's own
-  // border + horizontal padding (4). The panes sit flush (no gutter — see the
-  // layout note below), so the sidebar's right border meets the main panel's left
-  // border directly.
-  const viewportCols = Math.max(24, terminalCols - SIDEBAR_WIDTH - 4);
-  // The right side stacks the SQL editor over the results grid (~1:3), flush: the
-  // editor's bottom border abuts the grid's top border with no gap. The editor
-  // only exists for SQL-speaking sources (capability-driven, like the rest of the
-  // UI); other sources get the full grid height.
+  // Interior width of a right-column panel: total minus the sidebar, the 1-cell
+  // gap to it, and the panel's own border + horizontal padding (4). Shared by the
+  // editor and the results panel, which are the same width.
+  const viewportCols = Math.max(24, terminalCols - SIDEBAR_WIDTH - 1 - 4);
+  // The right column stacks the SQL editor over the results panel (~1:3). The
+  // editor only exists for SQL-speaking sources (capability-driven); other sources
+  // give the results panel the column's full height.
   const editorRows = queryable
     ? Math.min(12, Math.max(6, Math.floor((terminalRows - 2) / 4)))
     : 0;
-  // DataGrid body rows that EXACTLY fill the remaining height: header(1) +
-  // status(1) + editorRows + grid border(2) + tab(1) + col-header(1) + sep(1) +
-  // one row of slack so the frame stays below the terminal height (Ink full-
-  // clears — and flickers — the moment the frame reaches it). = editorRows + 8.
-  const gridBodyRows = Math.max(3, terminalRows - editorRows - 8);
-  // What the grid is actually showing, for click→row mapping: the DataGrid is on
-  // screen for a query result or a browsed table's Data tab (the DDL face is not
-  // a row list). gridTop mirrors the grid's own vertical scroll.
-  const gridShowsData =
-    surface === 'query' || (current !== null && mainTab === 'data');
-  const gridLen = gridShowsData ? result?.rows.length ?? 0 : 0;
-  const gridTop = rowWindow(gridRow, gridBodyRows, gridLen);
+  // Grid body rows that fill the results panel exactly. Chrome = header(1) +
+  // status(1) + tab(1) + grid header(1) + grid divider(1) + the results border —
+  // which is 2 (top+bottom) on its own, but only 1 when the panel sits flush under
+  // the editor and borrows its bottom edge as the shared seam (joinedAbove). Plus
+  // the editor itself.
+  const gridBodyRows = Math.max(3, terminalRows - editorRows - (queryable ? 6 : 7));
   const gridFocused = focus === 'grid';
 
   // The active connection's display name + driver tag are derived from the
@@ -358,27 +308,31 @@ export const App: React.FC = () => {
   const background = connForm ? (
     <ConnectionForm form={connForm} />
   ) : status === 'connecting' ? (
-    <Box flexGrow={1} alignItems="center" justifyContent="center">
-      <Text color={theme.yellow}>◢◣◤◥ connecting…</Text>
-    </Box>
+    <box flexGrow={1} alignItems="center" justifyContent="center">
+      <text fg={theme.yellow}>◢◣◤◥ connecting…</text>
+    </box>
   ) : (
-    // FLUSH LAYOUT (lazygit-style): NO gutter between panes. A 1-row gap always
-    // reads taller than a 1-col gap — terminal cells are taller than they are wide
-    // — so the only gutter that looks equal on both axes is none. Borders abut.
-    <Box flexDirection="row" flexGrow={1}>
+    // Self-contained bordered panels; App is pure layout here. A 1-cell `gap`
+    // sets the sidebar off from the main column. The editor and results, being
+    // two sections of the SAME work area, sit FLUSH and share a single seam line
+    // (the editor's bottom edge — the results panel drops its own top), so the
+    // vertical rhythm reads tighter than the sidebar gap, never doubled.
+    <box flexDirection="row" flexGrow={1} gap={1}>
       <Sidebar
         rows={treeRows}
         selectedIndex={treeIndex}
         focused={focus === 'sidebar'}
         width={SIDEBAR_WIDTH}
+        onRowClick={(i) => store.getState().clickTree(i)}
+        onPaneClick={() => store.getState().focusPane('sidebar')}
       />
-      {/* Right side: the SQL editor (top, ~1/4) over the results grid (~3/4),
-          flush — the editor's bottom border abuts the grid's top border, just as
-          the sidebar abuts them. Both panels stretch to the full column width. */}
-      <Box flexDirection="column" flexGrow={1}>
+      {/* Right column: the SQL editor (top, ~1/4) flush over the results panel
+          (~3/4); they share one seam line. Both stretch to the full width. */}
+      <box flexDirection="column" flexGrow={1}>
         {queryable ? (
           <QueryEditor
             queryText={queryText}
+            browsePreview={browseSql}
             focused={focus === 'editor'}
             nlMode={nlMode}
             nlDraft={nlDraft}
@@ -389,77 +343,36 @@ export const App: React.FC = () => {
             error={queryError}
             height={editorRows}
             innerWidth={viewportCols}
+            onPaneClick={() => store.getState().focusPane('editor')}
           />
         ) : null}
-        <Box
-          flexGrow={1}
-          flexDirection="column"
-          borderStyle="round"
-          borderColor={gridFocused ? theme.borderFocus : theme.border}
-          paddingX={1}
-        >
-          {surface === 'query' ? (
-            <Box>
-              <Text backgroundColor={theme.magenta} color={theme.onAccent} bold>
-                {' Result '}
-              </Text>
-              <Text color={theme.border}>
-                {'  '}
-                {result?.rows.length ?? 0} rows
-                {queryElapsedMs != null ? ` · ${queryElapsedMs}ms` : ''}
-              </Text>
-            </Box>
-          ) : current ? (
-            <Box>
-              <Text
-                backgroundColor={mainTab === 'data' ? theme.accent : undefined}
-                color={mainTab === 'data' ? theme.onAccent : theme.border}
-                bold={mainTab === 'data'}
-              >
-                {' Data '}
-              </Text>
-              <Text> </Text>
-              <Text
-                backgroundColor={mainTab === 'ddl' ? theme.accent : undefined}
-                color={mainTab === 'ddl' ? theme.onAccent : theme.border}
-                bold={mainTab === 'ddl'}
-              >
-                {' DDL '}
-              </Text>
-            </Box>
-          ) : (
-            <Text bold color={gridFocused ? theme.accent : theme.border}>
-              RESULTS
-            </Text>
-          )}
-          {surface === 'browse' && mainTab === 'ddl' ? (
-            <StructureView
-              structure={structure}
-              loading={structureLoading}
-              error={structureError}
-              hasTable={current !== null}
-            />
-          ) : (
-            <DataGrid
-              result={result}
-              cursor={gridRow}
-              selectedCol={gridCol}
-              sort={surface === 'browse' ? sort : null}
-              loading={loading}
-              hasTable={surface === 'query' || current !== null}
-              viewportRows={gridBodyRows}
-              viewportCols={viewportCols}
-              focused={gridFocused}
-            />
-          )}
-        </Box>
-      </Box>
-    </Box>
+        <ResultsPanel
+          focused={gridFocused}
+          joinedAbove={queryable}
+          onPaneClick={() => store.getState().focusPane('grid')}
+          surface={surface}
+          mainTab={mainTab}
+          current={current}
+          queryElapsedMs={queryElapsedMs}
+          result={result}
+          gridRow={gridRow}
+          gridCol={gridCol}
+          sort={sort}
+          loading={loading}
+          viewportRows={gridBodyRows}
+          viewportCols={viewportCols}
+          onRowClick={(i) => store.getState().clickGrid(i)}
+          structure={structure}
+          structureLoading={structureLoading}
+          structureError={structureError}
+        />
+      </box>
+    </box>
   );
 
   // Floating layers, composited over the background by <Overlay> (absolute, so
-  // they add no height to the frame → no full-clear, no flicker). Only one shows
-  // at a time; the panes behind stay visible, exactly like lazygit's menus.
+  // they add no height to the frame). Only one shows at a time; the panes behind
+  // stay visible, exactly like lazygit's menus.
   const overlay = helpOpen ? (
     <HelpOverlay
       groups={helpGroups(context, flags)}
@@ -478,13 +391,10 @@ export const App: React.FC = () => {
 
   return (
     // position="relative" anchors the absolute overlays to the full screen.
-    // minHeight is terminalRows-1, NOT terminalRows: Ink full-clears the screen
-    // (causing flicker on every keypress) whenever the frame height reaches the
-    // terminal height. Staying one row short keeps it on the incremental path.
-    <Box
+    <box
       position="relative"
       flexDirection="column"
-      minHeight={terminalRows - 1}
+      height={terminalRows}
       width={terminalCols}
     >
       <Header
@@ -499,9 +409,9 @@ export const App: React.FC = () => {
         filterSummary={surface === 'browse' ? filterSummary(filter) : ''}
         nlAvailable={nlAvailable}
       />
-      <Box flexGrow={1} flexDirection="column">
+      <box flexGrow={1} flexDirection="column">
         {background}
-      </Box>
+      </box>
       <StatusBar
         width={terminalCols}
         status={status}
@@ -517,6 +427,6 @@ export const App: React.FC = () => {
       />
       {/* drawn last so it composites on top of every pane and the status bar */}
       {overlay}
-    </Box>
+    </box>
   );
 };

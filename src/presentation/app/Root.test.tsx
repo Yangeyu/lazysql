@@ -2,17 +2,18 @@
  * Root lifecycle test (headless): the connection list lives in the sidebar.
  * Render Root with a fake ConnectionService, connect a profile (Enter on its
  * root), browse its objects, disconnect (backtick), and add a new connection
- * via the `n` form. Exercises the workbench store end to end.
+ * via the `n` form. Exercises the workbench store end to end through the real
+ * OpenTUI renderer.
  */
 
 import React from 'react';
 import { test, expect, beforeAll, afterAll } from 'bun:test';
-import { render } from 'ink-testing-library';
 import { Database } from 'bun:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 
+import { renderTest } from '../testing/renderTest.ts';
 import { Root } from './Root.tsx';
 import { createDataSource } from '../../adapters/datasource/registry.ts';
 import { openConnection } from '../../application/usecases/OpenConnection.ts';
@@ -22,7 +23,6 @@ import type { SecretStore } from '../../application/ports/SecretStore.ts';
 import type { SqlGenerator } from '../../application/ports/SqlGenerator.ts';
 
 const DB = join(tmpdir(), `lazysql-root-${process.pid}.db`);
-const tick = (ms = 80) => Bun.sleep(ms);
 
 const noSecrets: SecretStore = {
   get: async () => null,
@@ -54,59 +54,49 @@ beforeAll(() => {
 afterAll(() => rmSync(DB, { force: true }));
 
 test('the sidebar lists saved connections as roots', async () => {
-  const { lastFrame, unmount } = render(
-    <Root connectionService={makeService()} />,
-  );
-  await tick();
-  const frame = lastFrame() ?? '';
+  const h = await renderTest(<Root connectionService={makeService()} />);
+  await h.until((f) => f.includes('TestDB'));
+  const frame = h.frame();
   expect(frame).toContain('TestDB'); // connection root
   expect(frame).toContain('[SQLite]'); // driver tag
   expect(frame).toContain('○'); // inactive — not yet connected
-  unmount();
+  h.cleanup();
 });
 
 test('Enter on a connection connects and lists its objects; backtick disconnects', async () => {
-  const { lastFrame, stdin, unmount } = render(
-    <Root connectionService={makeService()} />,
-  );
-  await tick();
+  const h = await renderTest(<Root connectionService={makeService()} />);
+  await h.until((f) => f.includes('TestDB'));
 
-  stdin.write('\r'); // connect the selected connection root
-  await tick(180);
-  const browsing = lastFrame() ?? '';
-  expect(browsing).toContain('gadget'); // its schema object → connected
-  expect(browsing).toContain('TestDB'); // status bar shows the connection name
+  h.enter(); // connect the selected connection root
+  await h.until((f) => f.includes('gadget')); // its schema object → connected
+  expect(h.frame()).toContain('TestDB'); // status bar shows the connection name
 
-  stdin.write('`'); // disconnect → back to the connection list
-  await tick(80);
-  const after = lastFrame() ?? '';
+  h.press('`'); // disconnect → back to the connection list
+  await h.until((f) => !f.includes('gadget'));
+  const after = h.frame();
   expect(after).toContain('TestDB'); // still listed
   expect(after).not.toContain('gadget'); // no longer connected/expanded
-  unmount();
+  h.cleanup();
 });
 
 test('n opens the new-connection form and persists a profile', async () => {
   const saved: ConnectionProfile[] = [];
-  const { lastFrame, stdin, unmount } = render(
-    <Root connectionService={makeService(saved)} />,
-  );
-  await tick();
+  const h = await renderTest(<Root connectionService={makeService(saved)} />);
+  await h.until((f) => f.includes('TestDB'));
 
-  stdin.write('n'); // open the new-connection form
-  await tick();
-  expect(lastFrame() ?? '').toContain('New connection');
+  h.press('n'); // open the new-connection form
+  await h.until((f) => f.includes('New connection'));
 
-  stdin.write('mydb'); // type into the Name field
-  await tick();
-  stdin.write('\r'); // save
-  await tick(80);
+  await h.type('mydb'); // type into the Name field
+  await h.flush();
+  h.enter(); // save
+  await h.until((f) => f.includes('mydb')); // new root appears in the tree
 
   expect(saved).toHaveLength(1);
   expect(saved[0]!.name).toBe('mydb');
   expect(saved[0]!.id).toBe('mydb');
   expect(saved[0]!.driver).toBe('postgres'); // default driver
-  expect(lastFrame() ?? '').toContain('mydb'); // new root appears in the tree
-  unmount();
+  h.cleanup();
 });
 
 test('NL→SQL fills the editor with generated SQL for review (never auto-runs)', async () => {
@@ -116,23 +106,23 @@ test('NL→SQL fills the editor with generated SQL for review (never auto-runs)'
       explanation: 'counts the gadgets',
     }),
   };
-  const { lastFrame, stdin, unmount } = render(
+  const h = await renderTest(
     <Root connectionService={makeService()} generator={fakeGen} />,
   );
-  await tick();
-  stdin.write('\r'); // connect
-  await tick(180);
-  stdin.write(':'); // query view
-  await tick(120);
-  stdin.write(String.fromCharCode(7)); // Ctrl+G → begin NL prompt
-  await tick();
-  stdin.write('how many gadgets'); // natural language
-  await tick();
-  stdin.write('\r'); // generate
-  await tick(120);
+  await h.until((f) => f.includes('TestDB'));
+  h.enter(); // connect
+  await h.until((f) => f.includes('gadget'));
+  h.press(':'); // query view
+  await h.until((f) => f.includes('SQL>'));
+  h.ctrl('g'); // Ctrl+G → begin NL prompt
+  await h.flush();
+  await h.type('how many gadgets'); // natural language
+  await h.flush();
+  h.enter(); // generate
 
   // The explanation appears only after generateFromNl fills the editor — proof
   // the NL→SQL flow ran end to end.
-  expect(lastFrame() ?? '').toContain('counts the gadgets');
-  unmount();
+  await h.until((f) => f.includes('counts the gadgets'));
+  expect(h.frame()).toContain('counts the gadgets');
+  h.cleanup();
 });

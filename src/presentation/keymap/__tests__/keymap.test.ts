@@ -1,12 +1,15 @@
-import { test, expect } from 'bun:test';
-import { deriveContext, footerHints, helpGroups } from '../keymap.ts';
+import { test, expect, mock } from 'bun:test';
+import { deriveContext, footerHints, helpGroups, dispatchKey } from '../keymap.ts';
 import type { ContextInput } from '../keymap.ts';
+import type { AppState } from '../../app/store.ts';
 
 const base: ContextInput = {
   cellView: null,
   mode: 'normal',
   nlMode: false,
   focus: 'grid',
+  surface: 'browse',
+  mainTab: 'data',
 };
 
 test('deriveContext follows a strict precedence: cell inspector wins over everything', () => {
@@ -31,4 +34,72 @@ test('footerHints and helpGroups read the same registry for a context', () => {
   const flags = { queryable: true, nlAvailable: true };
   expect(footerHints('grid', flags)).toContain('sort');
   expect(helpGroups('grid', flags)[0]?.title).toBe('Data grid');
+});
+
+test('footerHints lists each binding once and omits globals while typing', () => {
+  const flags = { queryable: true, nlAvailable: true };
+  // The table repeats a row per match alternative (up AND k) — the footer dedupes.
+  expect(footerHints('grid', flags).match(/row/g)?.length).toBe(1);
+  // The editor captures text, so q/`/: are NOT advertised (they're literal there).
+  expect(footerHints('editor', flags)).not.toContain('quit');
+  expect(footerHints('grid', flags)).toContain('quit');
+});
+
+// ── dispatchKey: behaviour now comes from the same table ──
+
+const key = (over: Record<string, unknown> = {}) =>
+  ({ name: '', ctrl: false, meta: false, option: false, sequence: '', ...over }) as never;
+
+const stub = (over: Partial<AppState> = {}): AppState =>
+  ({
+    helpOpen: false,
+    generating: false,
+    queryable: true,
+    nlAvailable: true,
+    cellView: null,
+    mode: 'normal',
+    nlMode: false,
+    focus: 'grid',
+    surface: 'browse',
+    mainTab: 'data',
+    completions: [],
+    queryText: '',
+    gridDown: mock(() => {}),
+    toggleMainTab: mock(() => {}),
+    focusPane: mock(() => {}),
+    updateQueryText: mock(() => {}),
+    ...over,
+  }) as unknown as AppState;
+
+const env = () => ({ quit: mock(() => {}) });
+
+test('dispatchKey: ⌃C quits from any context', () => {
+  const e = env();
+  dispatchKey(stub({ focus: 'editor' }), key({ name: 'c', ctrl: true }), e);
+  expect(e.quit).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: a grid key runs its bound action', () => {
+  const s = stub();
+  dispatchKey(s, key({ name: 'j', sequence: 'j' }), env());
+  expect(s.gridDown).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: in the editor, global glyphs are literal text, not commands', () => {
+  const s = stub({ focus: 'editor' });
+  const e = env();
+  dispatchKey(s, key({ sequence: ':' }), e); // not focusPane
+  dispatchKey(s, key({ name: 'q', sequence: 'q' }), e); // not quit
+  expect(s.updateQueryText).toHaveBeenNthCalledWith(1, ':');
+  expect(s.updateQueryText).toHaveBeenNthCalledWith(2, 'q');
+  expect(s.focusPane).not.toHaveBeenCalled();
+  expect(e.quit).not.toHaveBeenCalled();
+});
+
+test('dispatchKey: the DDL context only answers the tab toggle', () => {
+  const s = stub({ mainTab: 'ddl' });
+  dispatchKey(s, key({ name: 'j', sequence: 'j' }), env()); // swallowed, no nav
+  expect(s.gridDown).not.toHaveBeenCalled();
+  dispatchKey(s, key({ sequence: 'D' }), env());
+  expect(s.toggleMainTab).toHaveBeenCalledTimes(1);
 });

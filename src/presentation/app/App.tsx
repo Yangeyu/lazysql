@@ -15,11 +15,10 @@ import { Header } from '../components/Header.tsx';
 import { HelpOverlay } from '../components/HelpOverlay.tsx';
 import { ConnectionForm } from '../components/ConnectionForm.tsx';
 import { CellView } from '../components/CellView.tsx';
-import { helpGroups, deriveContext, type KeyFlags } from '../keymap/keymap.ts';
+import { helpGroups, deriveContext, dispatchKey, type KeyFlags } from '../keymap/keymap.ts';
 import { SIDEBAR_WIDTH, computeLayout } from './layout.ts';
 import { buildTree, toConnNodes, dialectLabel, shortTag } from '../tree/tree.ts';
 import { theme } from '../theme/theme.ts';
-import { printableChar } from '../input/keys.ts';
 import type { Filter } from '../../domain/query/Query.ts';
 
 /** Compact one-line summary of an active filter, e.g. `label~foo`. */
@@ -83,159 +82,11 @@ export const App = () => {
     void store.getState().init();
   }, [store]);
 
-  // One context-switched key handler. OpenTUI delivers a KeyEvent: special keys
-  // are read off `key.name`, the typed glyph (for the hand-rolled text fields)
-  // off `printableChar`, which returns null for chords so a binding like `q`
-  // never fires on ⌃q.
-  useKeyboard((key) => {
-    const s = store.getState();
-    const ch = printableChar(key);
-    const quit = (): void => {
-      renderer.destroy();
-    };
-
-    // Cell inspector owns all input while open: Esc/⏎ closes, j/k scrolls.
-    if (s.cellView) {
-      if (key.ctrl && key.name === 'c') quit();
-      else if (key.name === 'escape' || key.name === 'return') s.closeCell();
-      else if (key.name === 'down' || ch === 'j') s.scrollCell(1);
-      else if (key.name === 'up' || ch === 'k') s.scrollCell(-1);
-      return;
-    }
-
-    // Help overlay owns all input while open: ? or Esc closes, ^C still quits.
-    if (s.helpOpen) {
-      if (key.ctrl && key.name === 'c') quit();
-      else if (ch === '?' || key.name === 'escape') s.toggleHelp();
-      return;
-    }
-
-    // NL→SQL prompt captures all keys until generate/cancel (an editor sub-mode).
-    if (s.nlMode) {
-      if (key.ctrl && key.name === 'c') quit();
-      else if (key.name === 'return') void s.generateFromNl();
-      else if (key.name === 'escape') s.cancelNl();
-      else if (key.name === 'backspace' || key.name === 'delete')
-        s.updateNlDraft(s.nlDraft.slice(0, -1));
-      else if (ch !== null) s.updateNlDraft(s.nlDraft + ch);
-      return;
-    }
-    if (s.generating) return; // ignore input while the model works
-
-    // Filter input mode captures all keys until commit/cancel.
-    if (s.mode === 'filter') {
-      if (key.name === 'return') void s.commitFilter();
-      else if (key.name === 'escape') s.cancelFilter();
-      else if (key.name === 'backspace' || key.name === 'delete')
-        s.updateFilterDraft(s.filterDraft.slice(0, -1));
-      else if (ch !== null) s.updateFilterDraft(s.filterDraft + ch);
-      return;
-    }
-
-    // Cell-edit input mode: type a new value, Enter → confirm, Esc → cancel.
-    if (s.mode === 'edit') {
-      if (key.name === 'return') s.submitEdit();
-      else if (key.name === 'escape') s.cancelEdit();
-      else if (key.name === 'backspace' || key.name === 'delete')
-        s.updateEditDraft(s.editDraft.slice(0, -1));
-      else if (ch !== null) s.updateEditDraft(s.editDraft + ch);
-      return;
-    }
-
-    // New-connection form owns all input while open.
-    if (s.mode === 'connform') {
-      if (key.name === 'return') void s.connFormSubmit();
-      else if (key.name === 'escape') s.connFormCancel();
-      else if (key.name === 'up') s.connFormMove(-1);
-      else if (key.name === 'down' || key.name === 'tab') s.connFormMove(1);
-      else if (key.name === 'left') s.connFormCycleDriver(-1);
-      else if (key.name === 'right') s.connFormCycleDriver(1);
-      else if (key.name === 'backspace' || key.name === 'delete') s.connFormBackspace();
-      else if (ch !== null) s.connFormType(ch);
-      return;
-    }
-
-    // Confirmation: y runs the pending write, n/Esc cancels.
-    if (s.mode === 'confirm') {
-      if (ch === 'y' || ch === 'Y') void s.confirmPending();
-      else if (ch === 'n' || ch === 'N' || key.name === 'escape') s.cancelPending();
-      return;
-    }
-
-    // ^C always quits, even from the editor.
-    if (key.ctrl && key.name === 'c') {
-      quit();
-      return;
-    }
-
-    // Editor focus captures typing — handled BEFORE the global letter shortcuts,
-    // so `q`/`:`/`?` are literal characters while you write SQL.
-    if (s.focus === 'editor') {
-      if (key.name === 'escape') s.focusPane('grid');
-      else if (key.name === 'return') void s.executeQuery();
-      else if (key.ctrl && key.name === 'g') s.beginNl(); // ask the AI
-      else if (key.name === 'up') s.historyPrev();
-      else if (key.name === 'down') s.historyNext();
-      else if (key.name === 'tab') {
-        // Tab completes the current word, else cycles to the next pane.
-        if (s.completions.length > 0) s.acceptCompletion();
-        else s.cycleFocus();
-      } else if (key.name === 'backspace' || key.name === 'delete')
-        s.updateQueryText(s.queryText.slice(0, -1));
-      else if (ch !== null) s.updateQueryText(s.queryText + ch);
-      return;
-    }
-
-    // Global keys (sidebar / grid focus only).
-    if (ch === 'q') {
-      quit();
-      return;
-    }
-    if (ch === '`') {
-      s.disconnect();
-      return;
-    }
-    if (ch === '?') {
-      s.toggleHelp();
-      return;
-    }
-    if (ch === ':') {
-      s.focusPane('editor'); // activate the SQL editor pane
-      return;
-    }
-    if (key.name === 'tab') {
-      s.cycleFocus();
-      return;
-    }
-    if (s.focus === 'sidebar') {
-      if (key.name === 'up' || ch === 'k') s.treeUp();
-      else if (key.name === 'down' || ch === 'j') s.treeDown();
-      else if (key.name === 'return' || ch === ' ') void s.treeToggle();
-      else if (key.name === 'right' || ch === 'l') void s.treeExpand();
-      else if (key.name === 'left' || ch === 'h') s.treeCollapse();
-      else if (ch === 'D') void s.treeShowDdl();
-      else if (ch === 'n') s.beginNewConnection();
-      else if (ch === 'e') s.beginEditConnection();
-    } else {
-      // Grid focus. A 'browse' surface is editable; a 'query' result is read-only
-      // (navigation + cell inspect only). `D` flips Data/DDL on a browsed table.
-      if (s.surface === 'browse' && ch === 'D') s.toggleMainTab();
-      else if (s.surface === 'browse' && s.mainTab === 'ddl') return; // static face
-      else if (key.name === 'return') s.openCell();
-      else if (key.name === 'up' || ch === 'k') s.gridUp();
-      else if (key.name === 'down' || ch === 'j') s.gridDown();
-      else if (key.name === 'left' || ch === 'h') s.gridLeft();
-      else if (key.name === 'right' || ch === 'l') s.gridRight();
-      else if (s.surface === 'browse') {
-        if (ch === 's') void s.applySort();
-        else if (ch === '/') s.beginFilter();
-        else if (ch === 'e') s.beginEdit();
-        else if (ch === 'd') s.beginDelete();
-        else if (ch === 'n') void s.pageNext();
-        else if (ch === 'p') void s.pagePrev();
-      }
-    }
-  });
+  // All key handling is one delegation to the keymap dispatcher: it reads the
+  // live store state, derives the active context, and runs the matching binding
+  // (or routes a typed glyph into the focused text field). Quitting the renderer
+  // is the only effect the store doesn't own, so it's passed in.
+  useKeyboard((key) => dispatchKey(store.getState(), key, { quit: () => renderer.destroy() }));
 
   const { viewportCols, editorRows, gridBodyRows } = computeLayout(
     terminalCols,
@@ -264,7 +115,7 @@ export const App = () => {
   );
 
   const flags: KeyFlags = { queryable, nlAvailable };
-  const context = deriveContext({ cellView, mode, nlMode, focus });
+  const context = deriveContext({ cellView, mode, nlMode, focus, surface, mainTab });
 
   const rowsInPage = result?.rows.length ?? 0;
   const from = total === 0 ? 0 : page.offset + 1;

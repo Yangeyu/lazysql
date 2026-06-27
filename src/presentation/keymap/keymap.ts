@@ -1,20 +1,26 @@
 /**
- * Keymap registry — the single source of truth for every keybinding's
- * *documentation*. Both the compact status-bar footer and the `?` help overlay
- * render from this table, so a binding is described once and can never drift
- * between the two. (Dispatch still lives in App's input handler; this module is
- * purely declarative — the lazygit cheat-sheet pattern.)
+ * Keymap — the single source of truth for every keybinding: its documentation
+ * AND its behaviour. Each row carries the key(s) to match (`match`), how to draw
+ * them (`keys`/`hint`/`desc`), and what they do (`run`). The dispatcher
+ * (`dispatchKey`) and the displays (`footerHints`/`helpGroups`) read the very
+ * same rows, so a binding is defined once and the footer, the `?` overlay, and
+ * the actual behaviour can never drift. Adding a feature is adding one row.
  *
- * A new feature adds one row here and its hint shows up in the footer and help
- * automatically.
+ * `run` receives the live store state (every action hangs off it) and a small
+ * env for the one effect the store doesn't own — quitting the renderer. Capability
+ * gates (`enabled`) decide both whether a binding shows AND whether it fires, so a
+ * key that isn't advertised genuinely does nothing.
  */
 
-import type { Focus, Mode } from '../app/store.ts';
+import type { KeyEvent } from '@opentui/core';
+import type { AppState, Focus, Mode, SurfaceKind, MainTab } from '../app/store.ts';
+import { printableChar } from '../input/keys.ts';
 
 /** The focus/mode the UI is in — selects which group of keys is active. */
 export type KeyContext =
   | 'sidebar'
   | 'grid'
+  | 'ddl'
   | 'editor'
   | 'filter'
   | 'edit'
@@ -29,19 +35,27 @@ export interface KeyFlags {
   readonly nlAvailable: boolean;
 }
 
+/** The one effect a binding may need that isn't a store action. */
+export interface DispatchEnv {
+  readonly quit: () => void;
+}
+
 /** The minimal slice of UI state that selects the active key context. */
 export interface ContextInput {
   readonly cellView: unknown | null;
   readonly mode: Mode;
   readonly nlMode: boolean;
   readonly focus: Focus;
+  readonly surface: SurfaceKind;
+  readonly mainTab: MainTab;
 }
 
 /**
  * Which context's keys are active, as one linear precedence (highest first): an
  * open cell inspector owns input, then the input-capturing modes, then the NL
- * prompt, then plain pane focus. Pure — the single definition of "where are we",
- * shared by the key dispatcher and the footer/help, and unit-testable on its own.
+ * prompt, then pane focus — and a browsed object showing its DDL is its own
+ * static context (only the tab toggle + globals apply). Pure: the single
+ * definition of "where are we", shared by the dispatcher and the footer/help.
  */
 export const deriveContext = (s: ContextInput): KeyContext =>
   s.cellView
@@ -60,7 +74,9 @@ export const deriveContext = (s: ContextInput): KeyContext =>
                 ? 'editor'
                 : s.focus === 'sidebar'
                   ? 'sidebar'
-                  : 'grid';
+                  : s.surface === 'browse' && s.mainTab === 'ddl'
+                    ? 'ddl'
+                    : 'grid';
 
 export interface KeyBinding {
   /** Display form of the key(s), e.g. '⏎', 'j/k', '^G'. */
@@ -69,165 +85,217 @@ export interface KeyBinding {
   readonly hint: string;
   /** Fuller one-line description for the help overlay. */
   readonly desc: string;
-  /** When present, the binding only applies if this predicate holds. */
+  /** Tokens this binding fires on: a key name ('up', 'return'), a literal glyph
+   *  ('k', ':', ' '), or a control chord ('^g'). Any one matching triggers it. */
+  readonly match: readonly string[];
+  /** What the binding does. Reads/acts on the live store state; `env` covers the
+   *  lone non-store effect (quit). Async actions are fired and not awaited. */
+  readonly run: (s: AppState, env: DispatchEnv) => void;
+  /** When present, the binding shows AND fires only if this predicate holds. */
   readonly enabled?: (f: KeyFlags) => boolean;
+}
+
+/** Free-text entry for the input-capturing contexts; their drafts live in the
+ *  store. Kept off the documented `bindings` so it never clutters the footer. */
+export interface TextEntry {
+  readonly onChar: (s: AppState, ch: string) => void;
+  readonly onErase: (s: AppState) => void;
 }
 
 export interface KeyGroup {
   readonly title: string;
   readonly bindings: readonly KeyBinding[];
+  readonly text?: TextEntry;
 }
 
-/** Always-available actions (outside input-capturing modals). */
+/** Keys available whenever the UI isn't capturing text — i.e. the navigational
+ *  contexts (tree / grid / ddl). They never apply while typing, so `:` and `q`
+ *  stay literal in the editor and the prompts. */
 const GLOBAL: readonly KeyBinding[] = [
-  { keys: '`', hint: 'conn', desc: 'Switch connection (back to picker)' },
-  {
-    keys: ':',
-    hint: 'sql',
-    desc: 'Open the SQL query editor',
-    enabled: (f) => f.queryable,
-  },
-  { keys: '?', hint: 'help', desc: 'Toggle this help' },
-  { keys: 'q', hint: 'quit', desc: 'Quit lazysql' },
+  { keys: '`', hint: 'conn', desc: 'Switch connection (back to picker)', match: ['`'], run: (s) => s.disconnect() },
+  { keys: ':', hint: 'sql', desc: 'Open the SQL query editor', match: [':'], enabled: (f) => f.queryable, run: (s) => s.focusPane('editor') },
+  { keys: 'tab', hint: 'pane', desc: 'Cycle to the next pane', match: ['tab'], run: (s) => s.cycleFocus() },
+  { keys: '?', hint: 'help', desc: 'Toggle this help', match: ['?'], run: (s) => s.toggleHelp() },
+  { keys: 'q', hint: 'quit', desc: 'Quit lazysql', match: ['q'], run: (_s, env) => env.quit() },
 ];
 
 const GROUPS: Record<KeyContext, KeyGroup> = {
   sidebar: {
     title: 'Tree',
     bindings: [
-      { keys: '↑/↓ k/j', hint: 'move', desc: 'Move the selection' },
-      {
-        keys: '⏎/space',
-        hint: 'open',
-        desc: 'Expand/collapse a node · open an object',
-      },
-      { keys: '→/l', hint: 'expand', desc: 'Expand a node · open an object' },
-      { keys: '←/h', hint: 'collapse', desc: 'Collapse a node · jump to parent' },
-      { keys: 'D', hint: 'ddl', desc: 'Open the object showing its DDL/structure' },
-      { keys: 'n', hint: 'new', desc: 'New connection' },
-      { keys: 'e', hint: 'edit', desc: 'Edit the selected connection’s config' },
-      { keys: ':', hint: 'sql', desc: 'Focus the SQL editor', enabled: (f) => f.queryable },
-      { keys: 'tab', hint: 'pane', desc: 'Cycle to the next pane' },
+      { keys: '↑/↓ k/j', hint: 'move', desc: 'Move the selection', match: ['up', 'k'], run: (s) => s.treeUp() },
+      { keys: '↑/↓ k/j', hint: 'move', desc: 'Move the selection', match: ['down', 'j'], run: (s) => s.treeDown() },
+      { keys: '⏎/space', hint: 'open', desc: 'Expand/collapse a node · open an object', match: ['return', ' '], run: (s) => void s.treeToggle() },
+      { keys: '→/l', hint: 'expand', desc: 'Expand a node · open an object', match: ['right', 'l'], run: (s) => void s.treeExpand() },
+      { keys: '←/h', hint: 'collapse', desc: 'Collapse a node · jump to parent', match: ['left', 'h'], run: (s) => s.treeCollapse() },
+      { keys: 'D', hint: 'ddl', desc: 'Open the object showing its DDL/structure', match: ['D'], run: (s) => void s.treeShowDdl() },
+      { keys: 'n', hint: 'new', desc: 'New connection', match: ['n'], run: (s) => s.beginNewConnection() },
+      { keys: 'e', hint: 'edit', desc: 'Edit the selected connection’s config', match: ['e'], run: (s) => s.beginEditConnection() },
     ],
   },
   grid: {
     title: 'Data grid',
     bindings: [
-      { keys: '↑/↓ k/j', hint: 'row', desc: 'Move the row cursor' },
-      { keys: '←/→ h/l', hint: 'col', desc: 'Move the column cursor · scroll wide tables' },
-      { keys: '⏎', hint: 'inspect', desc: 'Inspect the full cell value' },
-      { keys: 's', hint: 'sort', desc: 'Cycle sort on the column' },
-      { keys: '/', hint: 'filter', desc: 'Filter the column by a substring' },
-      { keys: 'e', hint: 'edit', desc: 'Edit the cell under the cursor' },
-      { keys: 'd', hint: 'del', desc: 'Delete the row under the cursor' },
-      { keys: 'n/p', hint: 'page', desc: 'Next / previous page (browsed table)' },
-      { keys: 'D', hint: 'data/ddl', desc: 'Toggle the Data / DDL tab' },
-      { keys: ':', hint: 'sql', desc: 'Focus the SQL editor', enabled: (f) => f.queryable },
-      { keys: 'tab', hint: 'pane', desc: 'Cycle to the next pane' },
+      { keys: '↑/↓ k/j', hint: 'row', desc: 'Move the row cursor', match: ['up', 'k'], run: (s) => s.gridUp() },
+      { keys: '↑/↓ k/j', hint: 'row', desc: 'Move the row cursor', match: ['down', 'j'], run: (s) => s.gridDown() },
+      { keys: '←/→ h/l', hint: 'col', desc: 'Move the column cursor · scroll wide tables', match: ['left', 'h'], run: (s) => s.gridLeft() },
+      { keys: '←/→ h/l', hint: 'col', desc: 'Move the column cursor · scroll wide tables', match: ['right', 'l'], run: (s) => s.gridRight() },
+      { keys: '⏎', hint: 'inspect', desc: 'Inspect the full cell value', match: ['return'], run: (s) => s.openCell() },
+      { keys: 's', hint: 'sort', desc: 'Cycle sort on the column', match: ['s'], run: (s) => { if (s.surface === 'browse') void s.applySort(); } },
+      { keys: '/', hint: 'filter', desc: 'Filter the column by a substring', match: ['/'], run: (s) => { if (s.surface === 'browse') s.beginFilter(); } },
+      { keys: 'e', hint: 'edit', desc: 'Edit the cell under the cursor', match: ['e'], run: (s) => { if (s.surface === 'browse') s.beginEdit(); } },
+      { keys: 'd', hint: 'del', desc: 'Delete the row under the cursor', match: ['d'], run: (s) => { if (s.surface === 'browse') s.beginDelete(); } },
+      { keys: 'n', hint: 'page+', desc: 'Next page (browsed table)', match: ['n'], run: (s) => { if (s.surface === 'browse') void s.pageNext(); } },
+      { keys: 'p', hint: 'page-', desc: 'Previous page (browsed table)', match: ['p'], run: (s) => { if (s.surface === 'browse') void s.pagePrev(); } },
+      { keys: 'D', hint: 'data/ddl', desc: 'Toggle the Data / DDL tab', match: ['D'], run: (s) => { if (s.surface === 'browse') s.toggleMainTab(); } },
+    ],
+  },
+  ddl: {
+    title: 'Structure',
+    bindings: [
+      { keys: 'D', hint: 'data/ddl', desc: 'Toggle the Data / DDL tab', match: ['D'], run: (s) => s.toggleMainTab() },
     ],
   },
   editor: {
     title: 'SQL editor',
     bindings: [
-      { keys: '⏎', hint: 'run', desc: 'Run the query (result shows in the grid)' },
-      {
-        keys: 'tab',
-        hint: 'complete',
-        desc: 'Accept completion · else cycle to the next pane',
-      },
-      { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry' },
-      {
-        keys: '^G',
-        hint: 'ask AI',
-        desc: 'Generate SQL from natural language',
-        enabled: (f) => f.nlAvailable,
-      },
-      { keys: 'esc', hint: 'grid', desc: 'Focus the results grid' },
+      { keys: '⏎', hint: 'run', desc: 'Run the query (result shows in the grid)', match: ['return'], run: (s) => void s.executeQuery() },
+      { keys: 'tab', hint: 'complete', desc: 'Accept completion · else cycle to the next pane', match: ['tab'], run: (s) => (s.completions.length > 0 ? s.acceptCompletion() : s.cycleFocus()) },
+      { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['up'], run: (s) => s.historyPrev() },
+      { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['down'], run: (s) => s.historyNext() },
+      { keys: '^G', hint: 'ask AI', desc: 'Generate SQL from natural language', match: ['^g'], enabled: (f) => f.nlAvailable, run: (s) => s.beginNl() },
+      { keys: 'esc', hint: 'grid', desc: 'Focus the results grid', match: ['escape'], run: (s) => s.focusPane('grid') },
     ],
+    text: { onChar: (s, ch) => s.updateQueryText(s.queryText + ch), onErase: (s) => s.updateQueryText(s.queryText.slice(0, -1)) },
   },
   filter: {
     title: 'Filter',
     bindings: [
-      { keys: '⏎', hint: 'apply', desc: 'Apply the filter (empty clears it)' },
-      { keys: 'esc', hint: 'cancel', desc: 'Cancel' },
+      { keys: '⏎', hint: 'apply', desc: 'Apply the filter (empty clears it)', match: ['return'], run: (s) => void s.commitFilter() },
+      { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelFilter() },
     ],
+    text: { onChar: (s, ch) => s.updateFilterDraft(s.filterDraft + ch), onErase: (s) => s.updateFilterDraft(s.filterDraft.slice(0, -1)) },
   },
   edit: {
     title: 'Edit cell',
     bindings: [
-      { keys: '⏎', hint: 'review', desc: 'Review the change before applying' },
-      { keys: 'esc', hint: 'cancel', desc: 'Cancel' },
+      { keys: '⏎', hint: 'review', desc: 'Review the change before applying', match: ['return'], run: (s) => s.submitEdit() },
+      { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelEdit() },
     ],
+    text: { onChar: (s, ch) => s.updateEditDraft(s.editDraft + ch), onErase: (s) => s.updateEditDraft(s.editDraft.slice(0, -1)) },
   },
   confirm: {
     title: 'Confirm',
     bindings: [
-      { keys: 'y', hint: 'apply', desc: 'Apply the pending write' },
-      { keys: 'n', hint: 'cancel', desc: 'Cancel' },
+      { keys: 'y', hint: 'apply', desc: 'Apply the pending write', match: ['y', 'Y'], run: (s) => void s.confirmPending() },
+      { keys: 'n', hint: 'cancel', desc: 'Cancel', match: ['n', 'N', 'escape'], run: (s) => s.cancelPending() },
     ],
   },
   connform: {
     title: 'New connection',
     bindings: [
-      { keys: '↑/↓', hint: 'field', desc: 'Move between fields' },
-      { keys: '←/→', hint: 'driver', desc: 'Change the driver' },
-      { keys: '⏎', hint: 'save', desc: 'Save the connection' },
-      { keys: 'esc', hint: 'cancel', desc: 'Cancel' },
+      { keys: '↑/↓', hint: 'field', desc: 'Move between fields', match: ['up'], run: (s) => s.connFormMove(-1) },
+      { keys: '↑/↓', hint: 'field', desc: 'Move between fields', match: ['down', 'tab'], run: (s) => s.connFormMove(1) },
+      { keys: '←/→', hint: 'driver', desc: 'Change the driver', match: ['left'], run: (s) => s.connFormCycleDriver(-1) },
+      { keys: '←/→', hint: 'driver', desc: 'Change the driver', match: ['right'], run: (s) => s.connFormCycleDriver(1) },
+      { keys: '⏎', hint: 'save', desc: 'Save the connection', match: ['return'], run: (s) => void s.connFormSubmit() },
+      { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.connFormCancel() },
     ],
+    text: { onChar: (s, ch) => s.connFormType(ch), onErase: (s) => s.connFormBackspace() },
   },
   cell: {
     title: 'Cell inspector',
     bindings: [
-      { keys: 'j/k ↑/↓', hint: 'scroll', desc: 'Scroll the value' },
-      { keys: 'esc/⏎', hint: 'close', desc: 'Close the inspector' },
+      { keys: 'j/k ↑/↓', hint: 'scroll', desc: 'Scroll the value', match: ['down', 'j'], run: (s) => s.scrollCell(1) },
+      { keys: 'j/k ↑/↓', hint: 'scroll', desc: 'Scroll the value', match: ['up', 'k'], run: (s) => s.scrollCell(-1) },
+      { keys: 'esc/⏎', hint: 'close', desc: 'Close the inspector', match: ['escape', 'return'], run: (s) => s.closeCell() },
     ],
   },
   nl: {
     title: 'Ask AI',
     bindings: [
-      {
-        keys: '⏎',
-        hint: 'generate',
-        desc: 'Generate SQL (always reviewed before running)',
-      },
-      { keys: 'esc', hint: 'cancel', desc: 'Cancel' },
+      { keys: '⏎', hint: 'generate', desc: 'Generate SQL (always reviewed before running)', match: ['return'], run: (s) => void s.generateFromNl() },
+      { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelNl() },
     ],
+    text: { onChar: (s, ch) => s.updateNlDraft(s.nlDraft + ch), onErase: (s) => s.updateNlDraft(s.nlDraft.slice(0, -1)) },
   },
 };
 
-/** Modal contexts capture all input, so the global keys don't apply to them. */
-const MODAL: ReadonlySet<KeyContext> = new Set<KeyContext>([
-  'filter',
-  'edit',
-  'confirm',
-  'connform',
-  'cell',
-  'nl',
+/** Navigational contexts — the ones that aren't capturing text, so the GLOBAL
+ *  keys apply to them (and only them). The single gate shared by the dispatcher
+ *  and the footer/help, so what's advertised is exactly what fires. */
+const NAV: ReadonlySet<KeyContext> = new Set<KeyContext>(['sidebar', 'grid', 'ddl']);
+
+const NAMED: ReadonlySet<string> = new Set([
+  'up', 'down', 'left', 'right', 'return', 'escape', 'tab', 'backspace', 'delete',
 ]);
 
 const usable = (b: KeyBinding, f: KeyFlags): boolean => !b.enabled || b.enabled(f);
 
+/** Does this key event satisfy one of a binding's match tokens? */
+const hits = (b: KeyBinding, key: KeyEvent, ch: string | null): boolean =>
+  b.match.some((t) =>
+    t.startsWith('^') ? key.ctrl && key.name === t.slice(1) : NAMED.has(t) ? key.name === t : ch === t,
+  );
+
+/** The de-duplicated bindings to *show* for a context (the table repeats a row
+ *  per match alternative, e.g. up and k; the display only wants it once). */
+const shown = (context: KeyContext, flags: KeyFlags): KeyBinding[] => {
+  const seen = new Set<string>();
+  return GROUPS[context].bindings.filter((b) => {
+    if (!usable(b, flags) || seen.has(b.hint)) return false;
+    seen.add(b.hint);
+    return true;
+  });
+};
+
 /** Compact one-line footer string for the active context, e.g. `⏎ open · …`. */
 export const footerHints = (context: KeyContext, flags: KeyFlags): string => {
-  const local = GROUPS[context].bindings.filter((b) => usable(b, flags));
-  const global = MODAL.has(context)
-    ? []
-    : GLOBAL.filter((b) => usable(b, flags));
-  return [...local, ...global].map((b) => `${b.keys} ${b.hint}`).join(' · ');
+  const global = NAV.has(context) ? GLOBAL.filter((b) => usable(b, flags)) : [];
+  return [...shown(context, flags), ...global].map((b) => `${b.keys} ${b.hint}`).join(' · ');
 };
 
 /** The groups the `?` overlay shows for the active context (local + global). */
 export const helpGroups = (context: KeyContext, flags: KeyFlags): KeyGroup[] => {
-  const local: KeyGroup = {
-    title: GROUPS[context].title,
-    bindings: GROUPS[context].bindings.filter((b) => usable(b, flags)),
-  };
-  const groups: KeyGroup[] = [local];
-  if (!MODAL.has(context)) {
-    groups.push({
-      title: 'Global',
-      bindings: GLOBAL.filter((b) => usable(b, flags)),
-    });
+  const groups: KeyGroup[] = [{ title: GROUPS[context].title, bindings: shown(context, flags) }];
+  if (NAV.has(context)) {
+    groups.push({ title: 'Global', bindings: GLOBAL.filter((b) => usable(b, flags)) });
   }
   return groups;
+};
+
+/**
+ * Route one key press to its action. The single dispatcher the App's keyboard
+ * handler delegates to. Precedence: ⌃C always quits; an open help overlay and an
+ * in-flight generation own input; then the active context's documented bindings,
+ * the global keys (navigational contexts only), and finally free-text entry.
+ */
+export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void => {
+  if (key.ctrl && key.name === 'c') return env.quit();
+
+  const ch = printableChar(key);
+
+  // The help overlay floats over any context and swallows input until dismissed.
+  if (s.helpOpen) {
+    if (ch === '?' || key.name === 'escape') s.toggleHelp();
+    return;
+  }
+  if (s.generating) return; // ignore input while the model works
+
+  const flags: KeyFlags = { queryable: s.queryable, nlAvailable: s.nlAvailable };
+  const context = deriveContext(s);
+  const group = GROUPS[context];
+
+  for (const b of group.bindings) {
+    if (usable(b, flags) && hits(b, key, ch)) return b.run(s, env);
+  }
+  if (NAV.has(context)) {
+    for (const b of GLOBAL) {
+      if (usable(b, flags) && hits(b, key, ch)) return b.run(s, env);
+    }
+  }
+  if (group.text) {
+    if (key.name === 'backspace' || key.name === 'delete') group.text.onErase(s);
+    else if (ch !== null) group.text.onChar(s, ch);
+  }
 };

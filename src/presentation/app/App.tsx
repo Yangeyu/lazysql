@@ -131,11 +131,9 @@ export const App = () => {
     </box>
   ) : (
     // Three self-contained bordered panels; App is pure layout here. Every panel
-    // owns its full border and keeps a constant identity. A uniform 1-cell `gap`
-    // separates them on BOTH axes — the sidebar from the main column, and the SQL
-    // editor from the results panel — so the spacing reads the same everywhere and
-    // borders never double up. One row is the minimum clean separation between two
-    // bordered boxes (zero would collide their edges into a doubled line).
+    // owns its full border and keeps a constant identity. A 1-cell `gap` sets the
+    // sidebar off from the main column; the right column stacks the editor over
+    // the results panel flush (gap 0) for a compact, single-rule divider.
     <box flexDirection="row" flexGrow={1} gap={1}>
       <Sidebar
         rows={treeRows}
@@ -145,9 +143,8 @@ export const App = () => {
         onRowClick={(i) => store.getState().clickTree(i)}
         onPaneClick={() => store.getState().focusPane('sidebar')}
       />
-      {/* Right column: the SQL editor (top, ~1/4) over the results panel (~3/4),
-          each a distinct bordered panel split by the same 1-row gap. Both stretch
-          to the full column width. */}
+      {/* Right column: the SQL editor (top, ~1/4) directly over the results panel
+          (~3/4), stacked flush with no gap. Both stretch to the full column width. */}
       <box flexDirection="column" flexGrow={1} gap={0}>
         {queryable ? (
           <QueryEditor

@@ -44,10 +44,14 @@ interface RootPkg {
   readonly version: string;
   readonly description: string;
   readonly license?: string;
+  readonly repository?: unknown;
 }
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as RootPkg;
 const VERSION = pkg.version;
 const LICENSE = pkg.license ?? 'MIT';
+// OIDC trusted publishing verifies provenance against repository.url, so every
+// published manifest (main + sub-packages) must carry it.
+const REPOSITORY = pkg.repository;
 
 const writeJson = (path: string, value: unknown): void =>
   writeFileSync(path, JSON.stringify(value, null, 2) + '\n');
@@ -73,6 +77,7 @@ const buildSubPackage = (t: Target): void => {
     version: VERSION,
     description: `lazysql prebuilt binary for ${t.suffix}`,
     license: LICENSE,
+    repository: REPOSITORY,
     os: [t.os],
     cpu: [t.cpu],
     files: ['bin'],
@@ -98,6 +103,7 @@ const buildMainPackage = (): void => {
     version: VERSION,
     description: pkg.description,
     license: LICENSE,
+    repository: REPOSITORY,
     bin: { lazysql: 'bin/lazysql.cjs' },
     optionalDependencies,
     files: ['bin'],

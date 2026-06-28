@@ -10,10 +10,11 @@
  * repaints only the changed text lines — never the panel's geometry.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { TextAttributes, type MouseEvent } from '@opentui/core';
 import type { CellValue } from '../../domain/datasource/ResultSet.ts';
 import { formatCellValue } from './cellFormat.ts';
+import { wrapByWidth } from './wrapText.ts';
 import { theme } from '../theme/theme.ts';
 import { Overlay } from './Overlay.tsx';
 
@@ -28,7 +29,7 @@ interface Props {
 }
 
 const CellViewImpl = ({ column, value, offset, termRows, termCols, onScroll }: Props) => {
-  const { type, lines } = formatCellValue(value);
+  const { type, lines } = useMemo(() => formatCellValue(value), [value]);
 
   // Fixed panel geometry, derived from the terminal once (not from the value).
   const width = Math.max(24, Math.min(termCols - 8, 100));
@@ -36,14 +37,20 @@ const CellViewImpl = ({ column, value, offset, termRows, termCols, onScroll }: P
   const innerW = width - 4; // border (2) + paddingX (2)
   const bodyRows = Math.max(1, height - 4); // title + footer inside the border
 
-  const maxOffset = Math.max(0, lines.length - bodyRows);
+  // Wrap each logical line to the panel width (by display columns, so CJK wraps
+  // instead of being clipped) into the flat list of display rows the vertical
+  // scroll window then pages through — horizontal overflow becomes more rows, not
+  // hidden text. Recomputed only when the value or panel width changes.
+  const display = useMemo(
+    () => lines.flatMap((ln) => wrapByWidth(ln, innerW)),
+    [lines, innerW],
+  );
+
+  const maxOffset = Math.max(0, display.length - bodyRows);
   const top = Math.min(offset, maxOffset);
   // Pad the window to a constant length so the footer never shifts row.
-  const window = lines.slice(top, top + bodyRows);
+  const window = display.slice(top, top + bodyRows);
   while (window.length < bodyRows) window.push('');
-
-  const truncate = (s: string): string =>
-    s.length > innerW ? s.slice(0, innerW) : s;
 
   return (
     <Overlay
@@ -67,14 +74,14 @@ const CellViewImpl = ({ column, value, offset, termRows, termCols, onScroll }: P
         <span fg={theme.border}>
           {'  '}
           {type}
-          {lines.length > bodyRows
-            ? `  ·  ${top + 1}-${Math.min(top + bodyRows, lines.length)}/${lines.length}`
+          {display.length > bodyRows
+            ? `  ·  ${top + 1}-${Math.min(top + bodyRows, display.length)}/${display.length}`
             : ''}
         </span>
       </text>
       {window.map((ln, i) => (
         <text key={top + i} wrapMode="none" selectable>
-          {ln === '' ? ' ' : truncate(ln)}
+          {ln === '' ? ' ' : ln}
         </text>
       ))}
       <text fg={theme.border} wrapMode="none">

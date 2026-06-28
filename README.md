@@ -38,7 +38,25 @@ src/
 
 设计的事实来源是 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**;关键决策记录见 **[docs/adr/](docs/adr/)**(能力模型、TUI 框架、NL→SQL provider 策略、键位派发等)。
 
-## 快速开始
+## 安装
+
+预编译二进制经 npm 分发,**装好即用,无需 Bun**——每个平台一份 `bun --compile` 原生二进制,npm 只装匹配你系统的那一个:
+
+| 方式 | 命令 |
+|------|------|
+| npm | `npm i -g @vascent/lazysql` |
+| bun | `bun add -g @vascent/lazysql` |
+| 免安装试用 | `npx @vascent/lazysql --list` |
+
+装完直接敲 `lazysql`。支持 **macOS(Apple Silicon)· Linux(x64 / arm64)· Windows(x64)**。
+
+升级到最新版:
+
+```bash
+npm i -g @vascent/lazysql@latest      # bun: bun add -g @vascent/lazysql@latest
+```
+
+## 从源码运行(开发)
 
 > 需要 [Bun](https://bun.sh)。SQLite 用 Bun 内置的 `bun:sqlite`,无 native 依赖。
 

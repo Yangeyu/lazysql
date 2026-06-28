@@ -56,8 +56,8 @@ import type {
   SqlGenerator,
   SchemaContext,
 } from '../../application/ports/SqlGenerator.ts';
-import { dangerKind, type DangerKind } from '../../domain/query/classify.ts';
-import type { StatementKind } from '../../domain/query/classify.ts';
+import { classifyStatement, dangerKind } from '../../domain/query/classify.ts';
+import type { DangerKind, StatementKind } from '../../domain/query/classify.ts';
 import type { QueryHistoryStore } from '../../application/ports/QueryHistoryStore.ts';
 import {
   complete,
@@ -470,6 +470,17 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         treeIndex: Math.min(s.treeIndex, Math.max(0, rowsNow().length - 1)),
       }));
 
+    /** Re-read the active connection's object list in place — keeping the fold
+     *  state and (clamped) cursor — and drop the completion catalog so it rebuilds
+     *  against the new schema. Shared by the manual `refresh` and the automatic
+     *  reload after a DDL statement changes the schema. */
+    const reloadObjects = async (): Promise<void> => {
+      if (!active) return clampTree();
+      const res = await listObjects(active);
+      if (res.ok) set({ objects: res.value, catalog: null });
+      clampTree();
+    };
+
     /** Open an object into the data grid (focus moves to the grid). */
     const openObject = async (ref: ObjectRef): Promise<void> => {
       if (!active) return;
@@ -642,6 +653,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       });
       const id = get().activeId;
       if (id && historyStore) void historyStore.save(id, nextHistory);
+      // A DDL statement (CREATE/DROP/ALTER/TRUNCATE/…) changed the schema, so the
+      // tree and completion catalog are now stale — reload them in the background
+      // (fire-and-forget) so the result shows immediately and the tree catches up.
+      if (classifyStatement(text) === 'ddl') void reloadObjects();
     };
 
     /** Recompute completions for the editor text against the cached catalog. */
@@ -974,15 +989,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       refresh: async () => {
         set({ profiles: await connectionService.list() });
-        if (!active) {
-          clampTree();
-          return;
-        }
-        const res = await listObjects(active);
-        // Refresh in place: swap the objects but keep the fold/cursor (clamped),
-        // and drop the completion catalog so it rebuilds with the new schema.
-        if (res.ok) set({ objects: res.value, catalog: null });
-        clampTree();
+        await reloadObjects();
       },
 
       setMainTab: (tab) => {

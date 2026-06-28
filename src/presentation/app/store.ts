@@ -36,6 +36,7 @@ import type {
   DriverId,
 } from '../../domain/connection/ConnectionProfile.ts';
 import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
+import { resolveUserPath } from '../../shared/path.ts';
 import type { ResultSet, CellValue } from '../../domain/datasource/ResultSet.ts';
 import {
   firstPage,
@@ -421,7 +422,9 @@ const formProfile = (
   const password = val('password') || null;
   const options: Record<string, unknown> = {};
   if (f.driver === 'sqlite') {
-    options.file = val('file');
+    // Store an absolute path so a relative entry (e.g. "data/x.db") can't bind to
+    // a different file later when lazysql is launched from another directory.
+    options.file = resolveUserPath(val('file'));
   } else {
     options.host = val('host');
     options.port = val('port');

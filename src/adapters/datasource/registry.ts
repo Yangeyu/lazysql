@@ -8,6 +8,7 @@ import type { ConnectionProfile } from '../../domain/connection/ConnectionProfil
 import type { DataSource } from '../../domain/datasource/DataSource.ts';
 import { ConnectionError } from '../../domain/errors/errors.ts';
 import { ok, err, type Result } from '../../shared/Result.ts';
+import { resolveUserPath } from '../../shared/path.ts';
 import { SqlDataSource } from './sql/SqlDataSource.ts';
 import { SqliteDialect } from './sql/dialects/SqliteDialect.ts';
 import { BunSqliteDriver } from './sql/drivers/BunSqliteDriver.ts';
@@ -24,10 +25,14 @@ export const createDataSource = (
 ): Result<DataSource, ConnectionError> => {
   switch (profile.driver) {
     case 'sqlite': {
-      const file = String(profile.options.file ?? '');
-      if (!file) {
+      const raw = String(profile.options.file ?? '');
+      if (!raw) {
         return err(new ConnectionError('sqlite profile requires options.file'));
       }
+      // Resolve to absolute so the DB opens the same file regardless of the cwd
+      // lazysql was launched from. New profiles are stored absolute already; this
+      // also rescues older configs that saved a relative path.
+      const file = resolveUserPath(raw);
       return ok(
         new SqlDataSource(
           profile.id,

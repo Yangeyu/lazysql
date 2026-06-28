@@ -2,10 +2,30 @@
   "name": "@vascent/lazysql",
   "version": "0.1.4",
   "description": "A lazygit-style TUI database manager.",
+  "keywords": [
+    "tui",
+    "database",
+    "sql",
+    "cli",
+    "postgres",
+    "mysql",
+    "mariadb",
+    "sqlite",
+    "mongodb",
+    "redis",
+    "lazygit",
+    "terminal",
+    "nl2sql"
+  ],
+  "author": "yangwb",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Yangeyu/lazysql.git"
+  },
+  "homepage": "https://github.com/Yangeyu/lazysql#readme",
+  "bugs": {
+    "url": "https://github.com/Yangeyu/lazysql/issues"
   },
   "type": "module",
   "engines": {

@@ -3,7 +3,9 @@ name: release
 # Publish to npm on a version tag. OpenTUI ships per-platform native modules, so
 # each binary is compiled natively on its own OS runner (no cross-compile), then a
 # single job collects them and publishes the platform sub-packages plus the slim
-# main package. Requires the NPM_TOKEN repository secret.
+# main package. Auth is OIDC trusted publishing — no long-lived token: every
+# published package (main + each platform sub-package) must list this repo +
+# workflow as its trusted publisher on npmjs.com.
 on:
   push:
     tags: ['v*']
@@ -42,6 +44,9 @@ jobs:
   publish:
     needs: binaries
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # mint the OIDC token npm exchanges for a publish credential
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -53,13 +58,15 @@ jobs:
       - run: bun scripts/build-npm.ts --main-only
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
+      # Trusted publishing needs npm >= 11.5.1; the npm bundled with node 22 is older.
+      - run: npm install -g npm@latest
+      # No NODE_AUTH_TOKEN: npm detects the GitHub OIDC environment and mints a
+      # short-lived per-package credential (provenance attached automatically).
       # Restore the executable bit (artifact round-trips drop it) so npm ships a
       # runnable binary, then publish every sub-package before the main package.
       - name: Publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           chmod +x dist/npm/*/bin/lazysql 2>/dev/null || true
           for dir in dist/npm/*/; do

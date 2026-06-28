@@ -1,0 +1,60 @@
+name: release
+
+# Publish to npm on a version tag. OpenTUI ships per-platform native modules, so
+# each binary is compiled natively on its own OS runner (no cross-compile), then a
+# single job collects them and publishes the platform sub-packages plus the slim
+# main package. Requires the NPM_TOKEN repository secret.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { suffix: darwin-arm64, runner: macos-14 }
+          - { suffix: darwin-x64, runner: macos-13 }
+          - { suffix: linux-x64, runner: ubuntu-latest }
+          - { suffix: linux-arm64, runner: ubuntu-24.04-arm }
+          - { suffix: win32-x64, runner: windows-latest }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/build-npm.ts --target=${{ matrix.suffix }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.suffix }}
+          path: dist/npm/${{ matrix.suffix }}
+
+  publish:
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # Each artifact lands as dist/npm/<suffix>/ (the artifact name is the suffix).
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/npm
+      - run: bun scripts/build-npm.ts --main-only
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+      # Restore the executable bit (artifact round-trips drop it) so npm ships a
+      # runnable binary, then publish every sub-package before the main package.
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          chmod +x dist/npm/*/bin/lazysql 2>/dev/null || true
+          for dir in dist/npm/*/; do
+            [ "$(basename "$dir")" = "main" ] && continue
+            npm publish "$dir"
+          done
+          npm publish dist/npm/main

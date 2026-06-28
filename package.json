@@ -13,6 +13,7 @@
     "start": "bun run src/main.tsx",
     "dev": "bun run src/main.tsx",
     "build": "bun build src/main.tsx --compile --outfile dist/lazysql",
+    "build:npm": "bun scripts/build-npm.ts",
     "seed": "bun run scripts/seed.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",

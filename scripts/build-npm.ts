@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
  * Build the npm release artifacts under dist/npm/:
- *   - one platform sub-package per target (`@yangeyu/lazysql-<os>-<arch>`), each a
+ *   - one platform sub-package per target (`@vascent/lazysql-<os>-<arch>`), each a
  *     `bun --compile` standalone binary tagged with npm `os`/`cpu` so npm installs
  *     only the matching one;
- *   - the slim main package (`@yangeyu/lazysql`), whose bin shim execs the binary,
+ *   - the slim main package (`@vascent/lazysql`), whose bin shim execs the binary,
  *     depending on all platforms via optionalDependencies.
  *
  * OpenTUI ships per-platform native modules, so a binary can ONLY be compiled on
@@ -38,7 +38,7 @@ const TARGETS: readonly Target[] = [
 
 const ROOT = join(import.meta.dir, '..');
 const OUT = join(ROOT, 'dist', 'npm');
-const SCOPE = '@yangeyu';
+const SCOPE = '@vascent';
 
 interface RootPkg {
   readonly name: string;

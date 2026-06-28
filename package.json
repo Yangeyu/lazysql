@@ -1,5 +1,5 @@
 {
-  "name": "@yangeyu/lazysql",
+  "name": "@vascent/lazysql",
   "version": "0.1.0",
   "description": "A lazygit-style TUI database manager.",
   "type": "module",

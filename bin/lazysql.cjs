@@ -2,7 +2,7 @@
 /**
  * Thin launcher for the published npm package. The real program is a
  * self-contained `bun --compile` binary, shipped per-platform as an optional
- * dependency (@yangeyu/lazysql-<os>-<arch>); npm installs only the one matching
+ * dependency (@vascent/lazysql-<os>-<arch>); npm installs only the one matching
  * the host. This shim resolves that binary and execs it, forwarding argv and the
  * exit code. It runs under plain Node — no Bun required on the user's machine.
  */
@@ -14,7 +14,7 @@ const binName = process.platform === 'win32' ? 'lazysql.exe' : 'lazysql';
 
 let binaryPath;
 try {
-  binaryPath = require.resolve(`@yangeyu/lazysql-${platformArch}/bin/${binName}`);
+  binaryPath = require.resolve(`@vascent/lazysql-${platformArch}/bin/${binName}`);
 } catch {
   console.error(`lazysql: no prebuilt binary for ${platformArch}.`);
   console.error(

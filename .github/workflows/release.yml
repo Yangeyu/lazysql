@@ -65,12 +65,25 @@ jobs:
       # No NODE_AUTH_TOKEN: npm detects the GitHub OIDC environment and mints a
       # short-lived per-package credential (provenance attached automatically).
       # Restore the executable bit (artifact round-trips drop it) so npm ships a
-      # runnable binary, then publish every sub-package before the main package.
+      # runnable binary. Idempotent: skip any package@version already on the
+      # registry, so re-running a tag after a partial failure publishes only
+      # what's missing instead of aborting on the first conflict. Sub-packages
+      # first, then the main package (which depends on them).
       - name: Publish
         run: |
           chmod +x dist/npm/*/bin/lazysql 2>/dev/null || true
+          publish_if_new() {
+            local dir="$1" name ver
+            name=$(node -p "require('$GITHUB_WORKSPACE/$dir/package.json').name")
+            ver=$(node -p "require('$GITHUB_WORKSPACE/$dir/package.json').version")
+            if npm view "$name@$ver" version >/dev/null 2>&1; then
+              echo "skip $name@$ver — already published"
+            else
+              npm publish "$dir"
+            fi
+          }
           for dir in dist/npm/*/; do
             [ "$(basename "$dir")" = "main" ] && continue
-            npm publish "$dir"
+            publish_if_new "$dir"
           done
-          npm publish dist/npm/main
+          publish_if_new dist/npm/main

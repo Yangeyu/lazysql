@@ -56,6 +56,20 @@ src/
 npm i -g @vascent/lazysql@latest      # bun: bun add -g @vascent/lazysql@latest
 ```
 
+### 卸载
+
+```bash
+npm un -g @vascent/lazysql            # bun: bun remove -g @vascent/lazysql
+```
+
+卸载只移除程序本身。配置与历史(连接、密码、SQL 历史)留在 `~/.config/lazysql/`,如需彻底清除:
+
+```bash
+rm -rf ~/.config/lazysql
+```
+
+> macOS 上若曾设 `LAZYSQL_SECRETS=keychain`,密码存在系统钥匙串里,删 `~/.config/lazysql` 不会清掉——在「钥匙串访问」中搜索 `lazysql` 手动删除对应条目。
+
 ## 从源码运行(开发)
 
 > 需要 [Bun](https://bun.sh)。SQLite 用 Bun 内置的 `bun:sqlite`,无 native 依赖。
@@ -74,6 +88,18 @@ bun start <name>          # 按 id / 名称打开已保存的连接
 bun start <file.db>       # 临时打开一个 SQLite 文件
 bun start --list          # 列出已保存的连接并退出
 ```
+
+### 装成全局命令(从源码)
+
+想直接敲 `lazysql` 而非 `bun start`?在仓库里用 Bun 的 link 注册一个全局命令:
+
+```bash
+bun install
+bun link            # 注册全局 lazysql,指向本仓库
+lazysql --list      # 此后可在任意目录运行
+```
+
+`bun link` 把 `~/.bun/bin/lazysql` 软链到仓库的 `bin`(`src/main.tsx`),改完代码即时生效、无需重装;撤销在仓库内 `bun unlink`。需 `~/.bun/bin` 在 `PATH` 上(装好 Bun 通常已配置)。
 
 ## 键位
 

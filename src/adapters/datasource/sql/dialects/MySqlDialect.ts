@@ -22,6 +22,7 @@ import type {
   ObjectKind,
 } from '../../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
+import type { CascadeDrop } from '../../../../domain/datasource/DataSource.ts';
 import type { RawResult } from '../Driver.ts';
 import { buildWhere } from '../whereBuilder.ts';
 import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
@@ -147,6 +148,12 @@ export class MySqlDialect implements Dialect {
 
   dropQuery(ref: ObjectRef): Query {
     return sql(`DROP ${ref.kind === 'view' ? 'VIEW' : 'TABLE'} ${qualify(ref)};`);
+  }
+
+  // MySQL parses CASCADE on DROP TABLE but ignores it (the fix is dropping the
+  // referencing FK first), so there is no safe one-key escalation to offer.
+  cascadeDrop(): CascadeDrop | null {
+    return null;
   }
 
   insertQuery(ref: ObjectRef, row: RowPatch): Query {

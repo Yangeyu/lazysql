@@ -15,6 +15,7 @@ import { Header } from '../components/Header.tsx';
 import { HelpOverlay } from '../components/HelpOverlay.tsx';
 import { ConnectionForm } from '../components/ConnectionForm.tsx';
 import { CellView } from '../components/CellView.tsx';
+import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
 import { helpGroups, deriveContext, dispatchKey, type KeyFlags } from '../keymap/keymap.ts';
 import { SIDEBAR_WIDTH, computeLayout } from './layout.ts';
 import { buildTree, toConnNodes, dialectLabel, shortTag, groupsBySchema } from '../tree/tree.ts';
@@ -226,8 +227,18 @@ export const App = ({ clipboard }: AppProps) => {
 
   // Floating layers, composited over the background by <Overlay> (absolute, so
   // they add no height to the frame). Only one shows at a time; the panes behind
-  // stay visible, exactly like lazygit's menus.
-  const overlay = helpOpen ? (
+  // stay visible, exactly like lazygit's menus. A staged confirm takes precedence
+  // — it's the most urgent thing on screen and owns the y/n keys.
+  const overlay = mode === 'confirm' && pending ? (
+    <ConfirmDialog
+      title={pending.title}
+      statement={pending.statement}
+      details={pending.details}
+      tone={pending.tone}
+      termRows={terminalRows}
+      termCols={terminalCols}
+    />
+  ) : helpOpen ? (
     <HelpOverlay
       groups={helpGroups(context, flags)}
       termRows={terminalRows}
@@ -288,7 +299,6 @@ export const App = ({ clipboard }: AppProps) => {
         })()}
         editColumn={result?.columns[gridCol]?.name ?? null}
         onEditSubmit={(v) => store.getState().submitEdit(v)}
-        pendingMessage={pending?.message ?? null}
       />
       {/* drawn last so it composites on top of every pane and the status bar */}
       {overlay}

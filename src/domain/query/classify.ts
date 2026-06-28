@@ -47,3 +47,23 @@ export const isUnqualifiedWrite = (sql: string): boolean => {
   if (keyword !== 'update' && keyword !== 'delete') return false;
   return !/\bwhere\b/i.test(sql);
 };
+
+/** Why a statement deserves a confirm before it runs from the editor. */
+export type DangerKind = 'unqualified-write' | 'drop' | 'truncate';
+
+/**
+ * Classify the footgun in a statement, or null if it can run straight off ⏎: an
+ * unqualified UPDATE/DELETE (rewrites every row), or a DROP/TRUNCATE (destroys an
+ * object or all its data, irreversibly). Returns the structured kind, not prose —
+ * the presentation layer owns the wording.
+ */
+export const dangerKind = (sql: string): DangerKind | null => {
+  if (isUnqualifiedWrite(sql)) return 'unqualified-write';
+  const keyword = sql
+    .trim()
+    .match(/^([a-z]+)/i)?.[1]
+    ?.toLowerCase();
+  if (keyword === 'drop') return 'drop';
+  if (keyword === 'truncate') return 'truncate';
+  return null;
+};

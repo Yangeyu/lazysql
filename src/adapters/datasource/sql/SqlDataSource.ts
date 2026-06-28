@@ -12,6 +12,7 @@ import type {
   SchemaIntrospectable,
   Browsable,
   BrowsePreviewable,
+  CascadeDrop,
   RowEditable,
   Transactional,
   Tx,
@@ -38,7 +39,11 @@ import type {
   EditResult,
 } from '../../../domain/datasource/edit.ts';
 import type { Query, BrowseSpec, Filter } from '../../../domain/query/Query.ts';
-import { ConnectionError, QueryError } from '../../../domain/errors/errors.ts';
+import {
+  ConnectionError,
+  DataSourceError,
+  QueryError,
+} from '../../../domain/errors/errors.ts';
 import { ok, err, type Result } from '../../../shared/Result.ts';
 import type { SqlDriver, RawResult } from './Driver.ts';
 import type { Dialect } from './Dialect.ts';
@@ -171,6 +176,10 @@ export class SqlDataSource
     return this.dialect.dropQuery(ref).text;
   }
 
+  cascadeRetry(dropSql: string, error: DataSourceError): CascadeDrop | null {
+    return this.dialect.cascadeDrop(dropSql, error);
+  }
+
   // ── Transactional ─────────────────────────────────────────────────────────
 
   transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
@@ -220,7 +229,11 @@ export class SqlDataSource
     } catch (cause) {
       // Surface the driver's real message: the failing SQL is already echoed,
       // so restating it (the obvious move) tells the user nothing.
-      throw new QueryError(reasonOf(cause), cause);
+      throw new QueryError(reasonOf(cause), {
+        cause,
+        code: codeOf(cause),
+        detail: detailOf(cause),
+      });
     }
   }
 }
@@ -232,6 +245,25 @@ const firstCell = (raw: RawResult): string => String(raw.rows[0]?.[0] ?? '');
 const reasonOf = (cause: unknown): string => {
   const message = cause instanceof Error ? cause.message.trim() : String(cause);
   return message.length > 0 ? message : 'query failed';
+};
+
+/** The driver's native error code, so a dialect can recognise a specific failure
+ *  without parsing the message. Bun.SQL's PostgresError carries the SQLSTATE
+ *  ('2BP01') in `errno` — `code` there is a generic 'ERR_POSTGRES_SERVER_ERROR' —
+ *  so prefer `errno`, falling back to `code` for drivers (mysql2) that put a
+ *  stable string there instead. */
+const codeOf = (cause: unknown): string | undefined => {
+  const e = cause as { code?: unknown; errno?: unknown };
+  if (typeof e?.errno === 'string') return e.errno;
+  if (typeof e?.code === 'string') return e.code;
+  return undefined;
+};
+
+/** The driver's supplementary explanation (Bun.SQL/pg expose `detail`), e.g. the
+ *  newline-listed objects that block a DROP — the dialect parses it for the UI. */
+const detailOf = (cause: unknown): string | undefined => {
+  const detail = (cause as { detail?: unknown })?.detail;
+  return typeof detail === 'string' && detail.length > 0 ? detail : undefined;
 };
 
 const throwIfAborted = (signal?: AbortSignal): void => {

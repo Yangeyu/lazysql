@@ -92,6 +92,21 @@ test('an unqualified DELETE is held behind a confirm; cancel does not run it', a
   h.cleanup();
 });
 
+test('a DROP from the editor is held behind a confirm; cancel does not run it', async () => {
+  const h = await mount();
+  await h.until((f) => f.includes('NavDB'));
+  h.press(':');
+  await h.until((f) => f.includes('⏎ run'));
+  await h.type('DROP TABLE t');
+  h.enter();
+  await h.until((f) => f.includes('irreversible')); // guarded, not run straight off ⏎
+
+  h.press('n'); // cancel — the DROP never executes (it runs only on `y`)
+  await h.until((f) => !f.includes('irreversible'));
+  expect(h.frame()).not.toContain('affected');
+  h.cleanup();
+});
+
 test('confirming an unqualified DELETE runs it against every row', async () => {
   const h = await mount(); // beforeEach reseeds the table to three rows
   await h.until((f) => f.includes('NavDB'));

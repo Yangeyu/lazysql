@@ -12,6 +12,8 @@ import type {
   ColumnDef,
 } from '../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../domain/datasource/edit.ts';
+import type { CascadeDrop } from '../../../domain/datasource/DataSource.ts';
+import type { DataSourceError } from '../../../domain/errors/errors.ts';
 import type { RawResult } from './Driver.ts';
 
 export interface Dialect {
@@ -40,6 +42,12 @@ export interface Dialect {
   /** A `DROP TABLE`/`DROP VIEW` statement for `ref` with the identifier quoted and
    *  schema-qualified — a display draft the UI runs, never executed here. */
   dropQuery(ref: ObjectRef): Query;
+
+  /** The CASCADE retry (and the dependents it will also drop) for a failed
+   *  `dropSql` when `error` is this dialect's "dependent objects still exist"
+   *  failure; null otherwise (wrong error, or no CASCADE in this dialect). Lets
+   *  the UI offer the escalation, naming the casualties, only when it applies. */
+  cascadeDrop(dropSql: string, error: DataSourceError): CascadeDrop | null;
 
   /** Parameterized DML — every value bound, never a write without a key. */
   insertQuery(ref: ObjectRef, row: RowPatch): Query;

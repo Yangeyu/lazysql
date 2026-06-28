@@ -6,9 +6,16 @@
 
 import { test, expect } from 'bun:test';
 import { createAppStore } from '../store.ts';
-import { CapabilitySet } from '../../../domain/datasource/capabilities.ts';
+import { Capability, CapabilitySet } from '../../../domain/datasource/capabilities.ts';
 import { ok } from '../../../shared/Result.ts';
-import type { DataSource } from '../../../domain/datasource/DataSource.ts';
+import { QueryError } from '../../../domain/errors/errors.ts';
+import { PostgresDialect } from '../../../adapters/datasource/sql/dialects/PostgresDialect.ts';
+import type {
+  DataSource,
+  DdlScriptable,
+  Queryable,
+} from '../../../domain/datasource/DataSource.ts';
+import type { ResultSet } from '../../../domain/datasource/ResultSet.ts';
 import type { ConnectionService } from '../../../application/ports/ConnectionService.ts';
 import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
 import type { SqlGenerator } from '../../../application/ports/SqlGenerator.ts';
@@ -73,6 +80,67 @@ test('NL is unavailable (and beginNl is a no-op) without a generator', () => {
   store.getState().beginNl();
   expect(store.getState().nlMode).toBe(false);
   expect(store.getState().queryError).toContain('ANTHROPIC_API_KEY');
+});
+
+test('a dependents-blocked DROP escalates to a CASCADE confirm, then runs it', async () => {
+  // A Postgres-shaped fake: the plain DROP raises SQLSTATE 2BP01; the CASCADE
+  // retry succeeds. cascadeRetry reuses the real dialect so the wiring is exercised
+  // end-to-end (executeQuery's danger guard → confirm → failure → CASCADE confirm).
+  const dialect = new PostgresDialect();
+  const executed: string[] = [];
+  const okResult: ResultSet = {
+    shape: 'tabular',
+    columns: [],
+    rows: [],
+    affected: 0,
+    truncated: false,
+  };
+  const source: DataSource & Queryable & DdlScriptable = {
+    id: 'pg-fake',
+    connect: async () => ok(undefined),
+    disconnect: async () => {},
+    ping: async () => true,
+    capabilities: () => new CapabilitySet([Capability.Query, Capability.DdlScript]),
+    execute: async (query) => {
+      executed.push(query.text);
+      if (/\bdrop\b/i.test(query.text) && !/\bcascade\b/i.test(query.text)) {
+        throw new QueryError('cannot drop table widget because other objects depend on it', {
+          code: '2BP01',
+          detail: 'view order_summary depends on table widget',
+        });
+      }
+      return okResult;
+    },
+    dropStatement: (ref) => dialect.dropQuery(ref).text,
+    cascadeRetry: (sql, error) => dialect.cascadeDrop(sql, error),
+  };
+  const profile: ConnectionProfile = { id: 'pg', name: 'PG', driver: 'postgres', options: {} };
+  const store = createAppStore({
+    connectionService: {
+      list: async () => [profile],
+      open: async () => ok(source),
+      save: async () => {},
+      remove: async () => {},
+    },
+    initial: profile,
+  });
+  await store.getState().init();
+
+  store.getState().setQuery('DROP TABLE "public"."widget";');
+  await store.getState().executeQuery(); // DROP is destructive → first confirm
+  expect(store.getState().mode).toBe('confirm');
+  expect(store.getState().pending?.title).toContain('irreversible');
+  expect(store.getState().pending?.tone).toBe('danger');
+
+  await store.getState().confirmPending(); // runs the DROP → 2BP01 → CASCADE confirm
+  expect(store.getState().mode).toBe('confirm');
+  expect(store.getState().pending?.statement).toContain('CASCADE'); // exact SQL echoed
+  expect(store.getState().pending?.details).toContain('view order_summary'); // names the casualty
+
+  await store.getState().confirmPending(); // runs the CASCADE retry → succeeds
+  expect(executed.some((s) => /CASCADE/i.test(s))).toBe(true);
+  expect(store.getState().mode).toBe('normal');
+  expect(store.getState().pending).toBeNull();
 });
 
 test('a non-Queryable source gates off the SQL editor and NL→SQL', async () => {

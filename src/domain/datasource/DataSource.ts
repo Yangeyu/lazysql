@@ -14,7 +14,7 @@ import type { SchemaSnapshot, ObjectRef, ObjectSchema } from './schema.ts';
 import type { RowKey, RowPatch, EditResult } from './edit.ts';
 import type { Query, BrowseSpec, Filter } from '../query/Query.ts';
 import type { Result } from '../../shared/Result.ts';
-import type { ConnectionError } from '../errors/errors.ts';
+import type { ConnectionError, DataSourceError } from '../errors/errors.ts';
 
 export type SourceId = string;
 
@@ -76,9 +76,24 @@ export interface BrowsePreviewable {
  * user to review and run. SQL adapters quote/qualify identifiers via their
  * dialect, so a reserved-word object name (e.g. `window`) drops cleanly.
  */
+/** A DROP that failed for dependents can be retried with CASCADE: the retry
+ *  statement plus the dependent objects it will also drop, named for the prompt
+ *  (e.g. `view orders_summary`) so the user sees what CASCADE removes. The list
+ *  is best-effort — empty when the driver gives no detail. */
+export interface CascadeDrop {
+  readonly sql: string;
+  readonly dependents: readonly string[];
+}
+
 export interface DdlScriptable {
   /** A `DROP TABLE`/`DROP VIEW` statement for `ref`, quoted and schema-qualified. */
   dropStatement(ref: ObjectRef): string;
+
+  /** Given a DROP that failed, the CASCADE retry (and the objects it will also
+   *  drop) — but only when `error` is precisely "can't drop, dependents exist".
+   *  null when the failure is unrelated or this source has no CASCADE semantics,
+   *  so the UI offers the (destructive) escalation strictly on the matching error. */
+  cascadeRetry(dropSql: string, error: DataSourceError): CascadeDrop | null;
 }
 
 /** Row/document level writes. Every method targets a single row via its key. */

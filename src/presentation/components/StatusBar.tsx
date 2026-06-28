@@ -1,7 +1,8 @@
 /**
  * StatusBar — the bottom bar: a context/mode badge on the left and the compact,
- * context-aware keybinding hints on the right. Input modes (filter / edit /
- * confirm) take over the bar to show their live prompt. The hint text is
+ * context-aware keybinding hints on the right. Inline input modes (filter / edit)
+ * take over the bar to show their live prompt; a staged confirm is shown by the
+ * floating ConfirmDialog instead, so it isn't handled here. The hint text is
  * rendered from the keymap registry (footerHints) so it never drifts from the
  * `?` overlay or the real bindings. Branding and the data breadcrumb live in the
  * top Header; this bar is purely about *what you can do right now*.
@@ -28,7 +29,6 @@ interface Props {
   editInitial: string;
   editColumn: string | null;
   onEditSubmit: (value: string) => void;
-  pendingMessage: string | null;
 }
 
 const Badge = ({
@@ -74,7 +74,6 @@ const StatusBarImpl = ({
   editInitial,
   editColumn,
   onEditSubmit,
-  pendingMessage,
 }: Props) => {
   // The hint list stays on ONE line: it truncates from the right, so the active
   // context's keys (listed first) always survive.
@@ -108,17 +107,6 @@ const StatusBarImpl = ({
           cursorColor={theme.accent}
         />
       </box>,
-    );
-  }
-
-  // Confirmation: show the exact statement intent before it runs.
-  if (mode === 'confirm') {
-    return bar(
-      <text wrapMode="none">
-        <Badge label="confirm" bg={theme.red} fg="#ffffff" />
-        <span> </span>
-        <span fg={theme.yellow}>{pendingMessage}</span>
-      </text>,
     );
   }
 

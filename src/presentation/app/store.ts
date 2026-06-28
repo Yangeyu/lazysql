@@ -56,7 +56,7 @@ import type {
   SqlGenerator,
   SchemaContext,
 } from '../../application/ports/SqlGenerator.ts';
-import { isUnqualifiedWrite } from '../../domain/query/classify.ts';
+import { dangerKind, type DangerKind } from '../../domain/query/classify.ts';
 import type { StatementKind } from '../../domain/query/classify.ts';
 import type { QueryHistoryStore } from '../../application/ports/QueryHistoryStore.ts';
 import {
@@ -129,11 +129,34 @@ export type SurfaceKind = 'browse' | 'query';
 /** Which face of the main pane is showing for an open object. */
 export type MainTab = 'data' | 'ddl';
 
-/** A confirmed, ready-to-run action awaiting the user's y/n. */
+/**
+ * A confirmed, ready-to-run action awaiting the user's y/n, rendered in the
+ * confirm dialog. `title` is the one-line headline; `statement` is the exact SQL
+ * it will run (echoed so the user sees what they're approving); `details` are
+ * supporting lines (e.g. the objects a CASCADE would also drop); `tone` drives
+ * the dialog's emphasis (`danger` → red) for irreversible/bulk operations.
+ */
 export interface Pending {
-  readonly message: string;
+  readonly title: string;
+  readonly statement?: string;
+  readonly details?: readonly string[];
+  readonly tone: 'normal' | 'danger';
   readonly run: () => Promise<void>;
 }
+
+/** Presentation wording for a structured danger kind — the dialog headline. */
+const dangerHeadline = (kind: DangerKind, sql: string): string => {
+  switch (kind) {
+    case 'drop':
+      return 'DROP — irreversible';
+    case 'truncate':
+      return 'TRUNCATE — irreversible';
+    case 'unqualified-write': {
+      const verb = sql.match(/^[a-z]+/i)?.[0]?.toUpperCase() ?? 'WRITE';
+      return `${verb} with no WHERE — affects ALL rows`;
+    }
+  }
+};
 
 /** The full-cell inspector overlay: one self-contained slice (value + scroll). */
 export interface CellInspect {
@@ -569,6 +592,23 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       const r = await runQuery(active, text);
       if (!r.ok) {
         set({ loading: false, queryError: r.error.message, queryElapsedMs: null });
+        // A DROP refused because dependents exist can be retried with CASCADE —
+        // a heavier hammer, so it gets its own confirm rather than auto-running.
+        // Name the objects CASCADE would also drop so the choice is informed.
+        const cascade = asDdlScriptable(active)?.cascadeRetry(text, r.error) ?? null;
+        if (cascade) {
+          set({
+            mode: 'confirm',
+            focus: 'grid',
+            pending: {
+              title: 'Other objects depend on it — drop them too?',
+              statement: cascade.sql,
+              details: cascade.dependents,
+              tone: 'danger',
+              run: () => runEditorSql(cascade.sql),
+            },
+          });
+        }
         return;
       }
       // Record in history, skipping an immediate duplicate and keeping only the
@@ -1282,7 +1322,9 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         set({
           mode: 'confirm',
           pending: {
-            message: `UPDATE ${current.name} SET ${column} = '${value}' WHERE ${keyText(key)}`,
+            title: `Update ${column} in ${current.name}?`,
+            statement: `UPDATE ${current.name} SET ${column} = '${value}' WHERE ${keyText(key)}`,
+            tone: 'normal',
             run: async () => {
               if (!active) return;
               const r = await updateRow(active, current, key, [
@@ -1305,7 +1347,9 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         set({
           mode: 'confirm',
           pending: {
-            message: `DELETE FROM ${current.name} WHERE ${keyText(key)}`,
+            title: `Delete this row from ${current.name}?`,
+            statement: `DELETE FROM ${current.name} WHERE ${keyText(key)}`,
+            tone: 'danger',
             run: async () => {
               if (!active) return;
               const r = await deleteRow(active, current, key);
@@ -1320,7 +1364,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         const { pending } = get();
         set({ mode: 'normal' });
         if (pending) await pending.run();
-        set({ pending: null });
+        // run() may itself stage a follow-up confirm (e.g. the CASCADE escalation
+        // after a dependents-blocked DROP); only clear when nothing new was queued
+        // so the chained prompt survives.
+        if (get().pending === pending) set({ pending: null });
       },
 
       cancelPending: () => set({ mode: 'normal', pending: null }),
@@ -1341,16 +1388,19 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         if (!active) return;
         const text = get().queryText.trim();
         if (!text) return;
-        // An unqualified UPDATE/DELETE rewrites every row — stage a confirm rather
-        // than run it straight off the editor's ⏎. Focus leaves the editor so its
-        // native input can't swallow the y/n the confirm prompt is waiting on.
-        if (isUnqualifiedWrite(text)) {
-          const verb = text.match(/^[a-z]+/i)?.[0]?.toUpperCase() ?? 'WRITE';
+        // A destructive statement (unqualified UPDATE/DELETE, or DROP/TRUNCATE)
+        // stages a confirm rather than running straight off the editor's ⏎. Focus
+        // leaves the editor so its native input can't swallow the y/n the prompt
+        // is waiting on.
+        const kind = dangerKind(text);
+        if (kind) {
           set({
             mode: 'confirm',
             focus: 'grid',
             pending: {
-              message: `${verb} with no WHERE — affects ALL rows. Run?`,
+              title: dangerHeadline(kind, text),
+              statement: text,
+              tone: 'danger',
               run: () => runEditorSql(text),
             },
           });

@@ -21,6 +21,9 @@ import type {
   ObjectKind,
 } from '../../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
+import type { CascadeDrop } from '../../../../domain/datasource/DataSource.ts';
+import type { DataSourceError } from '../../../../domain/errors/errors.ts';
+import { QueryError } from '../../../../domain/errors/errors.ts';
 import type { RawResult } from '../Driver.ts';
 import { buildWhere } from '../whereBuilder.ts';
 import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
@@ -42,6 +45,20 @@ const orderBy = (sort: Sort | null | undefined): string =>
 
 const col = (raw: RawResult, name: string): number =>
   raw.columns.findIndex((c) => c.toLowerCase() === name.toLowerCase());
+
+/** The objects a dependents-blocked DROP would cascade to. Postgres lists them
+ *  in the error `detail`, one per line as "<object> depends on <object>"; the
+ *  subject of each line is what CASCADE removes. De-duplicated, order preserved.
+ *  A trailing "and N other objects" line (when PG caps the list) is kept verbatim. */
+const parseDependents = (detail: string | undefined): string[] => {
+  if (!detail) return [];
+  const seen = new Set<string>();
+  for (const line of detail.split('\n')) {
+    const subject = line.split(/\s+depends on\s+/i)[0]?.trim();
+    if (subject) seen.add(subject);
+  }
+  return [...seen];
+};
 
 export class PostgresDialect implements Dialect {
   readonly id = 'postgres';
@@ -183,6 +200,17 @@ export class PostgresDialect implements Dialect {
 
   dropQuery(ref: ObjectRef): Query {
     return sql(`DROP ${ref.kind === 'view' ? 'VIEW' : 'TABLE'} ${qualify(ref)};`);
+  }
+
+  cascadeDrop(dropSql: string, error: DataSourceError): CascadeDrop | null {
+    // SQLSTATE 2BP01 = dependent_objects_still_exist: the DROP was refused because
+    // other objects (views, FKs, …) reference this one. CASCADE removes them too.
+    if (!(error instanceof QueryError) || error.code !== '2BP01') return null;
+    if (!/^\s*drop\s+(table|view)\b/i.test(dropSql)) return null;
+    return {
+      sql: dropSql.replace(/\s*;?\s*$/, ' CASCADE;'),
+      dependents: parseDependents(error.detail),
+    };
   }
 
   insertQuery(ref: ObjectRef, row: RowPatch): Query {

@@ -12,8 +12,25 @@ export class DataSourceError extends Error {
 /** Failed to establish or verify a connection. */
 export class ConnectionError extends DataSourceError {}
 
-/** A query/command failed to execute. */
-export class QueryError extends DataSourceError {}
+/**
+ * A query/command failed to execute. `code` carries the driver's native error
+ * code (e.g. a Postgres SQLSTATE like `2BP01`) so callers branch on failure kind
+ * without matching message text; `detail` carries the driver's supplementary
+ * explanation (e.g. Postgres' newline-listed dependent objects on a blocked DROP).
+ */
+export class QueryError extends DataSourceError {
+  constructor(
+    message: string,
+    options?: { cause?: unknown; code?: string; detail?: string },
+  ) {
+    super(message, options?.cause);
+    this.code = options?.code;
+    this.detail = options?.detail;
+  }
+
+  readonly code?: string;
+  readonly detail?: string;
+}
 
 /** The source does not support the requested capability. */
 export class UnsupportedCapabilityError extends DataSourceError {}

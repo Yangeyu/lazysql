@@ -1,5 +1,10 @@
 import { test, expect } from 'bun:test';
-import { classifyStatement, isDestructive, isUnqualifiedWrite } from '../classify.ts';
+import {
+  classifyStatement,
+  dangerKind,
+  isDestructive,
+  isUnqualifiedWrite,
+} from '../classify.ts';
 
 test('classifies reads', () => {
   expect(classifyStatement('SELECT * FROM t')).toBe('read');
@@ -48,4 +53,22 @@ test('isUnqualifiedWrite fails open when "where" appears as a literal', () => {
   // Heuristic, not a parser: a `where` token anywhere suppresses the prompt
   // rather than risk nagging on a statement that may in fact be qualified.
   expect(isUnqualifiedWrite("UPDATE t SET note = 'go where you like'")).toBe(false);
+});
+
+test('dangerKind flags DROP and TRUNCATE', () => {
+  expect(dangerKind('DROP TABLE "public"."widget";')).toBe('drop');
+  expect(dangerKind('truncate table t')).toBe('truncate');
+});
+
+test('dangerKind flags an unqualified write but clears a qualified one', () => {
+  expect(dangerKind('DELETE FROM t')).toBe('unqualified-write');
+  expect(dangerKind('UPDATE t SET a = 1')).toBe('unqualified-write');
+  expect(dangerKind('DELETE FROM t WHERE id = 1')).toBeNull();
+});
+
+test('dangerKind clears reads and non-destructive DDL/writes', () => {
+  expect(dangerKind('SELECT * FROM t')).toBeNull();
+  expect(dangerKind('INSERT INTO t VALUES (1)')).toBeNull();
+  expect(dangerKind('CREATE TABLE t (id int)')).toBeNull();
+  expect(dangerKind('ALTER TABLE t ADD COLUMN c int')).toBeNull();
 });

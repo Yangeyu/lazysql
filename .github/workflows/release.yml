@@ -15,7 +15,6 @@ jobs:
       matrix:
         include:
           - { suffix: darwin-arm64, runner: macos-14 }
-          - { suffix: darwin-x64, runner: macos-13 }
           - { suffix: linux-x64, runner: ubuntu-latest }
           - { suffix: linux-arm64, runner: ubuntu-24.04-arm }
           - { suffix: win32-x64, runner: windows-latest }

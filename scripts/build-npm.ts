@@ -30,7 +30,6 @@ interface Target {
 
 const TARGETS: readonly Target[] = [
   { suffix: 'darwin-arm64', bunTarget: 'bun-darwin-arm64', os: 'darwin', cpu: 'arm64', binName: 'lazysql' },
-  { suffix: 'darwin-x64', bunTarget: 'bun-darwin-x64', os: 'darwin', cpu: 'x64', binName: 'lazysql' },
   { suffix: 'linux-x64', bunTarget: 'bun-linux-x64', os: 'linux', cpu: 'x64', binName: 'lazysql' },
   { suffix: 'linux-arm64', bunTarget: 'bun-linux-arm64', os: 'linux', cpu: 'arm64', binName: 'lazysql' },
   { suffix: 'win32-x64', bunTarget: 'bun-windows-x64', os: 'win32', cpu: 'x64', binName: 'lazysql.exe' },

@@ -18,7 +18,7 @@ try {
 } catch {
   console.error(`lazysql: no prebuilt binary for ${platformArch}.`);
   console.error(
-    'Supported platforms: darwin-arm64, darwin-x64, linux-x64, linux-arm64, win32-x64.',
+    'Supported platforms: darwin-arm64, linux-x64, linux-arm64, win32-x64.',
   );
   process.exit(1);
 }

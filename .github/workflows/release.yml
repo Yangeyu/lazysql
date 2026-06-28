@@ -22,10 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.2.16" # pin: bun 1.3.x breaks bson (node:v8 isBuildingSnapshot) in --compile
       - run: bun install --frozen-lockfile
       - run: bun scripts/build-npm.ts --target=${{ matrix.suffix }}
+      # Boot the freshly-built binary on its own platform: `--list` fully starts
+      # the runtime (loading every static dependency) then exits 0, so a binary
+      # that crashes on launch fails the job and never reaches publish.
+      - name: Smoke test — binary must boot
+        shell: bash
+        run: |
+          bin="dist/npm/${{ matrix.suffix }}/bin/lazysql"
+          [ "${{ matrix.suffix }}" = "win32-x64" ] && bin="${bin}.exe"
+          chmod +x "$bin" 2>/dev/null || true
+          "$bin" --list
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.suffix }}
@@ -37,8 +45,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.2.16" # pin: bun 1.3.x breaks bson (node:v8 isBuildingSnapshot) in --compile
       - run: bun install --frozen-lockfile
       # Each artifact lands as dist/npm/<suffix>/ (the artifact name is the suffix).
       - uses: actions/download-artifact@v4

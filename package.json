@@ -1,6 +1,6 @@
 {
   "name": "@vascent/lazysql",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A lazygit-style TUI database manager.",
   "type": "module",
   "publishConfig": {
@@ -19,6 +19,9 @@
     "test": "bun test",
     "commitlint": "commitlint --edit",
     "prepare": "git config core.hooksPath .githooks"
+  },
+  "overrides": {
+    "bson": "7.2.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",

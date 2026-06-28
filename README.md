@@ -50,6 +50,8 @@ src/
 
 装完直接敲 `lazysql`。支持 **macOS(Apple Silicon)· Linux(x64 / arm64)· Windows(x64)**。
 
+> 用 `bun add -g` 安装时,若敲 `lazysql` 提示 command not found,是 Bun 的全局目录 `~/.bun/bin` 不在 `PATH`——`bun add -g` 结尾通常会提示你加(`npm i -g` 一般无此问题)。
+
 升级到最新版:
 
 ```bash
@@ -91,15 +93,19 @@ bun start --list          # 列出已保存的连接并退出
 
 ### 装成全局命令(从源码)
 
-想直接敲 `lazysql` 而非 `bun start`?在仓库里用 Bun 的 link 注册一个全局命令:
+clone 后想敲 `lazysql` 而非 `bun start`:
 
 ```bash
-bun install
-bun link            # 注册全局 lazysql,指向本仓库
-lazysql --list      # 此后可在任意目录运行
+bun link            # 注册全局 lazysql → ~/.bun/bin/lazysql(软链到本仓库)
 ```
 
-`bun link` 把 `~/.bun/bin/lazysql` 软链到仓库的 `bin`(`src/main.tsx`),改完代码即时生效、无需重装;撤销在仓库内 `bun unlink`。需 `~/.bun/bin` 在 `PATH` 上(装好 Bun 通常已配置)。
+它把命令放进 Bun 的全局目录 `~/.bun/bin`。确认该目录在 `PATH` 上(`command -v lazysql` 有输出即可);没有就加一行——**和 `bun add -g` 需要的配置完全一样**:
+
+```bash
+echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+```
+
+改完代码即时生效、无需重装;撤销在仓库内 `bun unlink`。
 
 ## 键位
 

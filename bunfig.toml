@@ -3,4 +3,4 @@
 preload = ["./scripts/bun-v8-shim.ts"]
 
 [test]
-preload = ["./scripts/bun-v8-shim.ts"]
+preload = ["./scripts/bun-v8-shim.ts", "./scripts/silence-act-warnings.ts"]

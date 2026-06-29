@@ -17,7 +17,7 @@
  *   bun scripts/build-npm.ts --main-only     # main package only
  */
 
-import { mkdirSync, rmSync, writeFileSync, copyFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync, copyFileSync, readFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 
 interface Target {
@@ -92,7 +92,11 @@ const buildMainPackage = (): void => {
   const binDir = join(dir, 'bin');
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(binDir, { recursive: true });
-  copyFileSync(join(ROOT, 'bin', 'lazysql.cjs'), join(binDir, 'lazysql.cjs'));
+  const launcher = join(binDir, 'lazysql.cjs');
+  copyFileSync(join(ROOT, 'bin', 'lazysql.cjs'), launcher);
+  // copyFileSync preserves the source mode; the bin shim must ship executable or
+  // npm links a non-runnable target → `permission denied` on launch.
+  chmodSync(launcher, 0o755);
   copyFileSync(join(ROOT, 'README.md'), join(dir, 'README.md'));
 
   const optionalDependencies = Object.fromEntries(

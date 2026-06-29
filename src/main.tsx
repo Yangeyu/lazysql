@@ -44,13 +44,14 @@ import type { ConnectionProfile } from './domain/connection/ConnectionProfile.ts
 
 const DEFAULT_CONFIG = `# lazysql connections.
 # Passwords are NOT stored here — they live in secrets.json (chmod 600).
-# Edit this file to add connections; uncomment an example to get started.
+# Add a connection below, or press n in the app to create one. Uncomment an
+# example to get started (use an absolute path for a sqlite file).
 connections:
-  - id: sample
-    name: Sample (SQLite)
-    driver: sqlite
-    options:
-      file: data/sample.db
+  # - id: local-sqlite
+  #   name: Local SQLite
+  #   driver: sqlite
+  #   options:
+  #     file: /absolute/path/to/your.db
 
   # - id: local-pg
   #   name: Local Postgres

@@ -22,21 +22,24 @@ jobs:
           - { suffix: win32-x64, runner: windows-latest }
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun scripts/build-npm.ts --target=${{ matrix.suffix }}
-      # Boot the freshly-built binary on its own platform: `--list` fully starts
-      # the runtime (loading every static dependency) then exits 0, so a binary
-      # that crashes on launch fails the job and never reaches publish.
+      # Boot the freshly-built binary on its own platform: the meta-commands start
+      # the runtime (every static import is evaluated) then exit 0, so a binary that
+      # crashes on launch fails the job and never reaches publish. --version also
+      # confirms the package.json version was inlined into the compiled binary;
+      # --list additionally exercises the persistence adapters + config I/O.
       - name: Smoke test — binary must boot
         shell: bash
         run: |
           bin="dist/npm/${{ matrix.suffix }}/bin/lazysql"
           [ "${{ matrix.suffix }}" = "win32-x64" ] && bin="${bin}.exe"
           chmod +x "$bin" 2>/dev/null || true
+          "$bin" --version
           "$bin" --list
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.suffix }}
           path: dist/npm/${{ matrix.suffix }}
@@ -48,15 +51,15 @@ jobs:
       id-token: write # mint the OIDC token npm exchanges for a publish credential
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # Each artifact lands as dist/npm/<suffix>/ (the artifact name is the suffix).
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist/npm
       - run: bun scripts/build-npm.ts --main-only
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'

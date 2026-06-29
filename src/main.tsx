@@ -6,10 +6,16 @@
  * hands a connected store to the TUI. Everything below depends only on ports. (DIP)
  *
  * Usage:
- *   bun start                 open the default saved connection
- *   bun start <name>          open a saved connection by id/name
- *   bun start <file.db>       open an ad-hoc SQLite file
- *   bun start --list          list saved connections and exit
+ *   lazysql                   pick from saved connections interactively
+ *   lazysql <name>            open a saved connection by id/name
+ *   lazysql <file.db>         open an ad-hoc SQLite file
+ *   lazysql -l, --list        list saved connections and exit
+ *   lazysql -h, --help        show help and exit
+ *   lazysql -v, --version     print version and exit
+ *
+ * Argv parsing lives in `cli/` (pure `parseArgs` → intent union); this root maps
+ * the intent to side effects. Meta commands (help/version) short-circuit before
+ * any filesystem write or renderer init, so they stay pure and fast.
  */
 
 import { createCliRenderer } from '@opentui/core';
@@ -28,6 +34,9 @@ import { connectionsFile, configFile } from './adapters/persistence/paths.ts';
 import { loadLlmEnv } from './adapters/persistence/appConfig.ts';
 import { openConnection } from './application/usecases/OpenConnection.ts';
 import { createSqlGenerator } from './adapters/llm/createSqlGenerator.ts';
+import { parseArgs } from './cli/parse.ts';
+import { formatHelp, formatVersion } from './cli/help.ts';
+import pkg from '../package.json';
 import type { SecretStore } from './application/ports/SecretStore.ts';
 import type { ConnectionService } from './application/ports/ConnectionService.ts';
 import type { SqlGenerator } from './application/ports/SqlGenerator.ts';
@@ -112,6 +121,22 @@ const die = (message: string): never => {
 
 // ── boot ──────────────────────────────────────────────────────────────────
 
+const invocation = parseArgs(process.argv.slice(2));
+
+// Meta commands are pure: they print and exit before any config file is written
+// or the renderer boots. Kept ahead of all side effects on purpose.
+if (invocation.kind === 'help') {
+  console.log(formatHelp());
+  process.exit(0);
+}
+if (invocation.kind === 'version') {
+  console.log(formatVersion(pkg.version));
+  process.exit(0);
+}
+if (invocation.kind === 'unknownOption') {
+  die(`unknown option "${invocation.option}" (try --help)`);
+}
+
 const repo = new YamlConnectionRepository();
 const history = new JsonQueryHistoryStore();
 const secrets: SecretStore =
@@ -131,21 +156,22 @@ if (!existsSync(cfgFile)) {
   await writeFile(cfgFile, DEFAULT_APP_CONFIG, 'utf8');
 }
 
-const arg = process.argv[2];
 const profiles = await repo.list();
 
-if (arg === '--list' || arg === '-l') {
+if (invocation.kind === 'list') {
   if (profiles.length === 0) console.log('(no saved connections)');
   for (const p of profiles) console.log(`${p.id}\t${p.driver}\t${p.name}`);
   process.exit(0);
 }
 
-// With an explicit arg we connect straight in; with none we show the picker.
+// `open` connects straight in; resolving the target to a saved profile or an
+// ad-hoc file is the edge step parseArgs deliberately left out (it needs IO).
+// `default` leaves `initial` null → the interactive picker.
 let initial: ConnectionProfile | null = null;
-if (arg) {
-  initial = resolveProfile(arg, profiles);
+if (invocation.kind === 'open') {
+  initial = resolveProfile(invocation.target, profiles);
   if (!initial) {
-    die(`unknown connection "${arg}" (try --list, a saved name, or a .db file)`);
+    die(`unknown connection "${invocation.target}" (try --list, a saved name, or a .db file)`);
   }
 }
 

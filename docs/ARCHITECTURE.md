@@ -321,7 +321,11 @@ src/
     Result.ts                  # Result<T,E>，边界处显式错误
     events/                    # 领域事件总线
     logger.ts                  # 结构化日志写文件（绝不写 stdout，TUI 独占屏幕）
-  main.ts                      # 组合根：装配所有具体实现
+  cli/                         # shell 入口壳（TUI 之外的薄 presentation 面，见 adr/0009）
+    spec.ts                    #   命令/标志表：parse 与 --help 的唯一真相
+    parse.ts                   #   纯 argv → CliInvocation 判别联合（零 IO，可纯测）
+    help.ts                    #   从 spec 渲染 --help / --version 文本
+  main.ts                      # 组合根：parse → 元命令短路 → 装配 → 意图映射副作用
 ```
 
 ---

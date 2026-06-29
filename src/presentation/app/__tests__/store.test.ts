@@ -171,3 +171,59 @@ test('a non-Queryable source gates off the SQL editor and NL→SQL', async () =>
   expect(store.getState().focus).not.toBe('editor');
   expect(store.getState().error).toContain('does not support SQL');
 });
+
+// ── remove connection ──
+
+/** A service whose remove/list share one mutable list, so a removal is observable
+ *  in the next list() the way the real YAML repo behaves. */
+const mutableService = (initial: ConnectionProfile[]): ConnectionService => {
+  let profiles = [...initial];
+  return {
+    list: async () => [...profiles],
+    open: async () => ok(fakeSource),
+    save: async () => {},
+    remove: async (id) => {
+      profiles = profiles.filter((p) => p.id !== id);
+    },
+  };
+};
+
+test('beginRemoveConnection stages a danger confirm naming the cursor connection', async () => {
+  const a: ConnectionProfile = { id: 'a', name: 'Local PG', driver: 'postgres', options: {} };
+  const b: ConnectionProfile = { id: 'b', name: 'Staging', driver: 'mysql', options: {} };
+  const store = createAppStore({ connectionService: mutableService([a, b]) });
+  await store.getState().init(); // no `initial` → two inactive connection roots, cursor at 0
+
+  store.getState().beginRemoveConnection();
+
+  expect(store.getState().mode).toBe('confirm');
+  expect(store.getState().pending?.title).toContain('Local PG');
+  expect(store.getState().pending?.tone).toBe('danger');
+});
+
+test('confirming the remove deletes only that profile and leaves confirm mode', async () => {
+  const a: ConnectionProfile = { id: 'a', name: 'Local PG', driver: 'postgres', options: {} };
+  const b: ConnectionProfile = { id: 'b', name: 'Staging', driver: 'mysql', options: {} };
+  const store = createAppStore({ connectionService: mutableService([a, b]) });
+  await store.getState().init();
+
+  store.getState().beginRemoveConnection(); // cursor on 'a'
+  await store.getState().confirmPending();
+
+  const s = store.getState();
+  expect(s.profiles.map((p) => p.id)).toEqual(['b']);
+  expect(s.mode).toBe('normal');
+  expect(s.pending).toBeNull();
+});
+
+test('beginRemoveConnection is a no-op when the cursor is not on a connection row', async () => {
+  const a: ConnectionProfile = { id: 'a', name: 'Local PG', driver: 'postgres', options: {} };
+  const store = createAppStore({ connectionService: mutableService([a]) });
+  await store.getState().init();
+  store.setState({ treeIndex: 999 }); // past the last row → no connection under the cursor
+
+  store.getState().beginRemoveConnection();
+
+  expect(store.getState().mode).toBe('normal');
+  expect(store.getState().pending).toBeNull();
+});

@@ -301,6 +301,9 @@ export interface AppState {
   beginNewConnection: () => void;
   /** Edit the connection under the cursor: open the form prefilled from it. */
   beginEditConnection: () => void;
+  /** Stage a confirm to remove the connection under the cursor (a no-op unless the
+   *  cursor is on a connection row). Confirming deletes its profile and secret. */
+  beginRemoveConnection: () => void;
   /** Set a non-secret field's value (the native <input> is controlled). */
   connFormSetField: (key: string, value: string) => void;
   /** Append/erase for the masked secret field only (no native input there). */
@@ -1098,6 +1101,24 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             error: null,
             probe: null,
             editingId: profile.id,
+          },
+        });
+      },
+
+      beginRemoveConnection: () => {
+        // Removal only acts on a connection row — never the active connection by
+        // proxy of a deeper category/object row (unlike edit's fallback).
+        const row = rowsNow()[get().treeIndex];
+        if (row?.type !== 'connection') return;
+        const profile = get().profiles.find((p) => p.id === row.id);
+        if (!profile) return;
+        set({
+          mode: 'confirm',
+          pending: {
+            title: `Remove connection "${profile.name}"?`,
+            details: ['Deletes the saved profile and its stored password.'],
+            tone: 'danger',
+            run: () => get().removeConnection(profile.id),
           },
         });
       },

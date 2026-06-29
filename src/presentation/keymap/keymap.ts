@@ -145,6 +145,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: 'r', hint: 'refresh', desc: 'Reload connections and re-read the object tree', match: ['r'], run: (s) => void s.refresh() },
       { keys: 'n', hint: 'new', desc: 'New connection', match: ['n'], run: (s) => s.beginNewConnection() },
       { keys: 'e', hint: 'edit', desc: 'Edit the selected connection’s config', match: ['e'], run: (s) => s.beginEditConnection() },
+      { keys: 'x', hint: 'remove', desc: 'Remove the selected connection (profile + saved password)', match: ['x'], run: (s) => s.beginRemoveConnection() },
     ],
   },
   grid: {

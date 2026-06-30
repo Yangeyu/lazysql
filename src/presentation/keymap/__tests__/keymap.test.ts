@@ -140,19 +140,3 @@ test('dispatchKey: g/G jump the tree to its first / last row', () => {
   expect(treeTop).toHaveBeenCalledTimes(1);
   expect(treeBottom).toHaveBeenCalledTimes(1);
 });
-
-test('dispatchKey: ⌃l focuses the results pane, from a nav context and the editor', () => {
-  const fromGrid = stub({ focus: 'grid' });
-  dispatchKey(fromGrid, key({ name: 'l', ctrl: true }), env());
-  expect(fromGrid.focusPane).toHaveBeenCalledWith('grid');
-
-  const fromEditor = stub({ focus: 'editor' });
-  dispatchKey(fromEditor, key({ name: 'l', ctrl: true }), env());
-  expect(fromEditor.focusPane).toHaveBeenCalledWith('grid');
-});
-
-test('dispatchKey: the removed 1/2/3 pane-jump no longer fires', () => {
-  const s = stub({ focus: 'grid' });
-  for (const d of ['1', '2', '3']) dispatchKey(s, key({ sequence: d }), env());
-  expect(s.focusPane).not.toHaveBeenCalled();
-});

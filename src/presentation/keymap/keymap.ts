@@ -123,7 +123,6 @@ const GLOBAL: readonly KeyBinding[] = [
   { keys: '`', hint: 'conn', desc: 'Switch connection (back to picker)', match: ['`'], run: (s) => s.disconnect() },
   { keys: ':', hint: 'sql', desc: 'Open the SQL query editor', match: [':'], enabled: (f) => f.queryable, run: (s) => s.focusPane('editor') },
   { keys: 'tab', hint: 'pane', desc: 'Toggle focus: tree ↔ results', match: ['tab'], run: (s) => s.cycleFocus() },
-  { keys: '^l', hint: 'results', desc: 'Focus the results pane', match: ['^l'], run: (s) => s.focusPane('grid') },
   { keys: '?', hint: 'help', desc: 'Toggle this help', match: ['?'], run: (s) => s.toggleHelp() },
   { keys: 'q', hint: 'quit', desc: 'Quit lazysql', match: ['q'], run: (_s, env) => env.quit() },
 ];
@@ -185,7 +184,6 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['up'], run: (s) => s.historyPrev() },
       { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['down'], run: (s) => s.historyNext() },
       { keys: '^G', hint: 'ask AI', desc: 'Generate SQL from natural language', match: ['^g'], enabled: (f) => f.nlAvailable, run: (s) => s.beginNl() },
-      { keys: '^l', hint: 'results', desc: 'Focus the results pane', match: ['^l'], run: (s) => s.focusPane('grid') },
       // ^C is intercepted ahead of the context loop (dispatchKey) — doc-only here.
       { keys: '^C', hint: 'clear', desc: 'Clear the editor draft' },
       { keys: 'esc', hint: 'grid', desc: 'Focus the results grid', match: ['escape'], run: (s) => s.focusPane('grid') },

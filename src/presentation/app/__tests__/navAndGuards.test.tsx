@@ -53,19 +53,6 @@ test('row indicator + g/G move the cursor across the loaded rows', async () => {
   h.cleanup();
 });
 
-test('^l focuses the results pane', async () => {
-  // The active context shows in the bottom status bar's hint line; assert on it
-  // (the editor pane carries an always-visible "⏎ run" hint of its own).
-  const status = (f: string) => f.trimEnd().split('\n').at(-1) ?? '';
-  const h = await mount();
-  await h.until((f) => f.includes('NavDB'));
-  h.press(':'); // → editor
-  await h.until((f) => status(f).includes('tab complete'));
-  h.ctrl('l'); // → results grid
-  await h.until((f) => status(f).includes('inspect'));
-  h.cleanup();
-});
-
 test('a qualified UPDATE reports the rows it affected', async () => {
   const h = await mount();
   await h.until((f) => f.includes('NavDB'));

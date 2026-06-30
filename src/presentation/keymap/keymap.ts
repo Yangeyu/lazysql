@@ -178,11 +178,14 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
   editor: {
     title: 'SQL editor',
     bindings: [
-      // ⏎ is owned by the native <input> (onSubmit → run) — documentation-only.
+      // ⏎ / ⇧⏎ are owned by the native <textarea> (Enter→run, Shift+Enter→newline;
+      // ADR 0010) — documentation-only rows, dispatched by the widget not here.
       { keys: '⏎', hint: 'run', desc: 'Run the query (result shows in the grid)' },
-      { keys: 'tab', hint: 'complete', desc: 'Accept completion · else cycle to the next pane', match: ['tab'], run: (s) => (s.completions.length > 0 ? s.acceptCompletion() : s.cycleFocus()) },
-      { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['up'], run: (s) => s.historyPrev() },
-      { keys: '↑/↓', hint: 'history', desc: 'Previous / next history entry', match: ['down'], run: (s) => s.historyNext() },
+      { keys: '⇧⏎', hint: 'newline', desc: 'Insert a newline — compose multi-line SQL' },
+      { keys: 'tab', hint: 'complete', desc: 'Accept completion · else cycle to the next pane', match: ['tab'], run: (s) => (s.completionsOn && s.completions.length > 0 ? s.acceptCompletion() : s.cycleFocus()) },
+      { keys: '^P/^N', hint: 'history', desc: 'Previous / next history entry', match: ['^p'], run: (s) => s.historyPrev() },
+      { keys: '^P/^N', hint: 'history', desc: 'Previous / next history entry', match: ['^n'], run: (s) => s.historyNext() },
+      { keys: '^T', hint: 'compl', desc: 'Toggle schema completion on/off', match: ['^t'], run: (s) => s.toggleCompletions() },
       { keys: '^G', hint: 'ask AI', desc: 'Generate SQL from natural language', match: ['^g'], enabled: (f) => f.nlAvailable, run: (s) => s.beginNl() },
       // ^C is intercepted ahead of the context loop (dispatchKey) — doc-only here.
       { keys: '^C', hint: 'clear', desc: 'Clear the editor draft' },

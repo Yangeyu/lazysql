@@ -1,8 +1,9 @@
 /**
- * SQL editor history navigation: ↑ steps back through past queries and ↓ steps
- * forward again. Regression guard for the bug where the controlled <input>
- * echoed onInput after a history-driven queryText write, resetting historyIndex
- * to null so ↓ (historyNext) could never advance.
+ * SQL editor history navigation: ^P steps back through past queries and ^N steps
+ * forward again (↑/↓ now move the multi-line textarea cursor — ADR 0010).
+ * Regression guard for the bug where a history-driven queryText write echoes back
+ * through the textarea's onContentChange and must NOT reset historyIndex to null,
+ * else ^N (historyNext) could never advance.
  */
 
 import React from 'react';
@@ -29,7 +30,7 @@ const svc: ConnectionService = {
   remove: async () => {},
 };
 
-test('↑ steps back through history and ↓ steps forward again', async () => {
+test('^P steps back through history and ^N steps forward again', async () => {
   const db = new Database(DB, { create: true });
   db.exec('CREATE TABLE t (id INTEGER);');
   db.close();
@@ -52,15 +53,15 @@ test('↑ steps back through history and ↓ steps forward again', async () => {
   s().focusPane('editor');
   await h.flush();
 
-  h.arrow('up'); // → newest (q2)
+  h.ctrl('p'); // → newest (q2)
   await h.flush();
   expect(s().queryText).toBe('SELECT 2 AS b');
 
-  h.arrow('up'); // → older (q1); historyIndex must survive the input echo
+  h.ctrl('p'); // → older (q1); historyIndex must survive the textarea echo
   await h.flush();
   expect(s().queryText).toBe('SELECT 1 AS a');
 
-  h.arrow('down'); // ← forward again to q2 — the bug made this a no-op
+  h.ctrl('n'); // ← forward again to q2 — the bug made this a no-op
   await h.flush();
   expect(s().queryText).toBe('SELECT 2 AS b');
 

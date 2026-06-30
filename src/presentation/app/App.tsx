@@ -73,10 +73,12 @@ export const App = ({ clipboard }: AppProps) => {
   const cellView = useApp((s) => s.cellView);
   const surface = useApp((s) => s.surface);
   const queryText = useApp((s) => s.queryText);
+  const editorCaret = useApp((s) => s.editorCaret);
   const statement = useApp((s) => s.statement);
   const queryError = useApp((s) => s.queryError);
   const queryElapsedMs = useApp((s) => s.queryElapsedMs);
   const completions = useApp((s) => s.completions);
+  const completionsOn = useApp((s) => s.completionsOn);
   const nlAvailable = useApp((s) => s.nlAvailable);
   const nlMode = useApp((s) => s.nlMode);
   const generating = useApp((s) => s.generating);
@@ -177,11 +179,13 @@ export const App = ({ clipboard }: AppProps) => {
         {queryable ? (
           <QueryEditor
             queryText={queryText}
+            editorCaret={editorCaret}
             statement={statement}
             focused={focus === 'editor'}
             nlMode={nlMode}
+            completionsOn={completionsOn}
             onNlSubmit={(p) => void store.getState().generateFromNl(p)}
-            onQueryInput={(v) => store.getState().setQuery(v)}
+            onEditorChange={(t, c) => store.getState().setQuery(t, c)}
             onQuerySubmit={() => void store.getState().executeQuery()}
             completions={completions}
             generating={generating}

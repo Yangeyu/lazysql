@@ -227,3 +227,34 @@ test('beginRemoveConnection is a no-op when the cursor is not on a connection ro
   expect(store.getState().mode).toBe('normal');
   expect(store.getState().pending).toBeNull();
 });
+
+// ── editor: completion toggle + caret-aware accept (ADR 0010) ──
+
+const editorStore = () =>
+  createAppStore({
+    connectionService: serviceFor({ id: 'e', name: 'E', driver: 'sqlite', options: {} }),
+  });
+
+test('toggleCompletions flips the flag and clears candidates (gates Tab/accept)', () => {
+  const store = editorStore();
+  store.setState({ completions: ['name'], completionsOn: true });
+
+  store.getState().toggleCompletions();
+  expect(store.getState().completionsOn).toBe(false);
+  expect(store.getState().completions).toEqual([]);
+
+  store.getState().toggleCompletions();
+  expect(store.getState().completionsOn).toBe(true);
+});
+
+test('acceptCompletion replaces the partial word AT the caret, keeping the tail', () => {
+  const store = editorStore();
+  // Caret sits right after "na", mid-statement — the tail " FROM t" must survive
+  // (the old whole-text version would have replaced the trailing "t" instead).
+  store.setState({ queryText: 'SELECT na FROM t', editorCaret: 9, completions: ['name'], completionsOn: true });
+
+  store.getState().acceptCompletion();
+
+  expect(store.getState().queryText).toBe('SELECT name FROM t');
+  expect(store.getState().editorCaret).toBe(11); // just past the inserted word
+});

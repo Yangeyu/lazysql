@@ -35,10 +35,11 @@ export interface Layout {
  */
 export const computeLayout = (cols: number, rows: number, queryable: boolean): Layout => {
   const viewportCols = Math.max(24, cols - SIDEBAR_WIDTH - 1 - 4);
-  // The editor is a fixed 6 rows: ask + divider + the single-line SQL input +
-  // feedback, inside its border. (The SQL input is single-line now, so the panel
-  // no longer grows with the query.)
-  const editorRows = queryable ? 6 : 0;
+  // The editor is a fixed 10 rows: border (2) + ask + divider + feedback (3) leave
+  // ~5 visible SQL rows. The SQL input is a multi-line <textarea> (ADR 0010) that
+  // soft-wraps and scrolls WITHIN this fixed height, so the panel never grows with
+  // the query — the grid's share of the column stays predictable.
+  const editorRows = queryable ? 10 : 0;
   const gridBodyRows = Math.max(3, rows - editorRows - (queryable ? 8 : 7));
   const sidebarRows = Math.max(1, rows - 5);
   return { viewportCols, editorRows, gridBodyRows, sidebarRows };

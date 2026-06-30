@@ -1,7 +1,7 @@
 /**
- * The editor renders its prompt and binds the query text to the native SQL input.
- * Renders the real component through the OpenTUI test renderer and asserts the
- * prompt plus the bound query value are visible.
+ * The editor binds the query text to the native SQL <textarea>. Renders the real
+ * component through the OpenTUI test renderer and asserts the bound query value
+ * (seeded via the textarea's initialValue) is visible.
  */
 
 import React from 'react';
@@ -11,16 +11,18 @@ import { QueryEditor } from '../QueryEditor.tsx';
 
 const SQL = "SELECT count(*) FROM documents WHERE name = 'x';";
 
-test('renders the prompt and the bound query text in the SQL input', async () => {
+test('renders the bound query text in the SQL editor', async () => {
   const h = await renderTest(
     <QueryEditor
       queryText={SQL}
+      editorCaret={SQL.length}
       statement={null}
       focused
       completions={[]}
+      completionsOn
       nlMode={false}
       onNlSubmit={() => {}}
-      onQueryInput={() => {}}
+      onEditorChange={() => {}}
       onQuerySubmit={() => {}}
       generating={false}
       nlExplanation={null}
@@ -35,7 +37,6 @@ test('renders the prompt and the bound query text in the SQL input', async () =>
   await h.flush();
   await h.flush();
   const frame = h.frame();
-  expect(frame).toContain('SQL>');
   expect(frame).toContain('count(*)');
   expect(frame).toContain('FROM documents');
   h.cleanup();

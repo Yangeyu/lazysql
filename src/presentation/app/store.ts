@@ -69,6 +69,11 @@ export const PAGE_SIZE = 100;
 
 /** How many recent statements the SQL editor history keeps, per connection. */
 export const HISTORY_LIMIT = 100;
+/** Tables whose columns are eagerly described for completion. Schema + table
+ *  names are unbounded (they need no per-table round-trip); only column lookups
+ *  cost a describe each, so they are capped. Beyond this, table/schema completion
+ *  still works; per-table column completion is the on-demand future step. */
+const CATALOG_DESCRIBE_LIMIT = 200;
 
 /** The three persistent panes the cursor can occupy (lazygit-style). */
 export type Focus = 'sidebar' | 'editor' | 'grid';
@@ -228,16 +233,24 @@ export interface AppState {
   cellView: CellInspect | null;
 
   // ── query editor ──
-  /** Editor input text — the value the native <input> is bound to (it owns the
-   *  cursor). The result of running it lands in the shared grid (`result`,
-   *  surface 'query'); there is no separate query result slice. */
+  /** Editor text — the store's MIRROR of the native <textarea>'s buffer (the
+   *  widget owns the cursor + editing). Kept in sync by `setQuery` on every edit;
+   *  programmatic writes (history/NL/clear) set it and the view reconciles the
+   *  widget to match (ADR 0010). Running it lands the result in the shared grid
+   *  (`result`, surface 'query'); there is no separate query result slice. */
   queryText: string;
+  /** Caret offset (chars) into `queryText`, mirrored from the widget — drives the
+   *  completion context and where a programmatic write seats the cursor. */
+  editorCaret: number;
   queryError: string | null;
   queryElapsedMs: number | null;
   history: string[];
   historyIndex: number | null;
   catalog: SchemaCatalog | null;
   completions: string[];
+  /** Whether schema completion is active (toggled with ^T). Off → no candidates
+   *  computed or shown, and Tab falls back to cycling panes. */
+  completionsOn: boolean;
 
   // ── NL→SQL ──
   nlAvailable: boolean;
@@ -350,8 +363,12 @@ export interface AppState {
   confirmPending: () => Promise<void>;
   cancelPending: () => void;
 
-  /** Sync the query editor's text from the native input (re-derives completions). */
-  setQuery: (value: string) => void;
+  /** Mirror the editor text + caret from the native <textarea> (re-derives
+   *  completions for the text up to `caret`). `caret` defaults to end-of-text for
+   *  programmatic fills (history/NL/clear). */
+  setQuery: (value: string, caret?: number) => void;
+  /** Toggle schema completion on/off (^T). */
+  toggleCompletions: () => void;
   executeQuery: () => Promise<void>;
   historyPrev: () => void;
   historyNext: () => void;
@@ -665,13 +682,18 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       if (classifyStatement(text) === 'ddl') void reloadObjects();
     };
 
-    /** Recompute completions for the editor text against the cached catalog. */
-    const completionsFor = (text: string): string[] => {
-      const cat = get().catalog;
-      return cat ? complete(text, cat).candidates : [];
-    };
+    /** Recompute completions for the editor text at `caret`. Keywords complete
+     *  even before the catalog loads (it may still be null); schema/table/column
+     *  candidates join in once it is built — so typing a DROP/SELECT is never dead
+     *  while introspecting. */
+    const completionsFor = (text: string, caret: number): string[] =>
+      complete(text, get().catalog, caret).candidates;
 
-    /** Build the table/column catalog once, for schema-aware completion. */
+    /** Build the schema/table/column catalog once, for schema-aware completion.
+     *  Schema + table names come straight from the single introspection (every
+     *  object, no per-table round-trip); only columns need a describe each, so
+     *  those are bounded — table/schema completion stays complete even for a huge
+     *  DB while column completion covers the first `CATALOG_DESCRIBE_LIMIT`. */
     const buildCatalog = async (): Promise<void> => {
       if (!active) return;
       const introspectable = asIntrospectable(active);
@@ -683,19 +705,34 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         const relations = snapshot.objects.filter((o) =>
           sectionsFor(o.kind).includes('columns'),
         );
-        const tables = relations.map((o) => o.name);
+        const qualify = (o: ObjectRef): string =>
+          o.namespace ? `${o.namespace}.${o.name}` : o.name;
+
+        const schemas = [
+          ...new Set(
+            relations.map((o) => o.namespace).filter((s): s is string => !!s),
+          ),
+        ];
+        const tables = [...new Set(relations.map((o) => o.name))];
+        const tablesBySchema: Record<string, string[]> = {};
+        for (const o of relations) {
+          if (o.namespace) (tablesBySchema[o.namespace] ??= []).push(o.name);
+        }
+
         const columnsByTable: Record<string, string[]> = {};
         await Promise.all(
-          relations.slice(0, 50).map(async (o) => {
+          relations.slice(0, CATALOG_DESCRIBE_LIMIT).map(async (o) => {
             try {
               const schema = await introspectable.describe(o);
-              columnsByTable[o.name] = columnsOf(schema).map((c) => c.name);
+              const cols = columnsOf(schema).map((c) => c.name);
+              columnsByTable[qualify(o)] = cols; // de-collided key
+              columnsByTable[o.name] ??= cols; // bare fallback (first schema wins)
             } catch {
               /* skip a table we cannot describe */
             }
           }),
         );
-        set({ catalog: { tables, columnsByTable } });
+        set({ catalog: { schemas, tables, tablesBySchema, columnsByTable } });
       } catch {
         /* completion simply stays empty if introspection fails */
       }
@@ -808,12 +845,14 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       cellView: null,
 
       queryText: '',
+      editorCaret: 0,
       queryError: null,
       queryElapsedMs: null,
       history: [],
       historyIndex: null,
       catalog: null,
       completions: [],
+      completionsOn: true,
 
       nlAvailable: false,
       nlMode: false,
@@ -1405,14 +1444,29 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       // ── query editor ──────────────────────────────────────────────────────
 
-      setQuery: (value) => {
-        // The controlled <input> re-fires onInput with the SAME text when history
-        // navigation writes queryText programmatically (a value-prop echo). That
-        // no-op write must NOT reset historyIndex — otherwise ↓ (historyNext) sees
-        // a null cursor and can never step forward. A real edit always changes the
-        // text, so ignoring an identical write is safe.
-        if (value === get().queryText) return;
-        set({ queryText: value, historyIndex: null, completions: completionsFor(value) });
+      setQuery: (value, caret) => {
+        const c = caret ?? value.length;
+        // A real edit changes the text; only then reset the history cursor (you're
+        // back on a fresh draft). A SAME-text write is the <textarea> echoing a
+        // programmatic setText (history/NL/clear) back through onContentChange —
+        // keep historyIndex so ↓ (historyNext) can still step forward. Completions
+        // track the caret; suppressed while the toggle is off.
+        const changed = value !== get().queryText;
+        set({
+          queryText: value,
+          editorCaret: c,
+          ...(changed ? { historyIndex: null } : {}),
+          completions: get().completionsOn ? completionsFor(value, c) : [],
+        });
+      },
+
+      toggleCompletions: () => {
+        const on = !get().completionsOn;
+        const { queryText, editorCaret } = get();
+        set({
+          completionsOn: on,
+          completions: on ? completionsFor(queryText, editorCaret) : [],
+        });
       },
 
       executeQuery: async () => {
@@ -1448,29 +1502,37 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             ? history.length - 1
             : Math.max(0, historyIndex - 1);
         const text = history[idx] ?? '';
-        set({ historyIndex: idx, queryText: text, completions: [] });
+        set({ historyIndex: idx, queryText: text, editorCaret: text.length, completions: [] });
       },
 
       historyNext: () => {
         const { history, historyIndex } = get();
         if (historyIndex === null) return;
         if (historyIndex >= history.length - 1) {
-          set({ historyIndex: null, queryText: '', completions: [] });
+          set({ historyIndex: null, queryText: '', editorCaret: 0, completions: [] });
           return;
         }
         const idx = historyIndex + 1;
         const text = history[idx] ?? '';
-        set({ historyIndex: idx, queryText: text, completions: [] });
+        set({ historyIndex: idx, queryText: text, editorCaret: text.length, completions: [] });
       },
 
       acceptCompletion: () => {
-        const { queryText, completions } = get();
+        const { queryText, editorCaret, completions } = get();
         const top = completions[0];
         if (!top) return;
-        const text = queryText;
-        const word = text.match(/([A-Za-z_][A-Za-z0-9_]*)$/)?.[1] ?? '';
-        const next = text.slice(0, text.length - word.length) + top;
-        set({ queryText: next, completions: completionsFor(next) });
+        // Replace the partial identifier ending AT the caret, leaving the rest of
+        // the (possibly multi-line) text untouched; seat the caret after the word.
+        const head = queryText.slice(0, editorCaret);
+        const tail = queryText.slice(editorCaret);
+        const word = head.match(/[A-Za-z_][A-Za-z0-9_]*$/)?.[0] ?? '';
+        const newHead = head.slice(0, head.length - word.length) + top;
+        const next = newHead + tail;
+        set({
+          queryText: next,
+          editorCaret: newHead.length,
+          completions: completionsFor(next, newHead.length),
+        });
       },
 
       // ── NL→SQL ────────────────────────────────────────────────────────────
@@ -1512,6 +1574,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         set({
           generating: false,
           queryText: r.value.sql,
+          editorCaret: r.value.sql.length,
           nlExplanation: r.value.explanation,
           nlKind: r.value.kind,
           completions: [],

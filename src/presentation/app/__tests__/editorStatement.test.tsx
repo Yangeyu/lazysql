@@ -4,7 +4,7 @@
  *     the SQL on screen always matches the grid;
  *   • `a` re-browses the selected table as a clean SELECT *;
  *   • Tab toggles only tree ↔ results (never lands in the editor);
- *   • auto-generated browse statements never enter the ↑/↓ history.
+ *   • auto-generated browse statements never enter the ^P/^N history.
  * Driven end-to-end through the real Root over a SQLite source.
  */
 
@@ -87,7 +87,7 @@ test('a browse statement never enters the editor history', async () => {
 
   h.press(':');
   await h.until((f) => f.includes('⏎ run'));
-  h.arrow('up'); // history: the most recent entry must be the typed query, not the browse
+  h.ctrl('p'); // history: the most recent entry must be the typed query, not the browse
   await h.until((f) => f.includes('SELECT 7 AS lucky'));
   expect(h.frame()).not.toContain('SELECT * FROM "widgets" LIMIT');
   h.cleanup();

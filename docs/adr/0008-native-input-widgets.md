@@ -62,6 +62,8 @@ ADR 0007 把可编辑文本建模成自绘的 `TextField { value, cursor }`：st
 1. **SQL 编辑器变单行**。`<input>` 单行、Enter=运行（与既有行为一致——之前 Enter 也是运行、不能输入换行），
    但失去了「多行折行**显示**」的观感，改为水平滚动。`<textarea>` 能保留多行显示，但实测它**不暴露 onInput**
    （拿不到实时值，补全要不到），且 Enter 需改键、↑/↓ 与历史冲突——代价更大，故选 `<input>`。编辑器面板因此固定为 6 行。
+   **→ 已被 [ADR 0010](0010-multiline-sql-editor.md) 取代**：复核 0.4.2 后改用 `<textarea>`（`onContentChange`+ref
+   替代 `onInput`，Enter 经 `keyBindings` 锁成运行，历史迁 `^P/^N`），多行 + 滚动回归。本条其余 0008 决策不变。
 2. **密码字段不能中间编辑**。掩码在 OpenTUI 里没有原生支持，故 secret 字段是 store 渲染的 append-only 圆点
    （`^R` 可显形核对）；这是它与其它原生 `<input>` 字段唯一的机制差异，由掩码这一特殊意义决定。
 3. **光标样式已统一**：所有原生 `<input>` 经 `INPUT_CURSOR`（`cursorStyle={{style:'line',blinking:false}}`

@@ -13,13 +13,17 @@ const base: ContextInput = {
 };
 
 test('deriveContext follows a strict precedence: cell inspector wins over everything', () => {
-  expect(deriveContext({ ...base, cellView: {}, mode: 'edit', nlMode: true })).toBe('cell');
+  expect(deriveContext({ ...base, cellView: { mode: 'view' }, mode: 'filter', nlMode: true })).toBe('cell');
+});
+
+test('the cell inspector splits view from edit by its own mode', () => {
+  expect(deriveContext({ ...base, cellView: { mode: 'view' } })).toBe('cell');
+  expect(deriveContext({ ...base, cellView: { mode: 'edit' } })).toBe('cellEdit');
 });
 
 test('deriveContext ranks the input modes above the NL prompt and pane focus', () => {
   expect(deriveContext({ ...base, mode: 'connform' })).toBe('connform');
   expect(deriveContext({ ...base, mode: 'filter' })).toBe('filter');
-  expect(deriveContext({ ...base, mode: 'edit' })).toBe('edit');
   expect(deriveContext({ ...base, mode: 'confirm' })).toBe('confirm');
   expect(deriveContext({ ...base, nlMode: true, focus: 'editor' })).toBe('nl');
 });
@@ -116,7 +120,7 @@ test('dispatchKey: in the editor, glyphs are left to the native input', () => {
 test('dispatchKey: y in the cell inspector copies the full value', () => {
   // The inspector owns input (cellView set → 'cell' context); y yanks the whole
   // formatted value to the injected clipboard, not the truncated on-screen slice.
-  const s = stub({ cellView: { column: 'name', value: 'gamma', offset: 0 } } as Partial<AppState>);
+  const s = stub({ cellView: { column: 'name', value: 'gamma', offset: 0, mode: 'view' } } as Partial<AppState>);
   const e = env();
   dispatchKey(s, key({ name: 'y', sequence: 'y' }), e);
   expect(e.copy).toHaveBeenCalledTimes(1);

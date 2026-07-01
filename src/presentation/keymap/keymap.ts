@@ -24,10 +24,10 @@ export type KeyContext =
   | 'ddl'
   | 'editor'
   | 'filter'
-  | 'edit'
   | 'confirm'
   | 'connform'
   | 'cell'
+  | 'cellEdit'
   | 'nl';
 
 /** Runtime flags that gate context-dependent bindings (capability-driven). */
@@ -46,7 +46,9 @@ export interface DispatchEnv {
 
 /** The minimal slice of UI state that selects the active key context. */
 export interface ContextInput {
-  readonly cellView: unknown | null;
+  /** The cell inspector, if open — its `mode` splits view (`cell`) from edit
+   *  (`cellEdit`). Structurally typed so the store's `CellInspect` fits. */
+  readonly cellView: { readonly mode?: 'view' | 'edit' } | null;
   readonly mode: Mode;
   readonly nlMode: boolean;
   readonly focus: Focus;
@@ -61,26 +63,18 @@ export interface ContextInput {
  * static context (only the tab toggle + globals apply). Pure: the single
  * definition of "where are we", shared by the dispatcher and the footer/help.
  */
-export const deriveContext = (s: ContextInput): KeyContext =>
-  s.cellView
-    ? 'cell'
-    : s.mode === 'connform'
-      ? 'connform'
-      : s.mode === 'filter'
-        ? 'filter'
-        : s.mode === 'edit'
-          ? 'edit'
-          : s.mode === 'confirm'
-            ? 'confirm'
-            : s.nlMode
-              ? 'nl'
-              : s.focus === 'editor'
-                ? 'editor'
-                : s.focus === 'sidebar'
-                  ? 'sidebar'
-                  : s.surface === 'browse' && s.mainTab === 'ddl'
-                    ? 'ddl'
-                    : 'grid';
+export const deriveContext = (s: ContextInput): KeyContext => {
+  // One linear precedence, highest first — read top to bottom.
+  if (s.cellView) return s.cellView.mode === 'edit' ? 'cellEdit' : 'cell';
+  if (s.mode === 'connform') return 'connform';
+  if (s.mode === 'filter') return 'filter';
+  if (s.mode === 'confirm') return 'confirm';
+  if (s.nlMode) return 'nl';
+  if (s.focus === 'editor') return 'editor';
+  if (s.focus === 'sidebar') return 'sidebar';
+  if (s.surface === 'browse' && s.mainTab === 'ddl') return 'ddl';
+  return 'grid';
+};
 
 export interface KeyBinding {
   /** Display form of the key(s), e.g. '⏎', 'j/k', '^G'. */
@@ -162,7 +156,8 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '^u/^d', hint: 'half-pg', desc: 'Move the cursor half a page up / down', match: ['^d'], run: (s) => s.gridHalfDown() },
       { keys: 's', hint: 'sort', desc: 'Cycle sort on the column', match: ['s'], run: (s) => { if (s.surface === 'browse') void s.applySort(); } },
       { keys: '/', hint: 'filter', desc: 'Filter the column by a substring', match: ['/'], run: (s) => { if (s.surface === 'browse') s.beginFilter(); } },
-      { keys: 'e', hint: 'edit', desc: 'Edit the cell under the cursor', match: ['e'], run: (s) => { if (s.surface === 'browse') s.beginEdit(); } },
+      // Editing lives in the cell inspector (ADR 0011): ⏎ to inspect, then `e`.
+      // No `e` here — a single entry (view → edit) keeps esc a clean pop back.
       { keys: 'd', hint: 'del', desc: 'Delete the row under the cursor', match: ['d'], run: (s) => { if (s.surface === 'browse') s.beginDelete(); } },
       { keys: 'n', hint: 'page+', desc: 'Next page (browsed table)', match: ['n'], run: (s) => { if (s.surface === 'browse') void s.pageNext(); } },
       { keys: 'p', hint: 'page-', desc: 'Previous page (browsed table)', match: ['p'], run: (s) => { if (s.surface === 'browse') void s.pagePrev(); } },
@@ -200,14 +195,6 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelFilter() },
     ],
   },
-  edit: {
-    title: 'Edit cell',
-    bindings: [
-      // ⏎ is owned by the native <input> (onSubmit) — documentation-only here.
-      { keys: '⏎', hint: 'review', desc: 'Review the change before applying' },
-      { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelEdit() },
-    ],
-  },
   confirm: {
     title: 'Confirm',
     bindings: [
@@ -234,8 +221,19 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
     bindings: [
       { keys: 'j/k ↑/↓', hint: 'scroll', desc: 'Scroll the value', match: ['down', 'j'], run: (s) => s.scrollCell(1) },
       { keys: 'j/k ↑/↓', hint: 'scroll', desc: 'Scroll the value', match: ['up', 'k'], run: (s) => s.scrollCell(-1) },
+      { keys: 'e', hint: 'edit', desc: 'Edit this cell in place', match: ['e'], run: (s) => s.beginEdit() },
       { keys: 'y', hint: 'copy', desc: 'Copy the full value to the clipboard', match: ['y'], run: (s, env) => { if (s.cellView) env.copy(formatCellValue(s.cellView.value).lines.join('\n')); } },
       { keys: 'esc/⏎', hint: 'close', desc: 'Close the inspector', match: ['escape', 'return'], run: (s) => s.closeCell() },
+    ],
+  },
+  cellEdit: {
+    title: 'Edit cell',
+    bindings: [
+      // ^S and ⏎ are owned by the native <textarea> (^S submits → stage the update,
+      // ⏎ inserts a newline; ADR 0011) — documentation-only rows.
+      { keys: '^S', hint: 'save', desc: 'Save the change (stages an update confirm)' },
+      { keys: '⏎', hint: 'newline', desc: 'Insert a newline — edit multi-line values' },
+      { keys: 'esc', hint: 'view', desc: 'Discard the edit — back to the value view', match: ['escape'], run: (s) => s.cancelEdit() },
     ],
   },
   nl: {

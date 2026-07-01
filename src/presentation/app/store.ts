@@ -78,7 +78,9 @@ const CATALOG_DESCRIBE_LIMIT = 200;
 /** The three persistent panes the cursor can occupy (lazygit-style). */
 export type Focus = 'sidebar' | 'editor' | 'grid';
 export type Status = 'connecting' | 'ready' | 'error';
-export type Mode = 'normal' | 'filter' | 'edit' | 'confirm' | 'connform';
+// Cell editing is no longer a top-level mode — it lives in the cell inspector
+// overlay (`CellInspect.mode`), so it isn't listed here (ADR 0011).
+export type Mode = 'normal' | 'filter' | 'confirm' | 'connform';
 
 /** One editable field in the new-connection form. */
 export interface ConnFormField {
@@ -164,12 +166,16 @@ const dangerHeadline = (kind: DangerKind, sql: string): string => {
   }
 };
 
-/** The full-cell inspector overlay: one self-contained slice (value + scroll). */
+/** The full-cell inspector overlay: one self-contained slice. It is either
+ *  *viewing* the value (scrollable, read-only) or *editing* it (a focused
+ *  textarea seeded with the raw value) — one union, not an `isEditing` flag. */
 export interface CellInspect {
   readonly column: string;
   readonly value: CellValue;
-  /** First visible line of the (possibly long) formatted value. */
+  /** First visible line of the (possibly long) formatted value (view mode). */
   readonly offset: number;
+  /** view = read/scroll/copy; edit = the value is being edited in place. */
+  readonly mode: 'view' | 'edit';
 }
 
 /** The clickable panes a mouse press can focus (same set as Focus). */
@@ -891,7 +897,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         const column = result?.columns[gridCol]?.name;
         if (!result || !column) return;
         const value = result.rows[gridRow]?.[gridCol] ?? null;
-        set({ cellView: { column, value, offset: 0 } });
+        set({ cellView: { column, value, offset: 0, mode: 'view' } });
       },
 
       closeCell: () => set({ cellView: null }),
@@ -1367,30 +1373,42 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       },
 
       beginEdit: () => {
-        const { result, gridCol, pkColumns } = get();
+        const { result, gridRow, gridCol, pkColumns } = get();
         const column = result?.columns[gridCol]?.name;
         if (!result || !column) return;
         if (pkColumns.length === 0) {
           set({ error: 'table has no primary key — editing disabled' });
           return;
         }
-        // The native <input> holds the draft, seeded with the cell value (derived
-        // in the view); the store keeps no draft of its own.
-        set({ mode: 'edit', error: null });
+        const value = result.rows[gridRow]?.[gridCol] ?? null;
+        // Editing happens in the cell inspector overlay (ADR 0011): open it in
+        // edit mode seeded with THIS cell. Binary blobs aren't text-editable.
+        if (value instanceof Uint8Array) {
+          set({ error: 'binary value — not editable here' });
+          return;
+        }
+        // The <textarea> holds the draft (seeded from the value); the store keeps
+        // no draft of its own — submitEdit reads the widget's text on ^S.
+        set({ cellView: { column, value, offset: 0, mode: 'edit' }, error: null });
       },
 
-      cancelEdit: () => set({ mode: 'normal' }),
+      // Cancel a cell edit → discard the draft and fall back to the value view
+      // (esc). The inspector stays open: editing is only entered from view (`e`),
+      // so esc always pops back to where the edit began. A no-op if nothing's open.
+      cancelEdit: () =>
+        set((s) => (s.cellView ? { cellView: { ...s.cellView, mode: 'view' } } : {})),
 
       submitEdit: (value) => {
         const { current, result, gridCol } = get();
         const column = result?.columns[gridCol]?.name;
         const key = currentRowKey();
         if (!current || !column || !key) {
-          set({ mode: 'normal' });
+          set({ mode: 'normal', cellView: null });
           return;
         }
         set({
           mode: 'confirm',
+          cellView: null, // leave the editor; the confirm owns the screen + y/n
           pending: {
             title: `Update ${column} in ${current.name}?`,
             statement: `UPDATE ${current.name} SET ${column} = '${value}' WHERE ${keyText(key)}`,

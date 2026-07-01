@@ -25,10 +25,6 @@ interface Props {
   filterInitial: string;
   filterColumn: string | null;
   onFilterSubmit: (value: string) => void;
-  /** Seed value for the cell-edit input (the current cell's value). */
-  editInitial: string;
-  editColumn: string | null;
-  onEditSubmit: (value: string) => void;
 }
 
 const Badge = ({
@@ -56,6 +52,8 @@ const contextBadge = (context: KeyContext): { label: string; bg: string } => {
       return { label: 'SQL', bg: theme.magenta };
     case 'cell':
       return { label: 'CELL', bg: theme.cyan };
+    case 'cellEdit':
+      return { label: 'EDIT', bg: theme.magenta };
     default:
       return { label: 'lazysql', bg: theme.accent };
   }
@@ -71,9 +69,6 @@ const StatusBarImpl = ({
   filterInitial,
   filterColumn,
   onFilterSubmit,
-  editInitial,
-  editColumn,
-  onEditSubmit,
 }: Props) => {
   // The hint list stays on ONE line: it truncates from the right, so the active
   // context's keys (listed first) always survive.
@@ -87,28 +82,6 @@ const StatusBarImpl = ({
       </box>
     </box>
   );
-
-  // Cell-edit input mode: a native single-line input holds the new value.
-  if (mode === 'edit') {
-    return bar(
-      <box flexDirection="row">
-        <text wrapMode="none">
-          <Badge label="edit" bg={theme.magenta} />
-          <span> </span>
-          <span fg={theme.border}>{editColumn ?? '?'} = </span>
-        </text>
-        <input
-          focused
-          value={editInitial}
-          onSubmit={onEditSubmit as never}
-          width={40}
-          textColor={theme.cyan}
-          cursorStyle={INPUT_CURSOR}
-          cursorColor={theme.accent}
-        />
-      </box>,
-    );
-  }
 
   // Filter input mode owns the bar: a native single-line input holds the draft.
   if (mode === 'filter') {

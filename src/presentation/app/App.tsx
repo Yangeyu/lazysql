@@ -253,9 +253,11 @@ export const App = ({ clipboard }: AppProps) => {
       column={cellView.column}
       value={cellView.value}
       offset={cellView.offset}
+      mode={cellView.mode}
       termRows={terminalRows}
       termCols={terminalCols}
       onScroll={(delta) => store.getState().scrollCell(delta)}
+      onEditSubmit={(v) => store.getState().submitEdit(v)}
     />
   ) : null;
 
@@ -297,12 +299,6 @@ export const App = ({ clipboard }: AppProps) => {
         }
         filterColumn={result?.columns[gridCol]?.name ?? null}
         onFilterSubmit={(v) => void store.getState().commitFilter(v)}
-        editInitial={(() => {
-          const cell = result?.rows[gridRow]?.[gridCol];
-          return cell == null ? '' : String(cell);
-        })()}
-        editColumn={result?.columns[gridCol]?.name ?? null}
-        onEditSubmit={(v) => store.getState().submitEdit(v)}
       />
       {/* drawn last so it composites on top of every pane and the status bar */}
       {overlay}

@@ -151,11 +151,13 @@ test('editing a cell updates it after confirmation', async () => {
   h.enter(); // open widget → grid, gridCol 0 (id)
   await h.until((f) => f.includes('w1'));
   h.press('l'); // → label column
-  h.press('e'); // edit → draft prefilled "w1"
-  await h.until((f) => f.includes('edit'));
+  h.enter(); // ⏎ → cell inspector (view mode)
+  await h.until((f) => f.includes('⊞ cell'));
+  h.press('e'); // e → edit mode, seeded "w1" (single entry: view → e)
+  await h.until((f) => f.includes('^S save')); // edit footer proves edit mode
   await h.type('Z'); // draft "w1Z"
   await h.flush();
-  h.enter(); // submit → confirm
+  h.ctrl('s'); // ^S save → confirm (Enter is a newline in the editor now)
   await h.until((f) => f.includes('confirm')); // confirmation footer
   h.press('y'); // apply the update
   await h.until((f) => f.includes('w1Z')); // grid reflects the write

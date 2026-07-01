@@ -82,6 +82,16 @@ test('NL is unavailable (and beginNl is a no-op) without a generator', () => {
   expect(store.getState().queryError).toContain('ANTHROPIC_API_KEY');
 });
 
+test('esc in a cell edit discards the draft and falls back to the value view', () => {
+  const profile: ConnectionProfile = { id: 'x', name: 'X', driver: 'sqlite', options: {} };
+  const store = createAppStore({ connectionService: serviceFor(profile) });
+  // Editing is a sub-state of inspecting a cell (single entry: view → `e`), so
+  // cancel returns to view — the inspector stays open, it doesn't close to null.
+  store.setState({ cellView: { column: 'label', value: 'w1', offset: 0, mode: 'edit' } });
+  store.getState().cancelEdit();
+  expect(store.getState().cellView?.mode).toBe('view');
+});
+
 test('a dependents-blocked DROP escalates to a CASCADE confirm, then runs it', async () => {
   // A Postgres-shaped fake: the plain DROP raises SQLSTATE 2BP01; the CASCADE
   // retry succeeds. cascadeRetry reuses the real dialect so the wiring is exercised

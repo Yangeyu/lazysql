@@ -44,6 +44,20 @@ export const formatCellValue = (value: CellValue): FormattedCell => {
   return { type: typeof value, lines: [String(value)] };
 };
 
+/**
+ * The RAW editable text for a cell — what seeds the edit <textarea>. Unlike
+ * `formatCellValue`, it does NOT pretty-print: JSON text is kept verbatim so
+ * saving never silently reformats a text column's bytes (ADR 0011). `null`
+ * becomes an empty draft (the null/empty-string distinction is not preserved —
+ * a known limitation, as with the previous inline editor). Callers gate out
+ * binary values before editing; a blob here degrades to its hex preview.
+ */
+export const cellEditText = (value: CellValue): string => {
+  if (value === null) return '';
+  if (value instanceof Uint8Array) return hexPreview(value);
+  return String(value);
+};
+
 /** Compact hex preview of a blob's first bytes. */
 const hexPreview = (bytes: Uint8Array): string => {
   const head = Array.from(bytes.slice(0, 64))

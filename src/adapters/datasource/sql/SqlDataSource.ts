@@ -17,6 +17,7 @@ import type {
   Transactional,
   Tx,
   SourceId,
+  SqlDumpable,
 } from '../../../domain/datasource/DataSource.ts';
 import {
   Capability,
@@ -25,6 +26,8 @@ import {
 import type {
   ResultSet,
   CellValue,
+  ColumnMeta,
+  Row,
 } from '../../../domain/datasource/ResultSet.ts';
 import type {
   SchemaSnapshot,
@@ -48,6 +51,7 @@ import { ok, err, type Result } from '../../../shared/Result.ts';
 import type { SqlDriver, RawResult } from './Driver.ts';
 import type { Dialect } from './Dialect.ts';
 import { inlineParams } from './inlineParams.ts';
+import { renderInsertStatements } from './sqlDump.ts';
 
 export class SqlDataSource
   implements
@@ -57,7 +61,8 @@ export class SqlDataSource
     Browsable,
     BrowsePreviewable,
     RowEditable,
-    Transactional
+    Transactional,
+    SqlDumpable
 {
   constructor(
     readonly id: SourceId,
@@ -178,6 +183,13 @@ export class SqlDataSource
 
   cascadeRetry(dropSql: string, error: DataSourceError): CascadeDrop | null {
     return this.dialect.cascadeDrop(dropSql, error);
+  }
+
+  // ── SqlDumpable ───────────────────────────────────────────────────────────
+
+  /** Runnable `INSERT` statements for `rows`, quoted via the dialect. */
+  insertDump(ref: ObjectRef, columns: readonly ColumnMeta[], rows: readonly Row[]): string {
+    return renderInsertStatements(this.dialect, ref, columns, rows);
   }
 
   // ── Transactional ─────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@
  */
 
 import type { CapabilitySet } from './capabilities.ts';
-import type { ResultSet } from './ResultSet.ts';
+import type { ResultSet, ColumnMeta, Row } from './ResultSet.ts';
 import type { SchemaSnapshot, ObjectRef, ObjectSchema } from './schema.ts';
 import type { RowKey, RowPatch, EditResult } from './edit.ts';
 import type { Query, BrowseSpec, Filter } from '../query/Query.ts';
@@ -103,6 +103,16 @@ export interface RowEditable {
   delete(ref: ObjectRef, key: RowKey): Promise<EditResult>;
 }
 
+/**
+ * Render rows as runnable `INSERT` statements for a data dump — dialect-correct
+ * identifiers and value literals. No `CREATE`/`ON CONFLICT`: the dump appends to
+ * an already-existing table, and a duplicate key errors (fail-stop). The
+ * import-friendly export format (one runnable file), driven by the SQL dialect.
+ */
+export interface SqlDumpable {
+  insertDump(ref: ObjectRef, columns: readonly ColumnMeta[], rows: readonly Row[]): string;
+}
+
 /** A scoped execution handle inside a transaction. */
 export interface Tx {
   execute(query: Query): Promise<ResultSet>;
@@ -161,4 +171,9 @@ export const asTransactional = (
 ): (DataSource & Transactional) | null =>
   typeof (s as Partial<Transactional>).transaction === 'function'
     ? (s as DataSource & Transactional)
+    : null;
+
+export const asSqlDumpable = (s: DataSource): (DataSource & SqlDumpable) | null =>
+  typeof (s as Partial<SqlDumpable>).insertDump === 'function'
+    ? (s as DataSource & SqlDumpable)
     : null;

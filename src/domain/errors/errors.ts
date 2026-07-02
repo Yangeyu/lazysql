@@ -34,3 +34,11 @@ export class QueryError extends DataSourceError {
 
 /** The source does not support the requested capability. */
 export class UnsupportedCapabilityError extends DataSourceError {}
+
+/** An export failed to write its destination (open / write / rename / close). */
+export class ExportError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.name = new.target.name;
+  }
+}

@@ -17,7 +17,7 @@ import { ConnectionForm } from '../components/ConnectionForm.tsx';
 import { CellView } from '../components/CellView.tsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
 import { helpGroups, deriveContext, dispatchKey, type KeyFlags } from '../keymap/keymap.ts';
-import { SIDEBAR_WIDTH, computeLayout } from './layout.ts';
+import { SIDEBAR_MIN, computeLayout } from './layout.ts';
 import { buildTree, toConnNodes, dialectLabel, shortTag, groupsBySchema } from '../tree/tree.ts';
 import { theme } from '../theme/theme.ts';
 import type { Filter } from '../../domain/query/Query.ts';
@@ -43,6 +43,8 @@ export const App = ({ clipboard }: AppProps) => {
 
   const status = useApp((s) => s.status);
   const error = useApp((s) => s.error);
+  const notice = useApp((s) => s.notice);
+  const sidebarPref = useApp((s) => s.sidebarWidth);
   const profiles = useApp((s) => s.profiles);
   const activeId = useApp((s) => s.activeId);
   const objects = useApp((s) => s.objects);
@@ -50,6 +52,7 @@ export const App = ({ clipboard }: AppProps) => {
   const expandedCats = useApp((s) => s.expandedCats);
   const expandedSchemas = useApp((s) => s.expandedSchemas);
   const treeIndex = useApp((s) => s.treeIndex);
+  const marks = useApp((s) => s.marks);
   const focus = useApp((s) => s.focus);
   const current = useApp((s) => s.current);
   const mainTab = useApp((s) => s.mainTab);
@@ -101,10 +104,14 @@ export const App = ({ clipboard }: AppProps) => {
     }),
   );
 
+  // Clamp the user's chosen width so the grid always keeps a usable minimum,
+  // however narrow the terminal — the sidebar can't eat the whole screen.
+  const sidebarWidth = Math.min(sidebarPref, Math.max(SIDEBAR_MIN, terminalCols - 30));
   const { viewportCols, editorRows, gridBodyRows, sidebarRows } = computeLayout(
     terminalCols,
     terminalRows,
     queryable,
+    sidebarWidth,
   );
   const gridFocused = focus === 'grid';
 
@@ -165,7 +172,8 @@ export const App = ({ clipboard }: AppProps) => {
         rows={treeRows}
         selectedIndex={treeIndex}
         focused={focus === 'sidebar'}
-        width={SIDEBAR_WIDTH}
+        width={sidebarWidth}
+        marks={marks}
         viewportRows={sidebarRows}
         onRowClick={(i) => store.getState().clickTree(i)}
         onPaneClick={() => store.getState().focusPane('sidebar')}
@@ -239,6 +247,7 @@ export const App = ({ clipboard }: AppProps) => {
       statement={pending.statement}
       details={pending.details}
       tone={pending.tone}
+      choice={pending.choice}
       termRows={terminalRows}
       termCols={terminalCols}
     />
@@ -289,9 +298,11 @@ export const App = ({ clipboard }: AppProps) => {
         width={terminalCols}
         status={status}
         error={error}
+        notice={notice}
         context={context}
         flags={flags}
         mode={mode}
+        markCount={marks.size}
         filterInitial={
           filter?.conditions.find(
             (c) => c.column === (result?.columns[gridCol]?.name ?? ''),

@@ -6,8 +6,16 @@
  * (rowWindow), which the DataGrid and sidebar share so they scroll identically.
  */
 
-/** Fixed width (cells) of the connections sidebar. */
+/** Default width (cells) of the connections sidebar — the resize baseline. */
 export const SIDEBAR_WIDTH = 28;
+/** Bounds and step for the user-adjustable sidebar width (^⇧-/^⇧+). */
+export const SIDEBAR_MIN = 16;
+export const SIDEBAR_MAX = 60;
+export const SIDEBAR_STEP = 3;
+
+/** Clamp a requested sidebar width to the allowed range. */
+export const clampSidebarWidth = (w: number): number =>
+  Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, w));
 
 export interface Layout {
   /** Inner content width shared by the editor and results panels. */
@@ -33,8 +41,13 @@ export interface Layout {
  * sidebarRows is the full left column (terminal minus header + status = 2) less
  * the sidebar's own chrome: border (2) + the CONNECTIONS title row (1).
  */
-export const computeLayout = (cols: number, rows: number, queryable: boolean): Layout => {
-  const viewportCols = Math.max(24, cols - SIDEBAR_WIDTH - 1 - 4);
+export const computeLayout = (
+  cols: number,
+  rows: number,
+  queryable: boolean,
+  sidebarWidth: number = SIDEBAR_WIDTH,
+): Layout => {
+  const viewportCols = Math.max(24, cols - sidebarWidth - 1 - 4);
   // The editor is a fixed 10 rows: border (2) + ask + divider + feedback (3) leave
   // ~5 visible SQL rows. The SQL input is a multi-line <textarea> (ADR 0010) that
   // soft-wraps and scrolls WITHIN this fixed height, so the panel never grows with

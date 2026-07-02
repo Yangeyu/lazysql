@@ -12,6 +12,7 @@ import React from 'react';
 import { TextAttributes, type MouseEvent } from '@opentui/core';
 import type { ObjectKind } from '../../domain/datasource/schema.ts';
 import type { TreeRow } from '../tree/tree.ts';
+import { refKey } from '../tree/tree.ts';
 import { theme, driverColor } from '../theme/theme.ts';
 import { rowWindow } from '../app/layout.ts';
 
@@ -20,6 +21,9 @@ interface Props {
   selectedIndex: number;
   focused: boolean;
   width: number;
+  /** Object refs marked for a batch export (keyed by `refKey`); marked table rows
+   *  get a green ✓ so the selection is visible independent of the cursor. */
+  marks: ReadonlySet<string>;
   /** Tree rows the body can show; the list virtualizes to this height. */
   viewportRows: number;
   /** A row was clicked (0-based index into `rows`). */
@@ -56,7 +60,7 @@ const objectIcon = (kind: ObjectKind): string => {
 /** Render one tree row's content (indentation + glyph + label) as inline spans.
  *  Indentation is `row.depth` driven, so the schema tier nests objects deeper
  *  without this view knowing whether they were grouped. */
-const rowContent = (row: TreeRow, selected: boolean): React.ReactNode => {
+const rowContent = (row: TreeRow, selected: boolean, marked: boolean): React.ReactNode => {
   const indent = '  '.repeat(row.depth);
   if (row.type === 'connection') {
     return (
@@ -95,8 +99,12 @@ const rowContent = (row: TreeRow, selected: boolean): React.ReactNode => {
   return (
     <>
       {indent}
-      <span fg={theme.border}>{objectIcon(row.ref.kind)} </span>
-      {row.label}
+      {marked ? (
+        <span fg={theme.green}>✓ </span>
+      ) : (
+        <span fg={theme.border}>{objectIcon(row.ref.kind)} </span>
+      )}
+      <span fg={marked ? theme.green : undefined}>{row.label}</span>
     </>
   );
 };
@@ -106,6 +114,7 @@ const SidebarImpl = ({
   selectedIndex,
   focused,
   width,
+  marks,
   viewportRows,
   onRowClick,
   onPaneClick,
@@ -140,6 +149,7 @@ const SidebarImpl = ({
         visible.map((row, vi) => {
           const i = top + vi;
           const selected = i === selectedIndex;
+          const marked = row.type === 'object' && marks.has(refKey(row.ref));
           return (
             <text
               key={i}
@@ -153,7 +163,7 @@ const SidebarImpl = ({
               }}
             >
               {selected && !focused ? <span fg={theme.accent}>▎</span> : ' '}
-              {rowContent(row, selected)}
+              {rowContent(row, selected, marked)}
             </text>
           );
         })

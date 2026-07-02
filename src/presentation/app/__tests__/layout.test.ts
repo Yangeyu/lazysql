@@ -10,6 +10,11 @@ test('computeLayout reserves the sidebar, its gap, and a panel chrome from the w
   expect(viewportCols).toBe(100 - SIDEBAR_WIDTH - 1 - 4);
 });
 
+test('computeLayout honors a resized sidebar width', () => {
+  expect(computeLayout(100, 40, true, 40).viewportCols).toBe(100 - 40 - 1 - 4);
+  expect(computeLayout(100, 40, true, 16).viewportCols).toBe(100 - 16 - 1 - 4);
+});
+
 test('computeLayout sizes the editor only for query-capable sources', () => {
   expect(computeLayout(100, 40, false).editorRows).toBe(0);
   expect(computeLayout(100, 40, true).editorRows).toBeGreaterThanOrEqual(6);

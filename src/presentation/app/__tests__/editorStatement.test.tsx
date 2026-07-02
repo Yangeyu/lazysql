@@ -64,11 +64,11 @@ test('after a run the editor echoes the executed query; `a` returns to a clean b
 
 test('Tab toggles tree ↔ results only, never the editor', async () => {
   const h = await mount();
-  await h.until((f) => status(f).includes('k/j move')); // starts on the tree
+  await h.until((f) => status(f).includes('v mark')); // starts on the tree (curated footer)
   h.tab();
   await h.until((f) => status(f).includes('inspect')); // → results grid
   h.tab();
-  await h.until((f) => status(f).includes('k/j move')); // → back to tree
+  await h.until((f) => status(f).includes('v mark')); // → back to tree
   expect(status(h.frame())).not.toContain('tab complete'); // editor never in the cycle
   h.cleanup();
 });

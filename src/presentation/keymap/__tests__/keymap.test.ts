@@ -37,16 +37,33 @@ test('deriveContext falls back to plain pane focus', () => {
 test('footerHints and helpGroups read the same registry for a context', () => {
   const flags = { queryable: true, nlAvailable: true };
   expect(footerHints('grid', flags)).toContain('sort');
+  expect(footerHints('grid', flags)).toContain('export'); // X export the view (ADR 0012)
+  expect(footerHints('sidebar', flags)).toContain('export'); // X export the selected table
   expect(helpGroups('grid', flags)[0]?.title).toBe('Data grid');
 });
 
-test('footerHints lists each binding once and omits globals while typing', () => {
+test('footerHints curates to the primary actions; the ? panel keeps the full list', () => {
   const flags = { queryable: true, nlAvailable: true };
-  // The table repeats a row per match alternative (up AND k) — the footer dedupes.
-  expect(footerHints('grid', flags).match(/row/g)?.length).toBe(1);
+  // Movement (hint 'row') is muscle memory — omitted from the curated footer…
+  expect(footerHints('grid', flags)).not.toContain('row');
+  // …but the `?` overlay still lists it, deduped (up AND k → one 'row' entry).
+  const gridGroup = helpGroups('grid', flags)[0];
+  expect(gridGroup?.bindings.filter((b) => b.hint === 'row').length).toBe(1);
+  // Non-primary tree actions (refresh/remove) drop out of the footer too.
+  expect(footerHints('sidebar', flags)).not.toContain('refresh');
+  expect(footerHints('sidebar', flags)).toContain('mark'); // …but the new export flow stays
   // The editor captures text, so q/`/: are NOT advertised (they're literal there).
   expect(footerHints('editor', flags)).not.toContain('quit');
-  expect(footerHints('grid', flags)).toContain('quit');
+});
+
+test('footerHints pins q quit · ? help at the end of a nav context', () => {
+  const flags = { queryable: true, nlAvailable: true };
+  const bar = footerHints('sidebar', flags);
+  expect(bar).toContain('quit');
+  expect(bar).toContain('help');
+  expect(bar.trimEnd().endsWith('? help')).toBe(true);
+  // A short, no-primary context falls back to showing its own keys (unchanged).
+  expect(footerHints('exporting', flags)).toContain('cancel');
 });
 
 // ── dispatchKey: behaviour now comes from the same table ──
@@ -133,6 +150,43 @@ test('dispatchKey: the DDL context only answers the tab toggle', () => {
   expect(s.gridDown).not.toHaveBeenCalled();
   dispatchKey(s, key({ sequence: 'D' }), env());
   expect(s.toggleMainTab).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: X exports the grid view and the selected tree table', () => {
+  const exportGrid = mock(() => {});
+  dispatchKey(stub({ focus: 'grid', exportGrid } as Partial<AppState>), key({ name: 'X', sequence: 'X', shift: true }), env());
+  expect(exportGrid).toHaveBeenCalledTimes(1);
+
+  const exportSelectedTable = mock(() => {});
+  dispatchKey(stub({ focus: 'sidebar', exportSelectedTable } as Partial<AppState>), key({ name: 'X', sequence: 'X', shift: true }), env());
+  expect(exportSelectedTable).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: v marks the table under the tree cursor', () => {
+  const toggleMark = mock(() => {});
+  dispatchKey(stub({ focus: 'sidebar', toggleMark } as Partial<AppState>), key({ name: 'v', sequence: 'v' }), env());
+  expect(toggleMark).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: esc in the tree clears all export marks', () => {
+  const clearMarks = mock(() => {});
+  dispatchKey(stub({ focus: 'sidebar', clearMarks } as Partial<AppState>), key({ name: 'escape' }), env());
+  expect(clearMarks).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: ^⇧-/^⇧+ resize the sidebar from a nav pane', () => {
+  const narrowSidebar = mock(() => {});
+  const widenSidebar = mock(() => {});
+  dispatchKey(stub({ focus: 'grid', narrowSidebar, widenSidebar } as Partial<AppState>), key({ name: '-', ctrl: true, shift: true }), env());
+  dispatchKey(stub({ focus: 'grid', narrowSidebar, widenSidebar } as Partial<AppState>), key({ name: '=', ctrl: true, shift: true }), env());
+  expect(narrowSidebar).toHaveBeenCalledTimes(1);
+  expect(widenSidebar).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: esc cancels a running export (exporting context)', () => {
+  const cancelExport = mock(() => {});
+  dispatchKey(stub({ mode: 'exporting', cancelExport } as Partial<AppState>), key({ name: 'escape' }), env());
+  expect(cancelExport).toHaveBeenCalledTimes(1);
 });
 
 test('dispatchKey: g/G jump the tree to its first / last row', () => {

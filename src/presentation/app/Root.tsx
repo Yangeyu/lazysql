@@ -17,6 +17,7 @@ import type { ConnectionProfile } from '../../domain/connection/ConnectionProfil
 import type { SqlGenerator } from '../../application/ports/SqlGenerator.ts';
 import type { Clipboard } from '../../application/ports/Clipboard.ts';
 import type { QueryHistoryStore } from '../../application/ports/QueryHistoryStore.ts';
+import type { Exporter } from '../../application/ports/Exporter.ts';
 
 /** No-op clipboard for when none is injected (tests / non-interactive). The real
  *  one is supplied by the composition root, mirroring `generator`'s null default. */
@@ -33,6 +34,8 @@ interface Props {
   clipboard?: Clipboard;
   /** Durable per-connection SQL history; null (default) keeps it in-memory only. */
   historyStore?: QueryHistoryStore | null;
+  /** Writes exported rows to disk; null (default) disables export (tests). */
+  exporter?: Exporter | null;
 }
 
 export const Root = ({
@@ -41,11 +44,12 @@ export const Root = ({
   generator = null,
   clipboard = NO_CLIPBOARD,
   historyStore = null,
+  exporter = null,
 }: Props) => {
   const renderer = useRenderer();
   const store = useMemo<AppStore>(
-    () => createAppStore({ connectionService, generator, initial, historyStore }),
-    [connectionService, generator, initial, historyStore],
+    () => createAppStore({ connectionService, generator, initial, historyStore, exporter }),
+    [connectionService, generator, initial, historyStore, exporter],
   );
 
   // Release the active connection when the renderer tears down, so the DB handle

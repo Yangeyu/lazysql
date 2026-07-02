@@ -9,6 +9,7 @@
 
 import React from 'react';
 import { TextAttributes } from '@opentui/core';
+import type { PendingChoice } from '../app/store.ts';
 import { theme } from '../theme/theme.ts';
 import { Overlay } from './Overlay.tsx';
 
@@ -17,6 +18,8 @@ interface Props {
   statement?: string;
   details?: readonly string[];
   tone: 'normal' | 'danger';
+  /** An inline single-choice (segmented radio), e.g. the export format; `f` cycles it. */
+  choice?: PendingChoice;
   termRows: number;
   termCols: number;
 }
@@ -29,7 +32,7 @@ const wrap = (s: string, w: number): string[] => {
   return out.length > 0 ? out : [''];
 };
 
-const ConfirmDialogImpl = ({ title, statement, details, tone, termRows, termCols }: Props) => {
+const ConfirmDialogImpl = ({ title, statement, details, tone, choice, termRows, termCols }: Props) => {
   const danger = tone === 'danger';
   const accent = danger ? theme.red : theme.accent;
 
@@ -39,10 +42,11 @@ const ConfirmDialogImpl = ({ title, statement, details, tone, termRows, termCols
   const stmtLines = statement ? wrap(statement, innerW) : [];
   const deps = details ?? [];
 
-  // header + (blank + statement) + (blank + "Also drops:" + items) + blank + footer
+  // header + (blank + statement) + (blank + choice) + (blank + "Also drops:" + items) + blank + footer
   const lines =
     1 +
     (statement ? 1 + stmtLines.length : 0) +
+    (choice ? 1 + 1 : 0) +
     (deps.length > 0 ? 1 + 1 + deps.length : 0) +
     1 +
     1;
@@ -69,6 +73,23 @@ const ConfirmDialogImpl = ({ title, statement, details, tone, termRows, termCols
         </text>
       ))}
 
+      {choice ? <text> </text> : null}
+      {choice ? (
+        <text wrapMode="none">
+          <span fg={theme.border}>{`${choice.label}   `}</span>
+          {choice.options.map((o) => (
+            <span key={o}>
+              {o === choice.selected ? (
+                <span attributes={TextAttributes.INVERSE}>{` ${o} `}</span>
+              ) : (
+                <span fg={theme.border}>{` ${o} `}</span>
+              )}
+              {'  '}
+            </span>
+          ))}
+        </text>
+      ) : null}
+
       {deps.length > 0 ? <text> </text> : null}
       {deps.length > 0 ? (
         <text wrapMode="none" fg={theme.border}>
@@ -85,6 +106,13 @@ const ConfirmDialogImpl = ({ title, statement, details, tone, termRows, termCols
       <text wrapMode="none" fg={theme.border}>
         <span fg={theme.green}>y</span> confirm{'  ·  '}
         <span fg={theme.green}>n</span> cancel
+        {choice ? (
+          <span>
+            {'  ·  '}
+            <span fg={theme.green}>f</span>
+            {` ${choice.label}`}
+          </span>
+        ) : null}
       </text>
     </Overlay>
   );

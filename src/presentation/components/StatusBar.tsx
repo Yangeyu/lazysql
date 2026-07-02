@@ -18,9 +18,14 @@ interface Props {
   width: number;
   status: string;
   error: string | null;
+  /** Transient info line (e.g. an export result); shown when there's no error. */
+  notice: string | null;
   context: KeyContext;
   flags: KeyFlags;
   mode: Mode;
+  /** How many tables are marked for a batch export; shown as a chip while resting
+   *  on the tree so the (cursor-independent) selection is never invisible. */
+  markCount: number;
   /** Seed value for the filter input (existing filter for the column, or ''). */
   filterInitial: string;
   filterColumn: string | null;
@@ -63,9 +68,11 @@ const StatusBarImpl = ({
   width,
   status,
   error,
+  notice,
   context,
   flags,
   mode,
+  markCount,
   filterInitial,
   filterColumn,
   onFilterSubmit,
@@ -107,6 +114,17 @@ const StatusBarImpl = ({
     );
   }
 
+  // A running export captures input; show the live row count and let the footer
+  // advertise `esc cancel` (from the keymap's `exporting` context).
+  if (mode === 'exporting') {
+    return bar(
+      <text wrapMode="none">
+        <Badge label="export" bg={theme.magenta} />
+        <span fg={theme.border}> {notice ?? 'exporting…'}</span>
+      </text>,
+    );
+  }
+
   if (error) {
     return bar(
       <text wrapMode="none">
@@ -116,10 +134,22 @@ const StatusBarImpl = ({
     );
   }
 
+  if (notice) {
+    return bar(
+      <text wrapMode="none">
+        <Badge label="ok" bg={theme.green} />
+        <span fg={theme.border}> {notice}</span>
+      </text>,
+    );
+  }
+
   const badge = contextBadge(context);
   return bar(
     <text>
       <Badge label={badge.label} bg={badge.bg} />
+      {context === 'sidebar' && markCount > 0 ? (
+        <span fg={theme.green} attributes={TextAttributes.BOLD}>{` ✓${markCount} marked`}</span>
+      ) : null}
       <span fg={theme.border}> {status === 'connecting' ? 'connecting…' : ''}</span>
     </text>,
   );

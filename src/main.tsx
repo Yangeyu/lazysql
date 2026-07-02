@@ -26,6 +26,7 @@ import { dirname } from 'node:path';
 import { Root } from './presentation/app/Root.tsx';
 import { createDataSource } from './adapters/datasource/registry.ts';
 import { createSystemClipboard } from './adapters/clipboard/SystemClipboard.ts';
+import { FileExporter } from './adapters/export/FileExporter.ts';
 import { YamlConnectionRepository } from './adapters/persistence/YamlConnectionRepository.ts';
 import { JsonQueryHistoryStore } from './adapters/persistence/JsonQueryHistoryStore.ts';
 import { FileSecretStore } from './adapters/persistence/FileSecretStore.ts';
@@ -223,5 +224,6 @@ createRoot(renderer).render(
     generator={generator}
     clipboard={createSystemClipboard()}
     historyStore={history}
+    exporter={new FileExporter()}
   />,
 );

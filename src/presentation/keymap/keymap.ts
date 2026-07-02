@@ -28,6 +28,7 @@ export type KeyContext =
   | 'connform'
   | 'cell'
   | 'cellEdit'
+  | 'exporting'
   | 'nl';
 
 /** Runtime flags that gate context-dependent bindings (capability-driven). */
@@ -65,6 +66,7 @@ export interface ContextInput {
  */
 export const deriveContext = (s: ContextInput): KeyContext => {
   // One linear precedence, highest first — read top to bottom.
+  if (s.mode === 'exporting') return 'exporting'; // a running export owns input (esc cancels)
   if (s.cellView) return s.cellView.mode === 'edit' ? 'cellEdit' : 'cell';
   if (s.mode === 'connform') return 'connform';
   if (s.mode === 'filter') return 'filter';
@@ -94,6 +96,10 @@ export interface KeyBinding {
   readonly run?: (s: AppState, env: DispatchEnv) => void;
   /** When present, the binding shows AND fires only if this predicate holds. */
   readonly enabled?: (f: KeyFlags) => boolean;
+  /** Show this binding in the compact footer — the curated "common few". When a
+   *  context declares none, the footer falls back to all of them. The `?` overlay
+   *  always lists everything regardless of this flag. */
+  readonly primary?: boolean;
 }
 
 /** Raw char entry for a field with no native <input> of its own — only the
@@ -115,10 +121,14 @@ export interface KeyGroup {
  *  stay literal in the editor and the prompts. */
 const GLOBAL: readonly KeyBinding[] = [
   { keys: '`', hint: 'conn', desc: 'Switch connection (back to picker)', match: ['`'], run: (s) => s.disconnect() },
-  { keys: ':', hint: 'sql', desc: 'Open the SQL query editor', match: [':'], enabled: (f) => f.queryable, run: (s) => s.focusPane('editor') },
+  { keys: ':', hint: 'sql', desc: 'Open the SQL query editor', match: [':'], enabled: (f) => f.queryable, primary: true, run: (s) => s.focusPane('editor') },
   { keys: 'tab', hint: 'pane', desc: 'Toggle focus: tree ↔ results', match: ['tab'], run: (s) => s.cycleFocus() },
   { keys: '?', hint: 'help', desc: 'Toggle this help', match: ['?'], run: (s) => s.toggleHelp() },
   { keys: 'q', hint: 'quit', desc: 'Quit lazysql', match: ['q'], run: (_s, env) => env.quit() },
+  // Sidebar resize — ctrl+shift+-/+. Needs the kitty keyboard protocol to be
+  // distinguishable; degrades silently on legacy terminals (ADR 0007).
+  { keys: '^⇧-', hint: 'shrink', desc: 'Shrink the connections sidebar', match: ['^⇧-', '^⇧_'], run: (s) => s.narrowSidebar() },
+  { keys: '^⇧+', hint: 'widen', desc: 'Widen the connections sidebar', match: ['^⇧=', '^⇧+'], run: (s) => s.widenSidebar() },
 ];
 
 const GROUPS: Record<KeyContext, KeyGroup> = {
@@ -127,16 +137,19 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
     bindings: [
       { keys: '↑/↓ k/j', hint: 'move', desc: 'Move the selection', match: ['up', 'k'], run: (s) => s.treeUp() },
       { keys: '↑/↓ k/j', hint: 'move', desc: 'Move the selection', match: ['down', 'j'], run: (s) => s.treeDown() },
-      { keys: '⏎/space', hint: 'open', desc: 'Expand/collapse a node · open an object', match: ['return', ' '], run: (s) => void s.treeToggle() },
-      { keys: 'a', hint: 'all', desc: 'Browse the selected table — clean SELECT *', match: ['a'], run: (s) => s.browseSelected() },
+      { keys: '⏎/space', hint: 'open', desc: 'Expand/collapse a node · open an object', match: ['return', ' '], primary: true, run: (s) => void s.treeToggle() },
+      { keys: 'a', hint: 'all', desc: 'Browse the selected table — clean SELECT *', match: ['a'], primary: true, run: (s) => s.browseSelected() },
+      { keys: 'v', hint: 'mark', desc: 'Mark/unmark this table for a batch export (multi-select)', match: ['v'], primary: true, run: (s) => s.toggleMark() },
+      { keys: 'X', hint: 'export', desc: 'Export: marked tables, else all tables under the node (schema/category), else this one', match: ['X'], primary: true, run: (s) => s.exportSelectedTable() },
+      { keys: 'esc', hint: 'unmark', desc: 'Clear all export marks', match: ['escape'], run: (s) => s.clearMarks() },
       { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last row', match: ['g'], run: (s) => s.treeTop() },
       { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last row', match: ['G'], run: (s) => s.treeBottom() },
       { keys: '→/l', hint: 'expand', desc: 'Expand a node · open an object', match: ['right', 'l'], run: (s) => void s.treeExpand() },
       { keys: '←/h', hint: 'collapse', desc: 'Collapse a node · jump to parent', match: ['left', 'h'], run: (s) => s.treeCollapse() },
       { keys: 'D', hint: 'ddl', desc: 'Open the object showing its DDL/structure', match: ['D'], run: (s) => void s.treeShowDdl() },
-      { keys: 'd', hint: 'drop', desc: 'Draft a DROP for the table in the editor (review, then run)', match: ['d'], enabled: (f) => f.queryable, run: (s) => s.draftDrop() },
+      { keys: 'd', hint: 'drop', desc: 'Draft a DROP for the table in the editor (review, then run)', match: ['d'], enabled: (f) => f.queryable, primary: true, run: (s) => s.draftDrop() },
       { keys: 'r', hint: 'refresh', desc: 'Reload connections and re-read the object tree', match: ['r'], run: (s) => void s.refresh() },
-      { keys: 'n', hint: 'new', desc: 'New connection', match: ['n'], run: (s) => s.beginNewConnection() },
+      { keys: 'n', hint: 'new', desc: 'New connection', match: ['n'], primary: true, run: (s) => s.beginNewConnection() },
       { keys: 'e', hint: 'edit', desc: 'Edit the selected connection’s config', match: ['e'], run: (s) => s.beginEditConnection() },
       { keys: 'x', hint: 'remove', desc: 'Remove the selected connection (profile + saved password)', match: ['x'], run: (s) => s.beginRemoveConnection() },
     ],
@@ -148,17 +161,18 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '↑/↓ k/j', hint: 'row', desc: 'Move the row cursor', match: ['down', 'j'], run: (s) => s.gridDown() },
       { keys: '←/→ h/l', hint: 'col', desc: 'Move the column cursor · scroll wide tables', match: ['left', 'h'], run: (s) => s.gridLeft() },
       { keys: '←/→ h/l', hint: 'col', desc: 'Move the column cursor · scroll wide tables', match: ['right', 'l'], run: (s) => s.gridRight() },
-      { keys: '⏎', hint: 'inspect', desc: 'Inspect the full cell value', match: ['return'], run: (s) => s.openCell() },
+      { keys: '⏎', hint: 'inspect', desc: 'Inspect the full cell value', match: ['return'], primary: true, run: (s) => s.openCell() },
       { keys: 'a', hint: 'all', desc: 'Browse the selected table — clean SELECT *', match: ['a'], run: (s) => s.browseSelected() },
       { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last loaded row', match: ['g'], run: (s) => s.gridTop() },
       { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last loaded row', match: ['G'], run: (s) => s.gridBottom() },
       { keys: '^u/^d', hint: 'half-pg', desc: 'Move the cursor half a page up / down', match: ['^u'], run: (s) => s.gridHalfUp() },
       { keys: '^u/^d', hint: 'half-pg', desc: 'Move the cursor half a page up / down', match: ['^d'], run: (s) => s.gridHalfDown() },
-      { keys: 's', hint: 'sort', desc: 'Cycle sort on the column', match: ['s'], run: (s) => { if (s.surface === 'browse') void s.applySort(); } },
-      { keys: '/', hint: 'filter', desc: 'Filter the column by a substring', match: ['/'], run: (s) => { if (s.surface === 'browse') s.beginFilter(); } },
+      { keys: 's', hint: 'sort', desc: 'Cycle sort on the column', match: ['s'], primary: true, run: (s) => { if (s.surface === 'browse') void s.applySort(); } },
+      { keys: '/', hint: 'filter', desc: 'Filter the column by a substring', match: ['/'], primary: true, run: (s) => { if (s.surface === 'browse') s.beginFilter(); } },
       // Editing lives in the cell inspector (ADR 0011): ⏎ to inspect, then `e`.
       // No `e` here — a single entry (view → edit) keeps esc a clean pop back.
       { keys: 'd', hint: 'del', desc: 'Delete the row under the cursor', match: ['d'], run: (s) => { if (s.surface === 'browse') s.beginDelete(); } },
+      { keys: 'X', hint: 'export', desc: 'Export to CSV — the whole browsed table (filtered/sorted), or the query result', match: ['X'], primary: true, run: (s) => s.exportGrid() },
       { keys: 'n', hint: 'page+', desc: 'Next page (browsed table)', match: ['n'], run: (s) => { if (s.surface === 'browse') void s.pageNext(); } },
       { keys: 'p', hint: 'page-', desc: 'Previous page (browsed table)', match: ['p'], run: (s) => { if (s.surface === 'browse') void s.pagePrev(); } },
       { keys: 'D', hint: 'data/ddl', desc: 'Toggle the Data / DDL tab', match: ['D'], run: (s) => { if (s.surface === 'browse') s.toggleMainTab(); } },
@@ -167,7 +181,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
   ddl: {
     title: 'Structure',
     bindings: [
-      { keys: 'D', hint: 'data/ddl', desc: 'Toggle the Data / DDL tab', match: ['D'], run: (s) => s.toggleMainTab() },
+      { keys: 'D', hint: 'data/ddl', desc: 'Toggle the Data / DDL tab', match: ['D'], primary: true, run: (s) => s.toggleMainTab() },
     ],
   },
   editor: {
@@ -200,6 +214,8 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
     bindings: [
       { keys: 'y', hint: 'apply', desc: 'Apply the pending write', match: ['y', 'Y'], run: (s) => void s.confirmPending() },
       { keys: 'n', hint: 'cancel', desc: 'Cancel', match: ['n', 'N', 'escape'], run: (s) => s.cancelPending() },
+      // Export confirms only: cycle CSV/JSON/SQL. A no-op on other confirms.
+      { keys: 'f', hint: 'format', desc: 'Cycle export format (CSV / JSON / SQL)', match: ['f'], run: (s) => s.cycleExportFormat() },
     ],
   },
   connform: {
@@ -236,6 +252,12 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: 'esc', hint: 'view', desc: 'Discard the edit — back to the value view', match: ['escape'], run: (s) => s.cancelEdit() },
     ],
   },
+  exporting: {
+    title: 'Exporting',
+    bindings: [
+      { keys: 'esc', hint: 'cancel', desc: 'Cancel the export (discards the partial file)', match: ['escape'], run: (s) => s.cancelExport() },
+    ],
+  },
   nl: {
     title: 'Ask AI',
     bindings: [
@@ -257,10 +279,19 @@ const NAMED: ReadonlySet<string> = new Set([
 
 const usable = (b: KeyBinding, f: KeyFlags): boolean => !b.enabled || b.enabled(f);
 
-/** Does this key event satisfy one of a binding's match tokens? */
+/** Does this key event satisfy one of a binding's match tokens?
+ *  Token forms: `^⇧x` = ctrl+shift chord, `^x` = ctrl chord, a NAMED key, else a
+ *  literal glyph. `^⇧x` matches the char as either the base name or the shifted
+ *  sequence, so it fires whether the terminal reports `-` or `_` for that key. */
 const hits = (b: KeyBinding, key: KeyEvent, ch: string | null): boolean =>
   (b.match ?? []).some((t) =>
-    t.startsWith('^') ? key.ctrl && key.name === t.slice(1) : NAMED.has(t) ? key.name === t : ch === t,
+    t.startsWith('^⇧')
+      ? key.ctrl && key.shift && (key.name === t.slice(2) || key.sequence === t.slice(2))
+      : t.startsWith('^')
+        ? key.ctrl && key.name === t.slice(1)
+        : NAMED.has(t)
+          ? key.name === t
+          : ch === t,
   );
 
 /** The de-duplicated bindings to *show* for a context (the table repeats a row
@@ -274,10 +305,36 @@ const shown = (context: KeyContext, flags: KeyFlags): KeyBinding[] => {
   });
 };
 
-/** Compact one-line footer string for the active context, e.g. `⏎ open · …`. */
+/** Exits pinned to the end of every navigational footer, in a fixed order: the
+ *  always-there way out (quit) and into the full reference (help). */
+const FOOTER_EXITS: readonly string[] = ['quit', 'help'];
+
+/**
+ * Compact one-line footer for the active context: the curated *primary* bindings
+ * (the common few), or ALL of them when a context declares no primaries (keeps
+ * the short contexts — filter/cell/exporting — unchanged). Nav contexts append
+ * the quit/help exits. The full list always lives in the `?` overlay, and the
+ * status bar scrolls to reveal anything a narrow width clips.
+ */
 export const footerHints = (context: KeyContext, flags: KeyFlags): string => {
-  const global = NAV.has(context) ? GLOBAL.filter((b) => usable(b, flags)) : [];
-  return [...shown(context, flags), ...global].map((b) => `${b.keys} ${b.hint}`).join(' · ');
+  const nav = NAV.has(context);
+  const candidates = [
+    ...shown(context, flags),
+    ...(nav ? GLOBAL.filter((b) => usable(b, flags)) : []),
+  ];
+  const primaries = candidates.filter((b) => b.primary);
+  const pick = primaries.length > 0 ? primaries : candidates;
+  const hints = pick.map((b) => `${b.keys} ${b.hint}`);
+  if (nav) {
+    for (const hint of FOOTER_EXITS) {
+      const b = GLOBAL.find((g) => g.hint === hint && usable(g, flags));
+      if (b) {
+        const s = `${b.keys} ${b.hint}`;
+        if (!hints.includes(s)) hints.push(s);
+      }
+    }
+  }
+  return hints.join(' · ');
 };
 
 /** The groups the `?` overlay shows for the active context (local + global). */

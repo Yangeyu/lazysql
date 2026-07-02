@@ -11,6 +11,7 @@ import {
   asDdlScriptable,
   asIntrospectable,
   asQueryable,
+  asSqlDumpable,
   type DataSource,
 } from '../../domain/datasource/DataSource.ts';
 import type {
@@ -27,6 +28,7 @@ import {
   firstObjectIndex,
   firstSchemaKey,
   groupsBySchema,
+  refKey,
   schemaKey,
   toConnNodes,
   type TreeRow,
@@ -53,6 +55,20 @@ import { browseTable } from '../../application/usecases/BrowseTable.ts';
 import { updateRow, deleteRow } from '../../application/usecases/EditRow.ts';
 import { runQuery } from '../../application/usecases/RunQuery.ts';
 import { generateSql } from '../../application/usecases/GenerateSql.ts';
+import { exportResult } from '../../application/usecases/ExportResult.ts';
+import { exportTable } from '../../application/usecases/ExportTable.ts';
+import { exportTablesCombined } from '../../application/usecases/ExportTablesCombined.ts';
+import {
+  formatterFor,
+  jsonCombinedFormatter,
+  sqlCombinedFormatter,
+  sqlFormatter,
+  type ExportFormat,
+  type RowFormatter,
+} from '../../domain/export/RowFormatter.ts';
+import type { Exporter, ExportSummary } from '../../application/ports/Exporter.ts';
+import { ok, err, type Result } from '../../shared/Result.ts';
+import { ExportError } from '../../domain/errors/errors.ts';
 import type {
   SqlGenerator,
   SchemaContext,
@@ -64,6 +80,7 @@ import {
   complete,
   type SchemaCatalog,
 } from '../completion/sqlCompleter.ts';
+import { SIDEBAR_WIDTH, SIDEBAR_STEP, clampSidebarWidth } from './layout.ts';
 
 export const PAGE_SIZE = 100;
 
@@ -80,7 +97,9 @@ export type Focus = 'sidebar' | 'editor' | 'grid';
 export type Status = 'connecting' | 'ready' | 'error';
 // Cell editing is no longer a top-level mode — it lives in the cell inspector
 // overlay (`CellInspect.mode`), so it isn't listed here (ADR 0011).
-export type Mode = 'normal' | 'filter' | 'confirm' | 'connform';
+// `exporting`: a long export is running; input is captured so `esc` can cancel it
+// and the status bar shows the live row count (ADR 0012).
+export type Mode = 'normal' | 'filter' | 'confirm' | 'connform' | 'exporting';
 
 /** One editable field in the new-connection form. */
 export interface ConnFormField {
@@ -126,6 +145,8 @@ export interface AppStoreDeps {
   initial?: ConnectionProfile | null;
   /** Durable SQL editor history, per connection; null disables persistence. */
   historyStore?: QueryHistoryStore | null;
+  /** Writes exported rows to a destination; null disables export. */
+  exporter?: Exporter | null;
 }
 /**
  * What the single results grid is currently showing. ONE grid, ONE result —
@@ -144,11 +165,22 @@ export type MainTab = 'data' | 'ddl';
  * supporting lines (e.g. the objects a CASCADE would also drop); `tone` drives
  * the dialog's emphasis (`danger` → red) for irreversible/bulk operations.
  */
+/** An inline single-choice shown in the confirm (a segmented radio) — e.g. the
+ *  export format. Generic so the dialog stays reusable; the key that cycles it is
+ *  wired per-use in the keymap (`f` → `cycleExportFormat`). */
+export interface PendingChoice {
+  readonly label: string;
+  readonly options: readonly string[];
+  readonly selected: string;
+}
+
 export interface Pending {
   readonly title: string;
   readonly statement?: string;
   readonly details?: readonly string[];
   readonly tone: 'normal' | 'danger';
+  /** An adjustable option shown in the dialog (e.g. export format), or absent. */
+  readonly choice?: PendingChoice;
   readonly run: () => Promise<void>;
 }
 
@@ -184,6 +216,13 @@ export type Region = Focus;
 export interface AppState {
   status: Status;
   error: string | null;
+  /** A transient info line (e.g. an export result) shown in the status bar until
+   *  the next navigation replaces it. Distinct from `error` (failure) — success/
+   *  info, not overlapping. */
+  notice: string | null;
+  /** Chosen export format (persists across exports); cycled in the export
+   *  confirm with `f`. SQL is offered only for table exports (needs a dialect). */
+  exportFormat: ExportFormat;
   /** All saved connection profiles — the single source for the tree roots. */
   profiles: ConnectionProfile[];
   /** Id of the live connection, or null when none is connected. */
@@ -201,7 +240,13 @@ export interface AppState {
   expandedSchemas: Set<string>;
   /** Cursor into the flattened visible tree rows. */
   treeIndex: number;
+  /** Tables/views marked for a batch export (multi-select via `v`), keyed by
+   *  `refKey`. Empty ⇒ no marks, and `X` falls back to the cursor's node. Reset
+   *  on connection switch. */
+  marks: ReadonlySet<string>;
   focus: Focus;
+  /** User-adjustable connections sidebar width (cells); resized with ^⇧-/^⇧+. */
+  sidebarWidth: number;
   current: ObjectRef | null;
   // ── results grid (the single bottom-right surface) ──
   /** Whether the grid is showing a browsed table or a read-only query result. */
@@ -298,6 +343,9 @@ export interface AppState {
    *  focus it — review, then ⏎ runs it. Never executes on its own. No-op off an
    *  object row or on a non-SQL source. */
   draftDrop: () => void;
+  /** Grow / shrink the connections sidebar by one step, clamped (^⇧+ / ^⇧-). */
+  widenSidebar: () => void;
+  narrowSidebar: () => void;
   /** Re-list saved connections and re-introspect the active one's objects, so
    *  schema changes made elsewhere (e.g. a CREATE TABLE run in the editor) show
    *  up. Keeps the current fold/cursor; the SQL completion catalog is rebuilt
@@ -366,6 +414,23 @@ export interface AppState {
   /** Stage the cell edit typed in the native input as a pending confirm. */
   submitEdit: (value: string) => void;
   beginDelete: () => void;
+  /** Export the current grid view to a CSV file: the in-memory result for a
+   *  query surface, or the whole (filtered/sorted) table when browsing. */
+  exportGrid: () => void;
+  /** Export from the sidebar: the marked tables if any, else every table/view
+   *  under the cursor's node (a schema/category exports all its tables), else the
+   *  single object under the cursor. One file per table when it's a batch. */
+  exportSelectedTable: () => void;
+  /** Toggle the export mark on the table/view under the tree cursor. A no-op off
+   *  a table/view row. */
+  toggleMark: () => void;
+  /** Clear every export mark (esc in the sidebar). No-op when nothing is marked. */
+  clearMarks: () => void;
+  /** Cycle the export format (CSV → JSON → SQL) while the export confirm is up. */
+  cycleExportFormat: () => void;
+  /** Cancel the export in progress (esc during `mode: 'exporting'`); the partial
+   *  file is discarded. A no-op when nothing is exporting. */
+  cancelExport: () => void;
   confirmPending: () => Promise<void>;
   cancelPending: () => void;
 
@@ -467,11 +532,24 @@ const formProfile = (
 
 export const createAppStore = (deps: AppStoreDeps): AppStore =>
   createStore<AppState>((set, get) => {
-    const { connectionService, generator = null, initial = null, historyStore = null } = deps;
+    const { connectionService, generator = null, initial = null, historyStore = null, exporter = null } = deps;
     // The live connection, swapped in/out by attach()/disconnect(). The store
     // owns it but reaches it only through the segregated capability guards
     // (asQueryable/asIntrospectable), never as a concrete driver. (docs/adr/0002)
     let active: DataSource | null = null;
+
+    // The in-flight export's abort handle (out of reactive state — a transient
+    // control channel, like `active`); `cancelExport` fires it. (ADR 0012)
+    let exportAbort: AbortController | null = null;
+
+    // What the staged export confirm is about — captured when export is invoked,
+    // held out of reactive state (only the confirm reads it). Kept so the format
+    // can be re-cycled (`f`) against the same target without re-selecting it.
+    let exportReq:
+      | { readonly kind: 'result'; readonly result: ResultSet }
+      | { readonly kind: 'table'; readonly ref: ObjectRef; readonly sort: Sort | null; readonly filter: Filter | null }
+      | { readonly kind: 'tables'; readonly refs: readonly ObjectRef[] }
+      | null = null;
 
     /** The profile of the live connection, if any. */
     const activeProfile = (): ConnectionProfile | null =>
@@ -491,6 +569,24 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         expandedSchemas,
         groupBySchema: profile ? groupsBySchema(profile.driver) : false,
       });
+    };
+
+    /** The exportable objects a tree row stands for: an object row → itself; a
+     *  category/schema header → every object it groups. The caller narrows to
+     *  tables/views. Powers "export this whole schema" from a header row. */
+    const objectsUnder = (row: TreeRow | undefined): ObjectRef[] => {
+      if (!row) return [];
+      const objs = get().objects;
+      switch (row.type) {
+        case 'object':
+          return [row.ref];
+        case 'category':
+          return objs.filter((o) => o.kind === row.kind);
+        case 'schema':
+          return objs.filter((o) => o.kind === row.kind && (o.namespace ?? '') === row.namespace);
+        default:
+          return [];
+      }
     };
 
     /** Re-clamp the cursor after the visible row count changes. */
@@ -574,7 +670,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
     const load = async (ref: ObjectRef, spec: BrowseSpec): Promise<void> => {
       if (!active) return;
-      set({ loading: true, error: null });
+      set({ loading: true, error: null, notice: null });
       const res = await browseTable(active, ref, spec);
       if (!res.ok) {
         set({ loading: false, status: 'error', error: res.error.message });
@@ -622,13 +718,180 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
     const keyText = (key: RowKey): string =>
       key.map((k) => `${k.column}=${String(k.value)}`).join(' AND ');
 
+    /** Default export filename for an object (namespaced tables stay distinct). */
+    const exportName = (ref: ObjectRef, ext: string): string =>
+      `${ref.namespace ? `${ref.namespace}_` : ''}${ref.name}.${ext}`;
+
+    /** Filename for a combined batch file: the shared namespace when the tables
+     *  all live in one schema (e.g. `public.sql`), else a neutral `export.<ext>`. */
+    const combinedName = (refs: readonly ObjectRef[], ext: string): string => {
+      const namespaces = [...new Set(refs.map((r) => r.namespace).filter((n): n is string => !!n))];
+      return `${namespaces.length === 1 ? namespaces[0] : 'export'}.${ext}`;
+    };
+
+    /** Drive an export task to a status-bar notice (success) or error. The task's
+     *  errors are Error subclasses (Export/UnsupportedCapability), so `.message`
+     *  reads uniformly. */
+    /** Run a staged export: enter `exporting` mode (input captured so `esc` can
+     *  cancel), stream progress to the status bar, then land on a success / error
+     *  / cancelled notice. `run` gets the abort signal + a progress reporter. */
+    const runExport = async (
+      run: (signal: AbortSignal, onProgress: (rows: number) => void) => Promise<Result<ExportSummary, Error>>,
+    ): Promise<void> => {
+      exportReq = null; // the confirm's target is consumed once it runs
+      const ctrl = new AbortController();
+      exportAbort = ctrl;
+      set({ mode: 'exporting', notice: 'exporting…', error: null });
+      const r = await run(ctrl.signal, (rows) => set({ notice: `exporting… ${rows} rows` }));
+      exportAbort = null;
+      if (get().mode === 'exporting') set({ mode: 'normal' });
+      if (r.ok) set({ notice: `exported ${r.value.rows} rows → ${r.value.path}`, error: null });
+      // Neutral wording: a cancelled multi-file batch may have written some
+      // complete files already, so don't claim "nothing written".
+      else if (ctrl.signal.aborted) set({ notice: 'export cancelled', error: null });
+      else set({ error: `export failed: ${r.error.message}`, notice: null });
+    };
+
+    /** Formats offered for a target: SQL needs a dialect (INSERTs) and a table to
+     *  insert into, so it's table-only; a query result gets CSV/JSON. */
+    const formatsFor = (req: NonNullable<typeof exportReq>): ExportFormat[] =>
+      (req.kind === 'table' || req.kind === 'tables') && active && asSqlDumpable(active)
+        ? ['csv', 'json', 'sql']
+        : ['csv', 'json'];
+
+    /** CSV batch: one file per table (`<ns>_<name>.csv`) in the working dir —
+     *  CSV's columns differ per table so a shared file makes no sense (JSON/SQL
+     *  combine into one file via `exportTablesCombined` instead, so this path is
+     *  CSV-only). Stops at the first failure (报错停止 policy, ADR 0012). Progress
+     *  reports the running row total across tables. */
+    const exportCsvFilesPerTable = async (
+      src: DataSource,
+      refs: readonly ObjectRef[],
+      ex: Exporter,
+      signal: AbortSignal,
+      onProgress: (rows: number) => void,
+    ): Promise<Result<ExportSummary, Error>> => {
+      let total = 0;
+      let done = 0;
+      let dir = '';
+      for (const ref of refs) {
+        // Cancel between tables reports as cancelled (not a partial success) so
+        // the notice matches the mid-table and combined paths; files already
+        // fully written stay on disk, the in-flight one is discarded.
+        if (signal.aborted) return err(new ExportError('export cancelled'));
+        const r = await exportTable(
+          src, ref, formatterFor('csv'), ex, { path: exportName(ref, 'csv') }, {}, signal,
+          (rows) => onProgress(total + rows),
+        );
+        if (!r.ok) return r;
+        total += r.value.rows;
+        done += 1;
+        const slash = r.value.path.lastIndexOf('/');
+        if (slash >= 0) dir = r.value.path.slice(0, slash);
+      }
+      return ok({ rows: total, path: `${done} files → ${dir}` });
+    };
+
+    /** (Re)stage the export confirm from the held target + current format —
+     *  unified with every other write (ADR 0012). Shows the resolved destination
+     *  and the format; `f` re-cycles the format through here. */
+    const stageExportConfirm = (): void => {
+      const req = exportReq;
+      const ex = exporter;
+      if (!req || !ex) return;
+      const fmt = get().exportFormat;
+
+      const choice: PendingChoice = {
+        label: 'format',
+        options: formatsFor(req).map((f) => f.toUpperCase()),
+        selected: fmt.toUpperCase(),
+      };
+      const present = (
+        title: string,
+        statement: string,
+        run: (signal: AbortSignal, onProgress: (rows: number) => void) => Promise<Result<ExportSummary, Error>>,
+      ): void =>
+        set({
+          mode: 'confirm',
+          pending: { title, statement, choice, tone: 'normal', run: () => runExport(run) },
+        });
+
+      if (req.kind === 'result') {
+        const view = fmt === 'sql' ? 'csv' : fmt; // SQL isn't offered for a query result
+        const path = `query-result.${view}`;
+        present('Export the query result', `→ ${resolveUserPath(path)}`, (signal, onProgress) =>
+          exportResult(req.result, formatterFor(view), ex, { path }, signal, onProgress),
+        );
+        return;
+      }
+
+      const src = active;
+      if (!src) return;
+
+      // One whole-table formatter for `ref` in the chosen format: SQL needs the
+      // source's dialect-backed INSERT dump (per row-chunk); CSV/JSON are
+      // ref-agnostic. `formatsFor` already gates SQL to a SqlDumpable source, so
+      // the fallback below is unreachable — it only satisfies the null guard.
+      const makeFormatter = (ref: ObjectRef): RowFormatter => {
+        if (fmt === 'sql') {
+          const dumpable = asSqlDumpable(src);
+          if (!dumpable) return formatterFor('csv');
+          return sqlFormatter((cols, rows) => dumpable.insertDump(ref, cols, rows));
+        }
+        return formatterFor(fmt);
+      };
+
+      if (req.kind === 'tables') {
+        const { refs } = req;
+        // CSV can't share a file (columns differ per table) → one file each.
+        // JSON nests tables in an object, SQL concatenates INSERT blocks → one file.
+        if (fmt === 'csv') {
+          const example = resolveUserPath(exportName(refs[0]!, 'csv'));
+          present(
+            `Export ${refs.length} tables (CSV, one file each)`,
+            `→ ${refs.length} files, e.g. ${example}`,
+            (signal, onProgress) => exportCsvFilesPerTable(src, refs, ex, signal, onProgress),
+          );
+          return;
+        }
+        const path = combinedName(refs, fmt);
+        const dumpable = asSqlDumpable(src);
+        const combined =
+          fmt === 'sql'
+            ? sqlCombinedFormatter((ref, cols, rows) => (dumpable ? dumpable.insertDump(ref, cols, rows) : ''))
+            : jsonCombinedFormatter();
+        present(
+          `Export ${refs.length} tables → one ${fmt.toUpperCase()} file`,
+          `→ ${resolveUserPath(path)}`,
+          (signal, onProgress) => exportTablesCombined(src, refs, combined, ex, { path }, signal, onProgress),
+        );
+        return;
+      }
+
+      const ref = req.ref;
+      present(
+        `Export ${ref.name} (whole table)`,
+        `→ ${resolveUserPath(exportName(ref, fmt))}`,
+        (signal, onProgress) =>
+          exportTable(src, ref, makeFormatter(ref), ex, { path: exportName(ref, fmt) }, { sort: req.sort, filter: req.filter }, signal, onProgress),
+      );
+    };
+
+    /** Point the format at an allowed value for the held target (e.g. drop SQL
+     *  when the target became a query result). */
+    const clampExportFormat = (): void => {
+      if (exportReq && !formatsFor(exportReq).includes(get().exportFormat)) {
+        set({ exportFormat: 'csv' });
+      }
+    };
+
     /** Run the editor's SQL and take over the shared grid with the result. The
      *  execution proper, shared by the direct run and the guarded (confirmed)
      *  path so the two can't drift. */
     const runEditorSql = async (text: string): Promise<void> => {
       if (!active) return;
       const { history } = get();
-      set({ loading: true, queryError: null });
+      set({ loading: true, queryError: null, notice: null });
       const r = await runQuery(active, text);
       if (!r.ok) {
         set({ loading: false, queryError: r.error.message, queryElapsedMs: null });
@@ -785,6 +1048,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         expandedCats: new Set<ObjectKind>(),
         expandedSchemas: new Set<string>(),
         treeIndex: 0,
+        marks: new Set<string>(),
         focus: 'sidebar',
         current: null,
         surface: 'browse',
@@ -818,6 +1082,8 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
     return {
       status: 'ready',
       error: null,
+      notice: null,
+      exportFormat: 'csv',
       profiles: [],
       activeId: null,
       connForm: null,
@@ -826,7 +1092,9 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       expandedCats: new Set<ObjectKind>(),
       expandedSchemas: new Set<string>(),
       treeIndex: 0,
+      marks: new Set<string>(),
       focus: 'sidebar',
+      sidebarWidth: SIDEBAR_WIDTH,
       current: null,
       surface: 'browse',
       mainTab: 'data',
@@ -1092,6 +1360,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           cellView: null,
           rootExpanded: true,
           treeIndex: 0,
+          marks: new Set<string>(),
           focus: 'sidebar',
         });
         clampTree();
@@ -1448,6 +1717,76 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         });
       },
 
+      exportGrid: () => {
+        if (!exporter) return set({ error: 'export is unavailable' });
+        const { surface, result, current, sort, filter } = get();
+        // A query surface has only its in-memory result; a browse surface exports
+        // the WHOLE table behind the view (its filter/sort applied), not one page.
+        if (surface === 'query') {
+          if (!result) return set({ error: 'nothing to export' });
+          exportReq = { kind: 'result', result };
+        } else {
+          if (!active || !current) return set({ error: 'nothing to export' });
+          exportReq = { kind: 'table', ref: current, sort, filter };
+        }
+        clampExportFormat();
+        stageExportConfirm();
+      },
+
+      exportSelectedTable: () => {
+        if (!exporter) return set({ error: 'export is unavailable' });
+        if (!active) return set({ error: 'nothing to export' });
+        // Marks win over the cursor when present (a selection overrides position);
+        // otherwise the cursor's node decides — a schema/category exports all its
+        // tables, an object row just itself.
+        const marks = get().marks;
+        const picked =
+          marks.size > 0
+            ? get().objects.filter((o) => marks.has(refKey(o)))
+            : objectsUnder(rowsNow()[get().treeIndex]);
+        const refs = picked.filter((o) => o.kind === 'table' || o.kind === 'view');
+        if (refs.length === 0) {
+          return set({ error: 'select a table, a schema, or mark tables (v) to export' });
+        }
+        exportReq =
+          refs.length === 1
+            ? { kind: 'table', ref: refs[0]!, sort: null, filter: null }
+            : { kind: 'tables', refs };
+        clampExportFormat();
+        stageExportConfirm();
+      },
+
+      toggleMark: () => {
+        const row = rowsNow()[get().treeIndex];
+        if (row?.type !== 'object') return;
+        // Only tables/views hold rows worth exporting; skip index/trigger/… rows.
+        if (row.ref.kind !== 'table' && row.ref.kind !== 'view') return;
+        const key = refKey(row.ref);
+        const next = new Set(get().marks);
+        next.has(key) ? next.delete(key) : next.add(key);
+        set({ marks: next });
+      },
+
+      clearMarks: () => {
+        if (get().marks.size > 0) set({ marks: new Set() });
+      },
+
+      cycleExportFormat: () => {
+        if (!exportReq) return; // a non-export confirm — `f` does nothing
+        const allowed = formatsFor(exportReq);
+        const next = allowed[(allowed.indexOf(get().exportFormat) + 1) % allowed.length];
+        if (next) set({ exportFormat: next });
+        stageExportConfirm();
+      },
+
+      cancelExport: () => {
+        exportAbort?.abort();
+        if (get().mode === 'exporting') set({ notice: 'cancelling…' });
+      },
+
+      widenSidebar: () => set((s) => ({ sidebarWidth: clampSidebarWidth(s.sidebarWidth + SIDEBAR_STEP) })),
+      narrowSidebar: () => set((s) => ({ sidebarWidth: clampSidebarWidth(s.sidebarWidth - SIDEBAR_STEP) })),
+
       confirmPending: async () => {
         const { pending } = get();
         set({ mode: 'normal' });
@@ -1458,7 +1797,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         if (get().pending === pending) set({ pending: null });
       },
 
-      cancelPending: () => set({ mode: 'normal', pending: null }),
+      cancelPending: () => {
+        exportReq = null; // if it was an export confirm, drop its target too
+        set({ mode: 'normal', pending: null });
+      },
 
       // ── query editor ──────────────────────────────────────────────────────
 

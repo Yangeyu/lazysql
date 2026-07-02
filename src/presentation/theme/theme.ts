@@ -21,11 +21,13 @@ export const theme = {
   orange: '#ff9e64',
   red: '#f7768e',
   cyan: '#7dcfff',
-  /** Resting (unfocused) border + secondary text. */
-  border: '#3b4261',
+  /** Resting (unfocused) border + secondary text (hints, footers, labels). Kept
+   *  readable on the dark base: the old gutter hue (#3b4261) was fine for lines
+   *  but too dark to read as text, which was the dominant use. */
+  border: '#6b7399',
   /** Muted/secondary text — the explicit colour that replaces a terminal-dependent
-   *  "dim" attribute. */
-  muted: '#565f89',
+   *  "dim" attribute; a touch brighter than `border` for the more prominent spots. */
+  muted: '#868fbd',
   /** Focused panel border. */
   borderFocus: '#7aa2f7',
 } as const;

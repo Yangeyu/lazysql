@@ -161,6 +161,22 @@ pgTest('describe reports the primary key and nullability', async () => {
   expect(label?.nullable).toBe(true);
 });
 
+pgTest('describe marks jsonb columns jsonCanonical — json stays verbatim', async () => {
+  const exec = (text: string) => asQueryable(source)!.execute(sql(text));
+  await exec('DROP TABLE IF EXISTS jsonshapes');
+  await exec('CREATE TABLE jsonshapes (id int PRIMARY KEY, doc jsonb, doc_text json)');
+  try {
+    const cols = columnsOf(
+      await asIntrospectable(source)!.describe({ namespace: 'public', name: 'jsonshapes', kind: 'table' }),
+    );
+    expect(cols.find((c) => c.name === 'doc')?.jsonCanonical).toBe(true);
+    expect(cols.find((c) => c.name === 'doc_text')?.jsonCanonical).toBeUndefined();
+    expect(cols.find((c) => c.name === 'id')?.jsonCanonical).toBeUndefined();
+  } finally {
+    await exec('DROP TABLE jsonshapes');
+  }
+});
+
 pgTest('browseTable paginates with $-placeholders and counts', async () => {
   const result = unwrap(await browseTable(source, widget, { page: firstPage(10) }));
   expect(result.total).toBe(25);

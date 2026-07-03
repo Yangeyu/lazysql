@@ -127,12 +127,18 @@ export class PostgresDialect implements Dialect {
     const iType = col(raw, 'data_type');
     const iNullable = col(raw, 'is_nullable');
     const iPk = col(raw, 'is_pk');
-    return raw.rows.map((r) => ({
-      name: String(r[iName]),
-      dataType: String(r[iType] ?? ''),
-      nullable: r[iNullable] === 'YES',
-      isPrimaryKey: r[iPk] === true,
-    }));
+    return raw.rows.map((r) => {
+      const dataType = String(r[iType] ?? '');
+      return {
+        name: String(r[iName]),
+        dataType,
+        nullable: r[iNullable] === 'YES',
+        isPrimaryKey: r[iPk] === true,
+        // jsonb is stored normalized; `json` keeps its text verbatim, so it is
+        // deliberately NOT marked.
+        ...(dataType === 'jsonb' ? { jsonCanonical: true as const } : {}),
+      };
+    });
   }
 
   sourceQuery(ref: ObjectRef): Query {

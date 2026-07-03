@@ -41,6 +41,12 @@ export interface ColumnDef {
   readonly dataType: string;
   readonly nullable: boolean;
   readonly isPrimaryKey: boolean;
+  /** True when the store normalizes JSON text on write (e.g. Postgres `jsonb`,
+   *  MySQL `json`), so reformatting the text can NOT change the stored value —
+   *  editors may pretty-print such cells freely. Absent → text layout is data
+   *  (plain text columns, Postgres `json`, SQLite, Redis) and must be kept
+   *  verbatim. Declared by the adapter, which owns this knowledge. */
+  readonly jsonCanonical?: true;
 }
 
 /**

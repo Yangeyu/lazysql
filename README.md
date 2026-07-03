@@ -169,7 +169,7 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 | Key | Action |
 |----|------|
 | `j` / `k` · `↑` / `↓` | Scroll the value |
-| `e` | Edit the cell in place |
+| `e` | Edit the cell in place (`^S` save · `esc` back) |
 | `y` | Copy the full value to the clipboard |
 | `esc` / `⏎` | Close |
 

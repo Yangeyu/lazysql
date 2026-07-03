@@ -95,12 +95,17 @@ export class MySqlDialect implements Dialect {
     const iType = col(raw, 'data_type');
     const iNullable = col(raw, 'is_nullable');
     const iKey = col(raw, 'column_key');
-    return raw.rows.map((r) => ({
-      name: String(r[iName]),
-      dataType: String(r[iType] ?? ''),
-      nullable: r[iNullable] === 'YES',
-      isPrimaryKey: r[iKey] === 'PRI',
-    }));
+    return raw.rows.map((r) => {
+      const dataType = String(r[iType] ?? '');
+      return {
+        name: String(r[iName]),
+        dataType,
+        nullable: r[iNullable] === 'YES',
+        isPrimaryKey: r[iKey] === 'PRI',
+        // MySQL json is stored in a normalized binary form — reformat-safe.
+        ...(dataType === 'json' ? { jsonCanonical: true as const } : {}),
+      };
+    });
   }
 
   sourceQuery(ref: ObjectRef): Query {

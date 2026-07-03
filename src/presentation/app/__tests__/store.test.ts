@@ -370,9 +370,137 @@ test('esc in a cell edit discards the draft and falls back to the value view', (
   const store = createAppStore({ connectionService: serviceFor(profile) });
   // Editing is a sub-state of inspecting a cell (single entry: view → `e`), so
   // cancel returns to view — the inspector stays open, it doesn't close to null.
-  store.setState({ cellView: { column: 'label', value: 'w1', offset: 0, mode: 'edit' } });
+  store.setState({
+    cellView: {
+      column: 'label',
+      value: 'w1',
+      offset: 0,
+      mode: 'edit',
+      seedText: 'w1',
+      jsonCanonical: false,
+      rowKey: [{ column: 'id', value: 1 }],
+    },
+  });
   store.getState().cancelEdit();
   expect(store.getState().cellView?.mode).toBe('view');
+});
+
+// ── cell edit + JSON: jsonCanonical seeding, no-op saves, draft validation ──
+
+/** A browse of `docs(id pk, payload jsonb)` with the cursor on the payload cell.
+ *  `jsonCanonical` comes from the cached describe (`structure`), as in the app. */
+const editFixture = (payloadCanonical: boolean) => {
+  const profile: ConnectionProfile = { id: 'x', name: 'X', driver: 'sqlite', options: {} };
+  const store = createAppStore({ connectionService: serviceFor(profile) });
+  store.setState({
+    current: { name: 'docs', kind: 'table' },
+    result: {
+      shape: 'tabular',
+      columns: [{ name: 'id' }, { name: 'payload' }],
+      rows: [[1, '{"n":12345678901234567890,"a":[1,2]}']],
+      truncated: false,
+    },
+    pkColumns: ['id'],
+    gridRow: 0,
+    gridCol: 1,
+    structure: {
+      ref: { name: 'docs', kind: 'table' },
+      detail: [
+        {
+          kind: 'columns',
+          columns: [
+            { name: 'id', dataType: 'integer', nullable: false, isPrimaryKey: true },
+            {
+              name: 'payload',
+              dataType: payloadCanonical ? 'jsonb' : 'text',
+              nullable: true,
+              isPrimaryKey: false,
+              ...(payloadCanonical ? { jsonCanonical: true as const } : {}),
+            },
+          ],
+        },
+      ],
+    },
+  });
+  return store;
+};
+
+test('beginEdit pretty-seeds a jsonCanonical column with its tokens verbatim', () => {
+  const store = editFixture(true);
+  store.getState().beginEdit();
+  const cv = store.getState().cellView;
+  if (cv?.mode !== 'edit') throw new Error('expected edit mode');
+  expect(cv.jsonCanonical).toBe(true);
+  expect(cv.seedText.split('\n').length).toBeGreaterThan(1); // pretty, not raw
+  expect(cv.seedText).toContain('12345678901234567890'); // no parse→stringify
+});
+
+test('beginEdit seeds a plain column with the raw value untouched', () => {
+  const store = editFixture(false);
+  store.getState().beginEdit();
+  const cv = store.getState().cellView;
+  if (cv?.mode !== 'edit') throw new Error('expected edit mode');
+  expect(cv.jsonCanonical).toBe(false);
+  expect(cv.seedText).toBe('{"n":12345678901234567890,"a":[1,2]}');
+});
+
+test('submitEdit with an untouched draft stages nothing and pops back to view', () => {
+  const store = editFixture(true);
+  store.getState().beginEdit();
+  const cv = store.getState().cellView;
+  if (cv?.mode !== 'edit') throw new Error('expected edit mode');
+  store.getState().submitEdit(cv.seedText);
+  expect(store.getState().mode).toBe('normal'); // no confirm staged
+  expect(store.getState().cellView?.mode).toBe('view');
+  expect(store.getState().notice).toBe('no change');
+});
+
+test('submitEdit rejects malformed JSON on a jsonCanonical column, keeping the draft', () => {
+  const store = editFixture(true);
+  store.getState().beginEdit();
+  store.getState().submitEdit('{oops');
+  expect(store.getState().mode).toBe('normal'); // no confirm staged
+  expect(store.getState().cellView?.mode).toBe('edit'); // still editing
+  expect(store.getState().error).toContain('JSON');
+});
+
+test('submitEdit stages a changed, valid draft as an update confirm', () => {
+  const store = editFixture(true);
+  store.getState().beginEdit();
+  store.getState().submitEdit('{"a": 2}');
+  expect(store.getState().mode).toBe('confirm');
+  expect(store.getState().pending?.statement).toContain('UPDATE docs SET payload');
+});
+
+test('submitEdit targets the cell the edit was seeded from, not the live cursor', () => {
+  // The grid under the overlay stays mouse-reachable, so the cursor can move
+  // mid-edit; the staged UPDATE must still hit the original column and row.
+  const store = editFixture(true);
+  store.getState().beginEdit();
+  store.setState({ gridCol: 0, gridRow: 99 }); // simulate a click elsewhere
+  store.getState().submitEdit('{"a": 2}');
+  expect(store.getState().pending?.statement).toContain('SET payload');
+  expect(store.getState().pending?.statement).toContain('WHERE id=1');
+});
+
+test('leaving the edit clears a stale validation error', () => {
+  const store = editFixture(true);
+  store.getState().beginEdit();
+  store.getState().submitEdit('{oops'); // sets the validation error
+  store.getState().cancelEdit(); // esc back to view
+  expect(store.getState().error).toBeNull();
+});
+
+test('a plain column keeps save-always semantics — an untouched draft still stages', () => {
+  // Deliberate re-saves (e.g. to fire ON UPDATE triggers) must keep working on
+  // non-canonical columns; the no-op skip exists only where the seed's layout
+  // is the editor's own reformatting.
+  const store = editFixture(false);
+  store.getState().beginEdit();
+  const cv = store.getState().cellView;
+  if (cv?.mode !== 'edit') throw new Error('expected edit mode');
+  store.getState().submitEdit(cv.seedText);
+  expect(store.getState().mode).toBe('confirm');
 });
 
 test('a dependents-blocked DROP escalates to a CASCADE confirm, then runs it', async () => {

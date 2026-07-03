@@ -263,6 +263,7 @@ export const App = ({ clipboard }: AppProps) => {
       value={cellView.value}
       offset={cellView.offset}
       mode={cellView.mode}
+      seedText={cellView.mode === 'edit' ? cellView.seedText : undefined}
       termRows={terminalRows}
       termCols={terminalCols}
       onScroll={(delta) => store.getState().scrollCell(delta)}

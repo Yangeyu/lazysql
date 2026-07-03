@@ -24,12 +24,32 @@ interface Props {
   termCols: number;
 }
 
-/** Hard-wrap a line into width-w chunks so the panel geometry is exact and the
- *  footer never depends on the renderer's wrapping. */
+/** Hard-wrap into width-w chunks so the panel geometry is exact and the footer
+ *  never depends on the renderer's wrapping. Splits on newlines first — a staged
+ *  statement can embed a multi-line value (e.g. a pretty-printed JSON edit), and
+ *  an embedded '\n' inside one <text> would render extra rows the height math
+ *  didn't count. */
 const wrap = (s: string, w: number): string[] => {
   const out: string[] = [];
-  for (let i = 0; i < s.length; i += w) out.push(s.slice(i, i + w));
+  for (const line of s.split('\n')) {
+    if (line.length === 0) out.push('');
+    else for (let i = 0; i < line.length; i += w) out.push(line.slice(i, i + w));
+  }
   return out.length > 0 ? out : [''];
+};
+
+/** Clamp to `max` rows by eliding the MIDDLE: for an UPDATE both the head
+ *  (SET column) and the tail (WHERE key) are what the user must see to judge
+ *  the write, so neither end may be sacrificed. */
+const clampMiddle = (lines: string[], max: number): string[] => {
+  if (lines.length <= max) return lines;
+  const head = Math.ceil((max - 1) / 2);
+  const tail = max - 1 - head;
+  return [
+    ...lines.slice(0, head),
+    `… (+${lines.length - head - tail} lines)`,
+    ...lines.slice(lines.length - tail),
+  ];
 };
 
 const ConfirmDialogImpl = ({ title, statement, details, tone, choice, termRows, termCols }: Props) => {
@@ -39,8 +59,14 @@ const ConfirmDialogImpl = ({ title, statement, details, tone, choice, termRows, 
   const width = Math.max(34, Math.min(termCols - 8, 76));
   const innerW = width - 4; // border (2) + paddingX (2)
 
-  const stmtLines = statement ? wrap(statement, innerW) : [];
   const deps = details ?? [];
+  // Rows everything but the statement occupies (incl. the border): header +
+  // stmt blank + (blank + choice) + (blank + "also drops:" + items) + blank +
+  // footer + border(2). The statement gets whatever the terminal has left.
+  const chrome = 1 + 1 + (choice ? 2 : 0) + (deps.length > 0 ? 2 + deps.length : 0) + 2 + 2;
+  const stmtLines = statement
+    ? clampMiddle(wrap(statement, innerW), Math.max(3, termRows - chrome))
+    : [];
 
   // header + (blank + statement) + (blank + choice) + (blank + "Also drops:" + items) + blank + footer
   const lines =

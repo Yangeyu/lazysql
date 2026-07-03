@@ -6,10 +6,11 @@
  *
  *   • view mode: the cell's complete value, structurally formatted (pretty JSON),
  *     scrolling with j/k for values taller than the panel; `y` copies, `e` edits.
- *   • edit mode: a focused <textarea> seeded with the RAW value (never
- *     pretty-printed, so saving can't silently reformat a text column). Enter
- *     inserts a newline — so multi-line JSON is editable — `^S` saves (stages the
- *     same update confirm), Esc discards back to the value view.
+ *   • edit mode: a focused <textarea> seeded with the store-computed `seedText` —
+ *     the raw value, pretty-printed only on a jsonCanonical column (where the
+ *     store normalizes JSON, so saving can't silently reformat a text column).
+ *     Enter inserts a newline — so multi-line JSON is editable — `^S` saves
+ *     (stages the same update confirm), Esc discards back to the value view.
  *
  * The panel is a FIXED size (derived once from the terminal, not from the value).
  * Pure projection of the store's `cellView` slice; the store keeps no edit draft
@@ -41,6 +42,9 @@ interface Props {
   offset: number;
   /** view = read/scroll/copy; edit = the value is being edited in place. */
   mode: 'view' | 'edit';
+  /** Edit mode only: the text seeding the <textarea> (raw, or pretty-printed on
+   *  a jsonCanonical column — the store decides). */
+  seedText?: string;
   termRows: number;
   termCols: number;
   /** Wheel/trackpad scrolled the value (+1 down / −1 up) — view mode only. */
@@ -54,6 +58,7 @@ const CellViewImpl = ({
   value,
   offset,
   mode,
+  seedText,
   termRows,
   termCols,
   onScroll,
@@ -104,7 +109,7 @@ const CellViewImpl = ({
         )}
         <textarea
           ref={editRef}
-          initialValue={cellEditText(value)}
+          initialValue={seedText ?? cellEditText(value)}
           focused
           keyBindings={CELL_EDIT_KEYBINDINGS}
           wrapMode="word"

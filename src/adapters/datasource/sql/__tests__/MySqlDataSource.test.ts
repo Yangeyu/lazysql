@@ -134,6 +134,21 @@ myTest('describe reports the primary key via COLUMN_KEY', async () => {
   expect(label?.nullable).toBe(true);
 });
 
+myTest('describe marks json columns jsonCanonical', async () => {
+  const exec = (text: string) => asQueryable(source)!.execute(sql(text));
+  await exec('DROP TABLE IF EXISTS jsonshapes');
+  await exec('CREATE TABLE jsonshapes (id INT PRIMARY KEY, doc JSON, plain TEXT)');
+  try {
+    const cols = columnsOf(
+      await asIntrospectable(source)!.describe({ namespace: 'lazysql', name: 'jsonshapes', kind: 'table' }),
+    );
+    expect(cols.find((c) => c.name === 'doc')?.jsonCanonical).toBe(true);
+    expect(cols.find((c) => c.name === 'plain')?.jsonCanonical).toBeUndefined();
+  } finally {
+    await exec('DROP TABLE jsonshapes');
+  }
+});
+
 myTest('browse paginates with backtick quoting and counts', async () => {
   const result = unwrap(await browseTable(source, widget, { page: firstPage(10) }));
   expect(result.total).toBe(25);

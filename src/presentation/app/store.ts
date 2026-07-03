@@ -19,7 +19,7 @@ import type {
   ObjectRef,
   ObjectSchema,
 } from '../../domain/datasource/schema.ts';
-import { columnsOf, sectionsFor } from '../../domain/datasource/schema.ts';
+import { columnsOf, objectRefKey, sectionsFor } from '../../domain/datasource/schema.ts';
 import type { RowKey, FieldValue } from '../../domain/datasource/edit.ts';
 import {
   buildTree,
@@ -56,6 +56,7 @@ import { updateRow, deleteRow } from '../../application/usecases/EditRow.ts';
 import { runQuery } from '../../application/usecases/RunQuery.ts';
 import { generateSql } from '../../application/usecases/GenerateSql.ts';
 import { exportResult } from '../../application/usecases/ExportResult.ts';
+import { cellEditText, isJsonText, prettyJson } from '../components/cellFormat.ts';
 import { exportTable } from '../../application/usecases/ExportTable.ts';
 import { exportTablesCombined } from '../../application/usecases/ExportTablesCombined.ts';
 import {
@@ -200,15 +201,42 @@ const dangerHeadline = (kind: DangerKind, sql: string): string => {
 
 /** The full-cell inspector overlay: one self-contained slice. It is either
  *  *viewing* the value (scrollable, read-only) or *editing* it (a focused
- *  textarea seeded with the raw value) — one union, not an `isEditing` flag. */
-export interface CellInspect {
-  readonly column: string;
-  readonly value: CellValue;
-  /** First visible line of the (possibly long) formatted value (view mode). */
-  readonly offset: number;
-  /** view = read/scroll/copy; edit = the value is being edited in place. */
-  readonly mode: 'view' | 'edit';
-}
+ *  textarea) — a discriminated union, not an `isEditing` flag. */
+export type CellInspect =
+  | {
+      readonly mode: 'view';
+      readonly column: string;
+      readonly value: CellValue;
+      /** First visible line of the (possibly long) formatted value. */
+      readonly offset: number;
+    }
+  | {
+      readonly mode: 'edit';
+      readonly column: string;
+      readonly value: CellValue;
+      /** Carried through the edit so esc restores the view's scroll position. */
+      readonly offset: number;
+      /** The text the edit <textarea> was seeded with — the raw value, or its
+       *  pretty-printed form on a jsonCanonical column. submitEdit compares the
+       *  draft against it to skip no-op saves. */
+      readonly seedText: string;
+      /** The column stores canonical JSON (adapter-declared): the seed was
+       *  pretty-printed and the draft is validated as JSON before staging. */
+      readonly jsonCanonical: boolean;
+      /** The primary-key locator of the row being edited, frozen at beginEdit —
+       *  the grid under the overlay stays mouse-reachable, so the live cursor
+       *  at save time may no longer be this cell. */
+      readonly rowKey: RowKey;
+    };
+
+/** Pop an inspector back to its read-only view, keeping the scroll position —
+ *  the one projection both esc and a no-op save must agree on. */
+const backToView = (cv: CellInspect): CellInspect => ({
+  mode: 'view',
+  column: cv.column,
+  value: cv.value,
+  offset: cv.offset,
+});
 
 /** The clickable panes a mouse press can focus (same set as Focus). */
 export type Region = Focus;
@@ -1642,11 +1670,18 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       },
 
       beginEdit: () => {
-        const { result, gridRow, gridCol, pkColumns } = get();
+        const { result, gridRow, gridCol, pkColumns, structure, current, cellView } = get();
         const column = result?.columns[gridCol]?.name;
         if (!result || !column) return;
         if (pkColumns.length === 0) {
           set({ error: 'table has no primary key — editing disabled' });
+          return;
+        }
+        // Freeze the row locator NOW: submitEdit must target the cell the draft
+        // was seeded from, whatever the grid cursor does while the overlay is up.
+        const rowKey = currentRowKey();
+        if (!rowKey) {
+          set({ error: 'cannot locate this row by primary key — editing disabled' });
           return;
         }
         const value = result.rows[gridRow]?.[gridCol] ?? null;
@@ -1656,28 +1691,68 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           set({ error: 'binary value — not editable here' });
           return;
         }
-        // The <textarea> holds the draft (seeded from the value); the store keeps
-        // no draft of its own — submitEdit reads the widget's text on ^S.
-        set({ cellView: { column, value, offset: 0, mode: 'edit' }, error: null });
+        // The <textarea> holds the draft (seeded from `seedText`); the store keeps
+        // no draft of its own — submitEdit reads the widget's text on ^S. On a
+        // jsonCanonical column (from the object's cached describe) the seed is
+        // pretty-printed: the store normalizes JSON anyway, so the layout is free.
+        // The describe cache can lag mid-navigation (openObject's async sets are
+        // unserialized), so only trust it when it describes the browsed object.
+        const jsonCanonical =
+          structure != null &&
+          current != null &&
+          objectRefKey(structure.ref) === objectRefKey(current) &&
+          columnsOf(structure).find((c) => c.name === column)?.jsonCanonical === true;
+        const raw = cellEditText(value);
+        const seedText = jsonCanonical ? (prettyJson(raw) ?? raw) : raw;
+        set({
+          cellView: {
+            mode: 'edit',
+            column,
+            value,
+            offset: cellView?.offset ?? 0,
+            seedText,
+            jsonCanonical,
+            rowKey,
+          },
+          error: null,
+        });
       },
 
       // Cancel a cell edit → discard the draft and fall back to the value view
       // (esc). The inspector stays open: editing is only entered from view (`e`),
       // so esc always pops back to where the edit began. A no-op if nothing's open.
       cancelEdit: () =>
-        set((s) => (s.cellView ? { cellView: { ...s.cellView, mode: 'view' } } : {})),
+        set((s) => (s.cellView ? { cellView: backToView(s.cellView), error: null } : {})),
 
       submitEdit: (value) => {
-        const { current, result, gridCol } = get();
-        const column = result?.columns[gridCol]?.name;
-        const key = currentRowKey();
-        if (!current || !column || !key) {
+        const { current, cellView } = get();
+        if (!current || cellView?.mode !== 'edit') {
           set({ mode: 'normal', cellView: null });
           return;
+        }
+        // Target the cell the draft was SEEDED from (column + frozen row key),
+        // never the live cursor — the grid under the overlay is still clickable,
+        // so gridRow/gridCol may have moved since `e`.
+        const { column, rowKey: key } = cellView;
+        if (cellView.jsonCanonical) {
+          // Untouched pretty seed → nothing to stage: the seed's layout is OUR
+          // reformatting, not the user's edit. Plain columns keep save-always
+          // semantics (a deliberate re-save can fire ON UPDATE triggers).
+          if (value === cellView.seedText) {
+            set({ cellView: backToView(cellView), notice: 'no change', error: null });
+            return;
+          }
+          // A jsonCanonical column would reject malformed JSON anyway — fail
+          // here, next to the draft, instead of at the database.
+          if (!isJsonText(value)) {
+            set({ error: 'not valid JSON — fix the draft or esc to discard' });
+            return;
+          }
         }
         set({
           mode: 'confirm',
           cellView: null, // leave the editor; the confirm owns the screen + y/n
+          error: null,
           pending: {
             title: `Update ${column} in ${current.name}?`,
             statement: `UPDATE ${current.name} SET ${column} = '${value}' WHERE ${keyText(key)}`,

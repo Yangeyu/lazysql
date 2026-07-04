@@ -148,9 +148,14 @@ export class MongoDataSource
       .find(toMongoFilter(spec.filter ?? null))
       .skip(spec.page.offset)
       .limit(spec.page.limit);
-    if (spec.sort) {
-      cursor.sort({ [spec.sort.column]: spec.sort.direction === 'asc' ? 1 : -1 });
-    }
+    // Always tiebreak on _id (present and indexed in every collection): natural
+    // order can move a document after an update, which would make skip/limit
+    // paging repeat or skip documents and grid rows jump after a write.
+    const sort: Record<string, 1 | -1> = spec.sort
+      ? { [spec.sort.column]: spec.sort.direction === 'asc' ? 1 : -1 }
+      : {};
+    if (!('_id' in sort)) sort['_id'] = 1;
+    cursor.sort(sort);
     const docs = await cursor.toArray();
     const names = unionColumns(docs);
     const columns: ColumnMeta[] = names.map((name) => ({

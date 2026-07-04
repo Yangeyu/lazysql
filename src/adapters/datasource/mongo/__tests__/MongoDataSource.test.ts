@@ -6,7 +6,7 @@
  * union. Skips automatically when no Mongo is reachable.
  *
  * Bring a server up with:
- *   docker run -d --name lazysql-mongo -p 27017:27017 mongo:7
+ *   docker compose -f docker-compose.test.yml up -d --wait mongo
  */
 
 import { test, expect, beforeAll, afterAll } from 'bun:test';
@@ -150,6 +150,23 @@ mongoTest('update by _id changes one document (no transaction)', async () => {
   const cols = res.rows.columns.map((c) => c.name);
   const beta = res.rows.rows.find((x) => x[cols.indexOf('name')] === 'beta');
   expect(beta?.[cols.indexOf('qty')]).toBe(99);
+});
+
+mongoTest('unsorted browse pages in _id order, stable across an update', async () => {
+  const before = unwrap(await browseTable(source, widget, { page: firstPage(100) }));
+  const ids = before.rows.rows.map((r) => String(r[0]));
+  expect([...ids].sort()).toEqual(ids); // ascending _id, not natural order
+  const id = await idOf('alpha');
+  unwrap(
+    await updateRow(
+      source,
+      widget,
+      [{ column: '_id', value: id }],
+      [{ column: 'qty', value: 11 }],
+    ),
+  );
+  const after = unwrap(await browseTable(source, widget, { page: firstPage(100) }));
+  expect(after.rows.rows.map((r) => String(r[0]))).toEqual(ids);
 });
 
 mongoTest('delete removes one document by _id', async () => {

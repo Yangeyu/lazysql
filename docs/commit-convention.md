@@ -76,3 +76,15 @@ BREAKING CHANGE: none
 ```bash
 bun run commitlint        # 校验最近一次提交
 ```
+
+## Changelog 与发布
+
+`CHANGELOG.md` 由 [git-cliff](https://git-cliff.org/) 按上表 type 从提交历史生成
+（配置在 `cliff.toml`；`chore` / `style` / `test` / `ci` 与 Merge 提交不进 changelog）——
+**不要手工编辑**，改了也会在下次生成时被覆盖。
+
+```bash
+bun run changelog                 # 重新生成 CHANGELOG.md（含 Unreleased 段）
+bun run release [patch|minor|major|x.y.z]   # 发布：门禁 → bump → changelog → commit → tag
+git push --follow-tags            # 触发 CI：发 npm + 建 GitHub Release（notes 同源生成）
+```

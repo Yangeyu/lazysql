@@ -90,3 +90,26 @@ jobs:
             publish_if_new "$dir"
           done
           publish_if_new dist/npm/main
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # git-cliff needs full history + tags to scope the notes to this release
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      # Idempotent like the publish job: a re-run of the tag skips an existing release.
+      - name: Create GitHub Release with git-cliff notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "skip $GITHUB_REF_NAME — release already exists"
+            exit 0
+          fi
+          bunx git-cliff --current --strip header -o notes.md
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md

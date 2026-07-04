@@ -44,6 +44,8 @@
     "build:npm": "bun scripts/build-npm.ts",
     "seed": "bun run scripts/seed.ts",
     "typecheck": "tsc --noEmit",
+    "changelog": "git-cliff -o CHANGELOG.md",
+    "release": "bun scripts/release.ts",
     "test": "bun test",
     "commitlint": "commitlint --edit",
     "prepare": "git config core.hooksPath .githooks"
@@ -67,6 +69,7 @@
     "@commitlint/config-conventional": "^19.6.0",
     "@types/bun": "^1.3.14",
     "@types/react": "^19",
+    "git-cliff": "^2.13.1",
     "typescript": "^5.7.2"
   }
 }

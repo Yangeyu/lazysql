@@ -40,8 +40,10 @@ beforeAll(() => {
 afterAll(() => rmSync(DB, { force: true }));
 
 test('the ? help floats over the workbench — the sidebar tree stays visible', async () => {
+  // Wide enough that the content-sized help panel still leaves the fixed-width
+  // sidebar uncovered — the point here is compositing, not panel size.
   const h = await renderTest(<Root connectionService={svc} initial={profile} />, {
-    width: 120,
+    width: 160,
     height: 30,
   });
   await h.until((f) => f.includes('CONNECTIONS')); // sidebar present
@@ -52,6 +54,28 @@ test('the ? help floats over the workbench — the sidebar tree stays visible', 
   expect(f).toContain('Keybindings'); // the overlay drew…
   expect(f).toContain('CONNECTIONS'); // …and the sidebar is STILL there behind it
   expect(f).toContain('widgets'); // …including the tree item
+  h.cleanup();
+});
+
+test('the ? help widens to fit long descriptions and scrolls on overflow', async () => {
+  const h = await renderTest(<Root connectionService={svc} initial={profile} />, {
+    width: 120,
+    height: 20, // shorter than the sidebar context's binding list
+  });
+  await h.until((f) => f.includes('CONNECTIONS'));
+
+  h.press('?');
+  await h.until((f) => f.includes('Keybindings'));
+  const f = h.frame();
+  // The longest binding description survives whole — the old fixed 58-col
+  // panel clipped it mid-word.
+  expect(f).toContain('(schema/category), else this one');
+  expect(f).toContain('j/k scroll'); // taller than the panel → scroll affordance
+
+  h.press('j'); // scroll one line
+  await h.until((g) => g.includes('(2–'));
+  h.press('k'); // and back up
+  await h.until((g) => g.includes('(1–'));
   h.cleanup();
 });
 

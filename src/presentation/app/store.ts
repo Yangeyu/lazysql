@@ -297,6 +297,11 @@ export interface AppState {
   queryable: boolean;
   /** Whether the `?` help overlay is showing. */
   helpOpen: boolean;
+  /** First visible body line of the help overlay (0 = top). */
+  helpScroll: number;
+  /** Largest useful helpScroll, reported by the overlay from its viewport so
+   *  scrolling clamps instead of running past the end (cf. gridViewportRows). */
+  helpMaxScroll: number;
   /** The cell inspector overlay, or null when closed. */
   cellView: CellInspect | null;
 
@@ -329,6 +334,10 @@ export interface AppState {
 
   init: () => Promise<void>;
   toggleHelp: () => void;
+  /** Scroll the help overlay's body by `delta` lines, clamped to its content. */
+  scrollHelp: (delta: number) => void;
+  /** The overlay reports how far its content can scroll (0 when it all fits). */
+  setHelpViewport: (maxScroll: number) => void;
   /** Select a sidebar tree row from a click (null row → just focus the pane). */
   clickTree: (row: number | null) => void;
   /** Select a grid data row from a click (null row → just focus the pane). */
@@ -913,6 +922,8 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       loading: false,
       queryable: false,
       helpOpen: false,
+      helpScroll: 0,
+      helpMaxScroll: 0,
       cellView: null,
 
       queryText: '',
@@ -942,7 +953,19 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         if (initial) await get().connectProfile(initial);
       },
 
-      toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen })),
+      toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen, helpScroll: 0 })),
+
+      scrollHelp: (delta) =>
+        set((s) => ({
+          helpScroll: Math.max(0, Math.min(s.helpMaxScroll, s.helpScroll + delta)),
+        })),
+
+      setHelpViewport: (maxScroll) =>
+        set((s) =>
+          s.helpMaxScroll === maxScroll
+            ? s
+            : { helpMaxScroll: maxScroll, helpScroll: Math.min(s.helpScroll, maxScroll) },
+        ),
 
       clickTree: (row) =>
         set((s) => ({

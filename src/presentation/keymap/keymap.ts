@@ -368,9 +368,14 @@ export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void 
 
   const ch = printableChar(key);
 
-  // The help overlay floats over any context and swallows input until dismissed.
+  // The help overlay floats over any context and swallows input until
+  // dismissed; j/k (and ^d/^u) scroll it when the list outgrows the panel.
   if (s.helpOpen) {
     if (ch === '?' || key.name === 'escape') s.toggleHelp();
+    else if (key.ctrl && key.name === 'd') s.scrollHelp(10);
+    else if (key.ctrl && key.name === 'u') s.scrollHelp(-10);
+    else if (key.name === 'down' || ch === 'j') s.scrollHelp(1);
+    else if (key.name === 'up' || ch === 'k') s.scrollHelp(-1);
     return;
   }
   if (s.generating) return; // ignore input while the model works

@@ -73,6 +73,7 @@ export const App = ({ clipboard }: AppProps) => {
 
   const queryable = useApp((s) => s.queryable);
   const helpOpen = useApp((s) => s.helpOpen);
+  const helpScroll = useApp((s) => s.helpScroll);
   const cellView = useApp((s) => s.cellView);
   const surface = useApp((s) => s.surface);
   const queryText = useApp((s) => s.queryText);
@@ -257,6 +258,9 @@ export const App = ({ clipboard }: AppProps) => {
       groups={helpGroups(context, flags)}
       termRows={terminalRows}
       termCols={terminalCols}
+      offset={helpScroll}
+      onScroll={(delta) => store.getState().scrollHelp(delta)}
+      onViewport={(max) => store.getState().setHelpViewport(max)}
     />
   ) : cellView ? (
     <CellView

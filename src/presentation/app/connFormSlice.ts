@@ -52,16 +52,21 @@ const DEFAULT_PORT: Record<DriverId, string> = {
   sqlite: '',
 };
 
-/** The form fields for a driver (SQLite needs only a file; servers need host…). */
+/** The form fields for a driver (SQLite needs only a file; servers need host…).
+ *  The URL row comes first on every driver: it is a transient helper, not a
+ *  profile field — ⏎ on it expands the URL into the rows below (and switches
+ *  the driver to the URL's scheme). */
 const fieldsForDriver = (driver: DriverId): ConnFormField[] => {
+  const url: ConnFormField = { key: 'url', label: 'URL', value: '', hint: '⏎ fills' };
   const name: ConnFormField = { key: 'name', label: 'Name', value: '' };
   if (driver === 'sqlite') {
-    return [name, { key: 'file', label: 'File', value: '', hint: '~ expands' }];
+    return [url, name, { key: 'file', label: 'File', value: '', hint: '~ expands' }];
   }
   // Local Mongo/Redis commonly run unauthenticated — say so instead of leaving
   // the user to guess whether a blank User will be rejected.
   const auth = driver === 'redis' || driver === 'mongodb' ? { hint: 'optional' } : {};
   const common: ConnFormField[] = [
+    url,
     name,
     { key: 'host', label: 'Host', value: 'localhost' },
     { key: 'port', label: 'Port', value: DEFAULT_PORT[driver], numeric: true },
@@ -91,10 +96,6 @@ const URL_DRIVERS: Record<string, DriverId> = {
   'mongodb:': 'mongodb',
   'redis:': 'redis',
 };
-
-/** A pasted connection URL (scheme:// with an authority), as opposed to a
- *  value being typed into the field it landed in. */
-const looksLikeUrl = (v: string): boolean => /^[a-z][a-z0-9+.-]*:\/\/.+/i.test(v.trim());
 
 const safeDecode = (s: string): string => {
   try {
@@ -165,6 +166,9 @@ const fieldsForProfile = (profile: ConnectionProfile): ConnFormField[] =>
   fieldsForDriver(profile.driver).map((f) => {
     if (f.key === 'name') return { ...f, value: profile.name };
     if (f.secret) return f; // never echo a stored password
+    // The URL helper never round-trips: prefilling it from a yml-managed
+    // options.url would tempt a fill that silently drops that escape hatch.
+    if (f.key === 'url') return f;
     const v = profile.options[f.key];
     return v === undefined || v === null ? f : { ...f, value: String(v) };
   });
@@ -291,24 +295,6 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
     connFormSetField: (key, value) => {
       const f = get().connForm;
       if (!f) return;
-      // A connection URL pasted into ANY field fills the whole form (and
-      // switches the driver to the URL's scheme). A hand-typed name it would
-      // overwrite is kept.
-      if (looksLikeUrl(value)) {
-        const parsed = fieldsFromUrl(value);
-        if ('error' in parsed) {
-          set({ connForm: { ...f, error: parsed.error, probe: null } });
-          return;
-        }
-        const typedName = f.fields.find((x) => x.key === 'name')?.value.trim() ?? '';
-        const fields = parsed.fields.map((x) =>
-          x.key === 'name' && typedName ? { ...x, value: typedName } : x,
-        );
-        set({
-          connForm: { ...f, driver: parsed.driver, fields, error: null, probe: null },
-        });
-        return;
-      }
       const fields = f.fields.map((x) =>
         x.key === key
           ? { ...x, value: x.numeric ? value.replace(/\D/g, '') : value }
@@ -403,6 +389,32 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
     connFormSubmit: async () => {
       const f = get().connForm;
       if (!f) return;
+      // ⏎ on a filled URL row expands the URL into the fields below (switching
+      // the driver to its scheme) instead of saving; a typed name survives.
+      const focused = f.fields[f.index];
+      if (focused?.key === 'url' && focused.value.trim()) {
+        const parsed = fieldsFromUrl(focused.value);
+        if ('error' in parsed) {
+          set({ connForm: { ...f, error: parsed.error, probe: null } });
+          return;
+        }
+        const typedName = f.fields.find((x) => x.key === 'name')?.value.trim() ?? '';
+        const fields = parsed.fields.map((x) =>
+          x.key === 'name' && typedName ? { ...x, value: typedName } : x,
+        );
+        set({
+          connForm: {
+            ...f,
+            driver: parsed.driver,
+            fields,
+            // Land on Name — the first thing to review/adjust after a fill.
+            index: fields.findIndex((x) => x.key === 'name'),
+            error: null,
+            probe: null,
+          },
+        });
+        return;
+      }
       // On the action row ⏎ presses the FOCUSED button; anywhere else it saves.
       if (f.index === f.fields.length) {
         const action = FORM_BUTTONS[f.button];

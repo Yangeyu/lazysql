@@ -45,19 +45,20 @@ test('numeric fields drop non-digits as typed (a bad port can never be saved)', 
 test('submitting with a blank required field names it and moves focus to it', async () => {
   const { store, saved } = storeWith();
   store.getState().beginNewConnection(); // name is blank
+  store.getState().connFormFocus(1); // off the URL row — ⏎ there means "fill"
   await store.getState().connFormSubmit();
 
-  let f = store.getState().connForm;
-  expect(f?.error).toBe('name is required');
-  expect(f?.index).toBe(0); // jumped to the Name field
+  let f = store.getState().connForm!;
+  expect(f.error).toBe('name is required');
+  expect(f.fields[f.index]?.key).toBe('name'); // jumped to the Name field
   expect(saved).toHaveLength(0);
 
   store.getState().connFormSetField('name', 'pg');
   store.getState().connFormSetField('host', '');
   await store.getState().connFormSubmit();
-  f = store.getState().connForm;
-  expect(f?.error).toBe('host is required');
-  expect(f?.index).toBe(1); // …and to the Host field
+  f = store.getState().connForm!;
+  expect(f.error).toBe('host is required');
+  expect(f.fields[f.index]?.key).toBe('host'); // …and to the Host field
 });
 
 test('mongodb requires a database — the lazily-created server never rejects a typo', async () => {
@@ -112,12 +113,13 @@ test('⏎ on the Save button saves; a button click presses without ⏎', async (
   expect(store.getState().connForm?.probe?.state).toBe('ok');
 });
 
-// ── paste a connection URL into any field ──
+// ── the URL row: ⏎ expands a pasted URL into the fields below ──
 
-test('a pasted URL fills the whole form, switching driver to its scheme', () => {
-  const { store } = storeWith();
-  store.getState().beginNewConnection(); // postgres
-  store.getState().connFormSetField('host', 'redis://ops:s3c%40ret@cache.internal:6390/3');
+test('⏎ on a filled URL row expands it, switching driver to its scheme', async () => {
+  const { store, saved } = storeWith();
+  store.getState().beginNewConnection(); // postgres; focus starts ON the URL row
+  store.getState().connFormSetField('url', 'redis://ops:s3c%40ret@cache.internal:6390/3');
+  await store.getState().connFormSubmit();
 
   const f = store.getState().connForm!;
   expect(f.driver).toBe('redis');
@@ -128,13 +130,17 @@ test('a pasted URL fills the whole form, switching driver to its scheme', () => 
   expect(val('password')).toBe('s3c@ret'); // percent-decoded, into the masked field
   expect(val('db')).toBe('3');
   expect(val('name')).toBe('3'); // defaulted from the URL path (no typed name)
+  expect(val('url')).toBe(''); // consumed — a later ⏎ won't stomp hand edits
+  expect(f.fields[f.index]?.key).toBe('name'); // focus lands on Name for review
+  expect(saved).toHaveLength(0); // filling is NOT saving
 });
 
-test('a pasted URL keeps a hand-typed name and defaults missing parts', () => {
+test('the URL fill keeps a hand-typed name and defaults missing parts', async () => {
   const { store } = storeWith();
   store.getState().beginNewConnection();
   store.getState().connFormSetField('name', 'prod');
-  store.getState().connFormSetField('host', 'postgres://db.internal/appdb');
+  store.getState().connFormSetField('url', 'postgres://db.internal/appdb');
+  await store.getState().connFormSubmit(); // focus is still on the URL row
 
   const f = store.getState().connForm!;
   const val = (k: string) => f.fields.find((x) => x.key === k)?.value;
@@ -144,15 +150,28 @@ test('a pasted URL keeps a hand-typed name and defaults missing parts', () => {
   expect(val('database')).toBe('appdb');
 });
 
-test('an unsupported URL scheme reports an error and leaves the fields alone', () => {
+test('an unsupported URL scheme reports an error and leaves the fields alone', async () => {
   const { store } = storeWith();
   store.getState().beginNewConnection();
-  store.getState().connFormSetField('host', 'mongodb+srv://cluster0.example.net/app');
+  store.getState().connFormSetField('url', 'mongodb+srv://cluster0.example.net/app');
+  await store.getState().connFormSubmit();
 
   const f = store.getState().connForm!;
   expect(f.error).toBe('unsupported URL scheme: mongodb+srv');
   expect(f.driver).toBe('postgres'); // untouched
   expect(f.fields.find((x) => x.key === 'host')?.value).toBe('localhost');
+});
+
+test('⏎ on a BLANK URL row falls through to save (it is not a trap)', async () => {
+  const { store, saved } = storeWith();
+  store.getState().beginNewConnection();
+  store.getState().connFormSetField('name', 'pg');
+  expect(store.getState().connForm?.fields[store.getState().connForm!.index]?.key).toBe('url');
+
+  await store.getState().connFormSubmit();
+
+  expect(store.getState().connForm).toBeNull();
+  expect(saved).toHaveLength(1);
 });
 
 test('the button row is reachable with ↓ and ←/→ cycles within it', () => {

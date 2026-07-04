@@ -87,6 +87,8 @@ test('n opens the new-connection form and persists a profile', async () => {
   h.press('n'); // open the new-connection form
   await h.until((f) => f.includes('New connection'));
 
+  h.arrow('down'); // URL row → Name field
+  await h.flush();
   await h.type('mydb'); // type into the Name field
   await h.flush();
   h.enter(); // save
@@ -106,10 +108,13 @@ test('the Driver row cycles the driver with →, carrying the typed name', async
 
   h.press('n');
   await h.until((f) => f.includes('PostgreSQL')); // opens on the default driver
+  h.arrow('down'); // URL row → Name field
+  await h.flush();
   await h.type('box'); // into the Name <input>
   await h.flush();
 
-  h.arrow('up'); // focus the Driver row (above the fields)
+  h.arrow('up'); // back over the URL row…
+  h.arrow('up'); // …to the Driver row (above the fields)
   h.arrow('right'); // cycle postgres → mysql
   await h.until((f) => f.includes('MySQL'));
 
@@ -127,8 +132,8 @@ test('the password field masks its value; ^R reveals it', async () => {
 
   h.press('n');
   await h.until((f) => f.includes('PostgreSQL'));
-  // Name → Host → Port → User → Password (the secret field).
-  for (let i = 0; i < 4; i++) {
+  // URL → Name → Host → Port → User → Password (the secret field).
+  for (let i = 0; i < 5; i++) {
     h.arrow('down');
     await h.flush();
   }

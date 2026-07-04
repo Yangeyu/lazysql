@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.13](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.13) - 2026-07-04
+
+### Features
+
+- **tui:** Connection-form guardrails — hints, validation, button row ([44e973b](https://github.com/Yangeyu/lazysql/commit/44e973b8e4900d6c4a5a255d2e4cc2c5d210d894))
+- **tui:** Fill the connection form from a pasted URL ([daf7da3](https://github.com/Yangeyu/lazysql/commit/daf7da32a7491eb454df4b4de5121db90d219eec))
+- **tui:** Rework the connection form — URL row, overlay styling, sizing ([a3d4f3f](https://github.com/Yangeyu/lazysql/commit/a3d4f3f7f0767926ff5c581e47f361fc6f85b24a))
+
+### Bug Fixes
+
+- **tui:** Rebuild the live connection when its profile is edited ([9708668](https://github.com/Yangeyu/lazysql/commit/9708668fb35ef133291a9c0c8a751ff04373b3d9))
+
+### Refactoring
+
+- **tui:** Split the store into feature slices under app/slices ([2052d71](https://github.com/Yangeyu/lazysql/commit/2052d71a907e9299fd5ad56af13987bd269b4b9e))
+
 ## [0.1.12](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.12) - 2026-07-04
 
 ### Features

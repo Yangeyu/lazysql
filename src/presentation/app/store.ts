@@ -634,9 +634,26 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       clampTree();
     };
 
+    // Navigation epoch: every browse-affecting navigation bumps it and aborts
+    // the previous in-flight load, so a slow stale response can neither
+    // overwrite a newer navigation's state nor surface its own (aborted) error.
+    let navEpoch = 0;
+    let navAbort: AbortController | null = null;
+    interface Nav {
+      readonly epoch: number;
+      readonly signal: AbortSignal;
+    }
+    const beginNav = (): Nav => {
+      navAbort?.abort();
+      navAbort = new AbortController();
+      return { epoch: ++navEpoch, signal: navAbort.signal };
+    };
+    const stale = (nav: Nav): boolean => nav.epoch !== navEpoch;
+
     /** Open an object into the data grid (focus moves to the grid). */
     const openObject = async (ref: ObjectRef): Promise<void> => {
       if (!active) return;
+      const nav = beginNav();
       set({
         focus: 'grid',
         surface: 'browse',
@@ -663,6 +680,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           /* describe failed → treat as browsable; load() surfaces any error */
         }
       }
+      if (stale(nav)) return; // navigated away while describe was in flight
       const columns = schema ? columnsOf(schema) : [];
       set({
         structure: schema, // cache for the structure/DDL view
@@ -670,7 +688,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       });
       if (!schema || columns.length > 0) {
         set({ mainTab: 'data' });
-        await load(ref, { page: firstPage(PAGE_SIZE), sort: null, filter: null });
+        await load(ref, { page: firstPage(PAGE_SIZE), sort: null, filter: null }, nav);
       } else {
         // No rows to browse — present the definition only.
         set({ current: ref, result: null, total: 0, statement: null, mainTab: 'ddl' });
@@ -696,13 +714,14 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       }
     };
 
-    const load = async (ref: ObjectRef, spec: BrowseSpec): Promise<void> => {
+    const load = async (ref: ObjectRef, spec: BrowseSpec, nav: Nav = beginNav()): Promise<void> => {
       if (!active) return;
       set({ loading: true, error: null, notice: null });
       // The primary key rides along as the ordering tiebreaker: without it an
       // unsorted browse has no deterministic order, so a row can jump to another
       // position after every write-then-reload (openObject sets pkColumns first).
-      const res = await browseTable(active, ref, { ...spec, stableKey: get().pkColumns });
+      const res = await browseTable(active, ref, { ...spec, stableKey: get().pkColumns }, nav.signal);
+      if (stale(nav)) return; // a newer navigation owns the UI (this one was aborted)
       if (!res.ok) {
         set({ loading: false, status: 'error', error: res.error.message });
         return;
@@ -741,7 +760,9 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
     const reloadKeepingCursor = async (): Promise<void> => {
       const { current, page, sort, filter, gridRow } = get();
       if (!current) return;
-      await load(current, { page, sort, filter });
+      const nav = beginNav();
+      await load(current, { page, sort, filter }, nav);
+      if (stale(nav)) return;
       const len = get().result?.rows.length ?? 0;
       set({ gridRow: Math.min(gridRow, Math.max(0, len - 1)) });
     };

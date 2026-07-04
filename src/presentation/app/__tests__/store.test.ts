@@ -679,3 +679,39 @@ test('acceptCompletion replaces the partial word AT the caret, keeping the tail'
   expect(store.getState().queryText).toBe('SELECT name FROM t');
   expect(store.getState().editorCaret).toBe(11); // just past the inserted word
 });
+
+test('a stale slow browse cannot overwrite a newer navigation (nav epoch)', async () => {
+  let releaseSlow = (): void => {};
+  const slowGate = new Promise<void>((r) => (releaseSlow = r));
+  const browsable = {
+    ...fakeSource,
+    browse: async (_ref: unknown, spec: { filter?: { conditions: Array<{ value: string }> } }): Promise<ResultSet> => {
+      const v = spec.filter?.conditions[0]?.value ?? '';
+      if (v === 'slow') await slowGate;
+      return { shape: 'tabular', columns: [{ name: 'label' }], rows: [[v.toUpperCase()]], truncated: false };
+    },
+    count: async () => 1,
+  } as unknown as DataSource;
+  const profile: ConnectionProfile = { id: 'x', name: 'X', driver: 'sqlite', options: {} };
+  const store = createAppStore({
+    connectionService: { ...serviceFor(profile), open: async () => ok(browsable) },
+  });
+  await store.getState().connectProfile(profile);
+  store.setState({
+    current: { name: 't', kind: 'table' },
+    focus: 'grid',
+    result: { shape: 'tabular', columns: [{ name: 'label' }], rows: [['x']], truncated: false },
+  });
+
+  const slow = store.getState().commitFilter('slow');
+  const fast = store.getState().commitFilter('fast');
+  await fast;
+  releaseSlow(); // the abandoned navigation resolves AFTER the newer one
+  await slow;
+
+  const s = store.getState();
+  expect(s.result?.rows).toEqual([['FAST']]);
+  expect(s.filter?.conditions[0]?.value).toBe('fast');
+  expect(s.error).toBeNull();
+  expect(s.loading).toBe(false);
+});

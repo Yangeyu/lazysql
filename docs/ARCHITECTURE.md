@@ -313,7 +313,8 @@ src/
     export/FileExporter.ts     # 导出 sink（原子写 + abort 丢弃半成品）
     clipboard/SystemClipboard.ts
   presentation/
-    app/                       # App/Root 装配 · store.ts + 特性 slice（exportSlice/connFormSlice）· layout
+    app/                       # App/Root 装配 · store.ts（组合根+连接生命周期）· layout
+      slices/                  # 特性切片：browse · editor · tree · export · connForm（互不导入，见架构闸门 4）
     keymap/                    # 键位注册表：描述+行为唯一真相（ADR 0007）
     components/                # Sidebar · DataGrid · QueryEditor · CellView · HelpOverlay · …
     completion/                # 自研 tokenizer 补全引擎（纯函数）

@@ -7,15 +7,15 @@
  */
 
 import type { StoreApi } from 'zustand/vanilla';
-import type { AppState, ConnForm, ConnFormField, ConnProbe } from './store.ts';
+import type { AppState, ConnForm, ConnFormField, ConnProbe } from '../store.ts';
 import type {
   ConnectionProfile,
   DriverId,
-} from '../../domain/connection/ConnectionProfile.ts';
-import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
-import type { TreeRow } from '../tree/tree.ts';
-import { resolveUserPath } from '../../shared/path.ts';
-import { asIntrospectable } from '../../domain/datasource/DataSource.ts';
+} from '../../../domain/connection/ConnectionProfile.ts';
+import type { ConnectionService } from '../../../application/ports/ConnectionService.ts';
+import type { TreeRow } from '../../tree/tree.ts';
+import { resolveUserPath } from '../../../shared/path.ts';
+import { asIntrospectable } from '../../../domain/datasource/DataSource.ts';
 
 /** What the ^T probe counts per driver, for the "ok · N …" message. */
 const OBJECT_NOUN: Record<DriverId, string> = {

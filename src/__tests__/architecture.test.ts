@@ -8,6 +8,9 @@
  *   2. Named exports only — no `export default` anywhere under src/.
  *   3. The TUI owns stdout: no global console.* in src/ (main.tsx's pre-renderer
  *      meta commands and test files are the deliberate exceptions).
+ *   4. Store-slice discipline: a slice under presentation/app/slices/ never
+ *      imports a sibling slice, and reaches store.ts for TYPES only — slices
+ *      talk through the root's ctx or get().action(), never to each other.
  *
  * On failure the assertion message lists every offending file:line.
  */
@@ -46,4 +49,17 @@ test('no export default anywhere under src/', () => {
 test('no global console.* outside main.tsx and tests (the TUI owns stdout)', () => {
   const files = sources.filter((f) => !isTest(f) && f !== 'src/main.tsx');
   expect(offending(/(?<![.\w])console\.(?:log|warn|error|info|debug|trace)\(/, files)).toEqual([]);
+});
+
+test('store slices never import each other, and import store.ts as types only', () => {
+  const slices = sources.filter(
+    (f) => f.startsWith('src/presentation/app/slices/') && !isTest(f),
+  );
+  // A sibling slice import ('./browse.ts' etc.) — value or type, both banned:
+  // even a type dependency couples two slices' shapes behind the root's back.
+  const sibling = /from\s+['"]\.\/(?!.*\bstore\b)[^'"]+['"]/;
+  // A VALUE import from the root ('../store.ts') — `import type` is the one
+  // sanctioned handshake (the AppState contract); values would be a cycle.
+  const rootValue = /^\s*import\s+(?!type\b)[^'"]*from\s+['"]\.\.\/store\.ts['"]/;
+  expect([...offending(sibling, slices), ...offending(rootValue, slices)]).toEqual([]);
 });

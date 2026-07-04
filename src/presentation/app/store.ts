@@ -6,29 +6,19 @@
  */
 
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import {
-  asBrowsePreviewable,
-  asDdlScriptable,
-  asEditPreviewable,
-  asIntrospectable,
-  asQueryable,
-  type DataSource,
-} from '../../domain/datasource/DataSource.ts';
+import { asQueryable, type DataSource } from '../../domain/datasource/DataSource.ts';
 import type {
   ObjectKind,
   ObjectRef,
   ObjectSchema,
 } from '../../domain/datasource/schema.ts';
-import { columnsOf, objectRefKey, sectionsFor } from '../../domain/datasource/schema.ts';
-import type { RowKey, RowPatch, FieldValue } from '../../domain/datasource/edit.ts';
+import type { RowKey } from '../../domain/datasource/edit.ts';
 import {
   buildTree,
-  dialectLabel,
   firstCategoryKind,
   firstObjectIndex,
   firstSchemaKey,
   groupsBySchema,
-  schemaKey,
   toConnNodes,
   type TreeRow,
 } from '../tree/tree.ts';
@@ -37,49 +27,30 @@ import type {
   DriverId,
 } from '../../domain/connection/ConnectionProfile.ts';
 import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
-import { createConnFormSlice } from './connFormSlice.ts';
+import { createConnFormSlice } from './slices/connForm.ts';
+import { createBrowseSlice, PAGE_SIZE } from './slices/browse.ts';
+import { createEditorSlice, HISTORY_LIMIT } from './slices/editor.ts';
+import { createTreeSlice } from './slices/tree.ts';
 import type { ResultSet, CellValue } from '../../domain/datasource/ResultSet.ts';
 import {
   firstPage,
-  nextPage,
-  prevPage,
-  cycleSort,
   type Page,
   type Sort,
   type Filter,
-  type BrowseSpec,
 } from '../../domain/query/Query.ts';
 import { listObjects } from '../../application/usecases/ListObjects.ts';
-import { browseTable } from '../../application/usecases/BrowseTable.ts';
-import { updateRow, deleteRow } from '../../application/usecases/EditRow.ts';
-import { runQuery } from '../../application/usecases/RunQuery.ts';
-import { generateSql } from '../../application/usecases/GenerateSql.ts';
-import { cellEditText, isJsonText, prettyJson } from '../components/cellFormat.ts';
 import type { ExportFormat } from '../../domain/export/RowFormatter.ts';
 import type { Exporter } from '../../application/ports/Exporter.ts';
-import { createExportSlice } from './exportSlice.ts';
-import type {
-  SqlGenerator,
-  SchemaContext,
-} from '../../application/ports/SqlGenerator.ts';
-import { classifyStatement, dangerKind } from '../../domain/query/classify.ts';
-import type { DangerKind, StatementKind } from '../../domain/query/classify.ts';
+import { createExportSlice } from './slices/export.ts';
+import type { SqlGenerator } from '../../application/ports/SqlGenerator.ts';
+import type { StatementKind } from '../../domain/query/classify.ts';
 import type { QueryHistoryStore } from '../../application/ports/QueryHistoryStore.ts';
-import {
-  complete,
-  type SchemaCatalog,
-} from '../completion/sqlCompleter.ts';
+import type { SchemaCatalog } from '../completion/sqlCompleter.ts';
 import { SIDEBAR_WIDTH, SIDEBAR_STEP, clampSidebarWidth } from './layout.ts';
 
-export const PAGE_SIZE = 100;
-
-/** How many recent statements the SQL editor history keeps, per connection. */
-export const HISTORY_LIMIT = 100;
-/** Tables whose columns are eagerly described for completion. Schema + table
- *  names are unbounded (they need no per-table round-trip); only column lookups
- *  cost a describe each, so they are capped. Beyond this, table/schema completion
- *  still works; per-table column completion is the on-demand future step. */
-const CATALOG_DESCRIBE_LIMIT = 200;
+// Owned by their feature slices; re-exported so consumers keep one import site.
+export { PAGE_SIZE } from './slices/browse.ts';
+export { HISTORY_LIMIT } from './slices/editor.ts';
 
 /** The three persistent panes the cursor can occupy (lazygit-style). */
 export type Focus = 'sidebar' | 'editor' | 'grid';
@@ -109,7 +80,7 @@ export interface ConnFormField {
  *  while it's focused, which keeps ←/→ free for in-field cursor movement on the
  *  native <input> fields below. Owned by the form slice; re-exported so form
  *  consumers keep one import site. */
-export { DRIVER_ROW } from './connFormSlice.ts';
+export { DRIVER_ROW } from './slices/connForm.ts';
 
 /** State of a one-off "test connection" probe, shown until the next edit. */
 export interface ConnProbe {
@@ -182,20 +153,6 @@ export interface Pending {
   readonly run: () => Promise<void>;
 }
 
-/** Presentation wording for a structured danger kind — the dialog headline. */
-const dangerHeadline = (kind: DangerKind, sql: string): string => {
-  switch (kind) {
-    case 'drop':
-      return 'DROP — irreversible';
-    case 'truncate':
-      return 'TRUNCATE — irreversible';
-    case 'unqualified-write': {
-      const verb = sql.match(/^[a-z]+/i)?.[0]?.toUpperCase() ?? 'WRITE';
-      return `${verb} with no WHERE — affects ALL rows`;
-    }
-  }
-};
-
 /** The full-cell inspector overlay: one self-contained slice. It is either
  *  *viewing* the value (scrollable, read-only) or *editing* it (a focused
  *  textarea) — a discriminated union, not an `isEditing` flag. */
@@ -225,15 +182,6 @@ export type CellInspect =
        *  at save time may no longer be this cell. */
       readonly rowKey: RowKey;
     };
-
-/** Pop an inspector back to its read-only view, keeping the scroll position —
- *  the one projection both esc and a no-op save must agree on. */
-const backToView = (cv: CellInspect): CellInspect => ({
-  mode: 'view',
-  column: cv.column,
-  value: cv.value,
-  offset: cv.offset,
-});
 
 /** The clickable panes a mouse press can focus (same set as Focus). */
 export type Region = Focus;
@@ -555,145 +503,31 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       clampTree();
     };
 
-    // Navigation epoch: every browse-affecting navigation bumps it and aborts
-    // the previous in-flight load, so a slow stale response can neither
-    // overwrite a newer navigation's state nor surface its own (aborted) error.
-    let navEpoch = 0;
-    let navAbort: AbortController | null = null;
-    interface Nav {
-      readonly epoch: number;
-      readonly signal: AbortSignal;
-    }
-    const beginNav = (): Nav => {
-      navAbort?.abort();
-      navAbort = new AbortController();
-      return { epoch: ++navEpoch, signal: navAbort.signal };
-    };
-    const stale = (nav: Nav): boolean => nav.epoch !== navEpoch;
+    // Feature slices — each borrows the root's closures through a narrow ctx and
+    // owns its own actions; the root composes them and keeps only the shared
+    // projections (rowsNow/objectsUnder) plus the connection lifecycle.
+    const browse = createBrowseSlice({ set, get, source: () => active });
 
-    /** Open an object into the data grid (focus moves to the grid). */
-    const openObject = async (ref: ObjectRef): Promise<void> => {
-      if (!active) return;
-      const nav = beginNav();
-      set({
-        focus: 'grid',
-        surface: 'browse',
-        gridCol: 0,
-        sort: null,
-        filter: null,
-        pkColumns: [],
-        structure: null,
-        structureError: null,
-        // Browsing is a fresh context: drop any leftover draft so the editor
-        // echoes this object's browse statement, not the last query you ran.
-        queryText: '',
-        historyIndex: null,
-      });
-      // One describe decides everything: an object with a column section has rows
-      // (browse it into the grid); a source-only object (index/trigger/…) has
-      // none, so we skip the browse and show its definition in the structure tab.
-      let schema: ObjectSchema | null = null;
-      const introspectable = asIntrospectable(active);
-      if (introspectable) {
-        try {
-          schema = await introspectable.describe(ref);
-        } catch {
-          /* describe failed → treat as browsable; load() surfaces any error */
-        }
-      }
-      if (stale(nav)) return; // navigated away while describe was in flight
-      const columns = schema ? columnsOf(schema) : [];
-      set({
-        structure: schema, // cache for the structure/DDL view
-        pkColumns: columns.filter((c) => c.isPrimaryKey).map((c) => c.name),
-      });
-      if (!schema || columns.length > 0) {
-        set({ mainTab: 'data' });
-        await load(ref, { page: firstPage(PAGE_SIZE), sort: null, filter: null }, nav);
-      } else {
-        // No rows to browse — present the definition only.
-        set({ current: ref, result: null, total: 0, statement: null, mainTab: 'ddl' });
-      }
-    };
+    const editor = createEditorSlice({
+      set,
+      get,
+      source: () => active,
+      generator,
+      historyStore,
+      reloadObjects,
+      activeProfile,
+    });
 
-    /** Lazily fetch the open object's column schema for the DDL tab (cached). */
-    const loadStructure = async (): Promise<void> => {
-      if (!active) return;
-      const { current, structure } = get();
-      if (!current || structure) return; // already loaded for this object
-      const introspectable = asIntrospectable(active);
-      if (!introspectable) {
-        set({ structureError: 'structure is not available for this source' });
-        return;
-      }
-      set({ structureLoading: true, structureError: null });
-      try {
-        const schema = await introspectable.describe(current);
-        set({ structure: schema, structureLoading: false });
-      } catch (e) {
-        set({ structureLoading: false, structureError: (e as Error).message });
-      }
-    };
+    const tree = createTreeSlice({
+      set,
+      get,
+      source: () => active,
+      rowsNow,
+      clampTree,
+      openObject: browse.openObject,
+      loadStructure: browse.loadStructure,
+    });
 
-    const load = async (ref: ObjectRef, spec: BrowseSpec, nav: Nav = beginNav()): Promise<void> => {
-      if (!active) return;
-      set({ loading: true, error: null, notice: null });
-      // The primary key rides along as the ordering tiebreaker: without it an
-      // unsorted browse has no deterministic order, so a row can jump to another
-      // position after every write-then-reload (openObject sets pkColumns first).
-      const res = await browseTable(active, ref, { ...spec, stableKey: get().pkColumns }, nav.signal);
-      if (stale(nav)) return; // a newer navigation owns the UI (this one was aborted)
-      if (!res.ok) {
-        set({ loading: false, status: 'error', error: res.error.message });
-        return;
-      }
-      set({
-        loading: false,
-        current: ref,
-        result: res.value.rows,
-        total: res.value.total,
-        page: res.value.spec.page,
-        sort: res.value.spec.sort ?? null,
-        filter: res.value.spec.filter ?? null,
-        // Echo the exact statement the adapter ran (value-inlined). Same source
-        // (ref, spec) as the result above, so the echo always matches the view.
-        statement: asBrowsePreviewable(active)?.previewBrowse(ref, res.value.spec) ?? null,
-        gridRow: 0,
-      });
-    };
-
-    /** Build the primary-key locator for the row under the cursor. */
-    const currentRowKey = (): RowKey | null => {
-      const { result, gridRow, pkColumns } = get();
-      if (!result || pkColumns.length === 0) return null;
-      const row = result.rows[gridRow];
-      if (!row) return null;
-      const key: FieldValue[] = [];
-      for (const name of pkColumns) {
-        const i = result.columns.findIndex((c) => c.name === name);
-        if (i < 0) return null;
-        key.push({ column: name, value: row[i] ?? null });
-      }
-      return key;
-    };
-
-    /** Re-fetch the current window after a write, keeping the cursor in range. */
-    const reloadKeepingCursor = async (): Promise<void> => {
-      const { current, page, sort, filter, gridRow } = get();
-      if (!current) return;
-      const nav = beginNav();
-      await load(current, { page, sort, filter }, nav);
-      if (stale(nav)) return;
-      const len = get().result?.rows.length ?? 0;
-      set({ gridRow: Math.min(gridRow, Math.max(0, len - 1)) });
-    };
-
-    const keyText = (key: RowKey): string =>
-      key.map((k) => `${k.column}=${String(k.value)}`).join(' AND ');
-
-    // Export lives in its own slice (exportSlice.ts); it borrows the live
-    // connection and the tree projections, and owns the rest of the flow.
-    // Connection-form UI lives in its own slice; lifecycle stays here.
     const formSlice = createConnFormSlice({ set, get, connectionService, rowsNow });
 
     const xport = createExportSlice({
@@ -704,128 +538,6 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       rowsNow,
       objectsUnder,
     });
-
-    /** Run the editor's SQL and take over the shared grid with the result. The
-     *  execution proper, shared by the direct run and the guarded (confirmed)
-     *  path so the two can't drift. */
-    const runEditorSql = async (text: string): Promise<void> => {
-      if (!active) return;
-      const { history } = get();
-      set({ loading: true, queryError: null, notice: null });
-      const r = await runQuery(active, text);
-      if (!r.ok) {
-        set({ loading: false, queryError: r.error.message, queryElapsedMs: null });
-        // A DROP refused because dependents exist can be retried with CASCADE —
-        // a heavier hammer, so it gets its own confirm rather than auto-running.
-        // Name the objects CASCADE would also drop so the choice is informed.
-        const cascade = asDdlScriptable(active)?.cascadeRetry(text, r.error) ?? null;
-        if (cascade) {
-          set({
-            mode: 'confirm',
-            focus: 'grid',
-            pending: {
-              title: 'Other objects depend on it — drop them too?',
-              statement: cascade.sql,
-              details: cascade.dependents,
-              tone: 'danger',
-              run: () => runEditorSql(cascade.sql),
-            },
-          });
-        }
-        return;
-      }
-      // Record in history, skipping an immediate duplicate and keeping only the
-      // most recent HISTORY_LIMIT entries.
-      const nextHistory = (
-        history[history.length - 1] === text ? history : [...history, text]
-      ).slice(-HISTORY_LIMIT);
-      // The result takes over the shared grid as a read-only 'query' surface.
-      // The browsed table is dropped (current=null) so its row ops can't fire
-      // on a query result; re-selecting it in the sidebar returns to browse.
-      set({
-        loading: false,
-        surface: 'query',
-        current: null,
-        pkColumns: [],
-        // The editor echoes the executed statement: clear the draft so the
-        // placeholder shows `text`, the SQL that produced this result.
-        statement: text,
-        queryText: '',
-        result: r.value.result,
-        total: r.value.result.rows.length,
-        queryElapsedMs: r.value.elapsedMs,
-        queryError: null,
-        gridRow: 0,
-        gridCol: 0,
-        mainTab: 'data',
-        structure: null,
-        focus: 'grid',
-        history: nextHistory,
-        historyIndex: null,
-      });
-      const id = get().activeId;
-      if (id && historyStore) void historyStore.save(id, nextHistory);
-      // A DDL statement (CREATE/DROP/ALTER/TRUNCATE/…) changed the schema, so the
-      // tree and completion catalog are now stale — reload them in the background
-      // (fire-and-forget) so the result shows immediately and the tree catches up.
-      if (classifyStatement(text) === 'ddl') void reloadObjects();
-    };
-
-    /** Recompute completions for the editor text at `caret`. Keywords complete
-     *  even before the catalog loads (it may still be null); schema/table/column
-     *  candidates join in once it is built — so typing a DROP/SELECT is never dead
-     *  while introspecting. */
-    const completionsFor = (text: string, caret: number): string[] =>
-      complete(text, get().catalog, caret).candidates;
-
-    /** Build the schema/table/column catalog once, for schema-aware completion.
-     *  Schema + table names come straight from the single introspection (every
-     *  object, no per-table round-trip); only columns need a describe each, so
-     *  those are bounded — table/schema completion stays complete even for a huge
-     *  DB while column completion covers the first `CATALOG_DESCRIBE_LIMIT`. */
-    const buildCatalog = async (): Promise<void> => {
-      if (!active) return;
-      const introspectable = asIntrospectable(active);
-      if (!introspectable) return;
-      try {
-        const snapshot = await introspectable.introspect();
-        // Completion only wants column-bearing objects (tables/views), not the
-        // index/trigger/… kinds that have no columns.
-        const relations = snapshot.objects.filter((o) =>
-          sectionsFor(o.kind).includes('columns'),
-        );
-        const qualify = (o: ObjectRef): string =>
-          o.namespace ? `${o.namespace}.${o.name}` : o.name;
-
-        const schemas = [
-          ...new Set(
-            relations.map((o) => o.namespace).filter((s): s is string => !!s),
-          ),
-        ];
-        const tables = [...new Set(relations.map((o) => o.name))];
-        const tablesBySchema: Record<string, string[]> = {};
-        for (const o of relations) {
-          if (o.namespace) (tablesBySchema[o.namespace] ??= []).push(o.name);
-        }
-
-        const columnsByTable: Record<string, string[]> = {};
-        await Promise.all(
-          relations.slice(0, CATALOG_DESCRIBE_LIMIT).map(async (o) => {
-            try {
-              const schema = await introspectable.describe(o);
-              const cols = columnsOf(schema).map((c) => c.name);
-              columnsByTable[qualify(o)] = cols; // de-collided key
-              columnsByTable[o.name] ??= cols; // bare fallback (first schema wins)
-            } catch {
-              /* skip a table we cannot describe */
-            }
-          }),
-        );
-        set({ catalog: { schemas, tables, tablesBySchema, columnsByTable } });
-      } catch {
-        /* completion simply stays empty if introspection fails */
-      }
-    };
 
     /** Load the active connection's objects and seat the cursor on the first. */
     const loadSchema = async (): Promise<void> => {
@@ -981,183 +693,15 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             : { helpMaxScroll: maxScroll, helpScroll: Math.min(s.helpScroll, maxScroll) },
         ),
 
-      clickTree: (row) =>
-        set((s) => ({
-          focus: 'sidebar',
-          treeIndex: row != null ? row : s.treeIndex,
-        })),
-
-      clickGrid: (row, col) =>
-        set((s) => ({
-          focus: 'grid',
-          gridRow: row != null ? row : s.gridRow,
-          gridCol: col != null ? col : s.gridCol,
-        })),
-
-      openCell: () => {
-        const { result, gridRow, gridCol } = get();
-        const column = result?.columns[gridCol]?.name;
-        if (!result || !column) return;
-        const value = result.rows[gridRow]?.[gridCol] ?? null;
-        set({ cellView: { column, value, offset: 0, mode: 'view' } });
-      },
-
-      closeCell: () => set({ cellView: null }),
-
-      scrollCell: (delta) =>
-        set((s) =>
-          s.cellView
-            ? { cellView: { ...s.cellView, offset: Math.max(0, s.cellView.offset + delta) } }
-            : {},
-        ),
-
-      treeRows: () => rowsNow(),
-
-      treeUp: () =>
-        set((s) => ({ treeIndex: Math.max(0, s.treeIndex - 1) })),
-
-      treeDown: () =>
-        set((s) => ({
-          treeIndex: Math.min(rowsNow().length - 1, s.treeIndex + 1),
-        })),
-
-      treeTop: () => set({ treeIndex: 0 }),
-
-      treeBottom: () => set({ treeIndex: Math.max(0, rowsNow().length - 1) }),
-
-      treeToggle: async () => {
-        const row = rowsNow()[get().treeIndex];
-        if (!row) return;
-        if (row.type === 'object') {
-          await openObject(row.ref);
-          return;
-        }
-        if (row.type === 'connection') {
-          // Active connection folds; an inactive one connects (switches to it).
-          if (row.active) set((s) => ({ rootExpanded: !s.rootExpanded }));
-          else void get().connect(row.id);
-        } else if (row.type === 'category') {
-          const next = new Set(get().expandedCats);
-          next.has(row.kind) ? next.delete(row.kind) : next.add(row.kind);
-          set({ expandedCats: next });
-        } else {
-          const key = schemaKey(row.kind, row.namespace);
-          const next = new Set(get().expandedSchemas);
-          next.has(key) ? next.delete(key) : next.add(key);
-          set({ expandedSchemas: next });
-        }
-        clampTree();
-      },
-
-      browseSelected: () => {
-        const row = rowsNow()[get().treeIndex];
-        if (row?.type === 'object') {
-          void openObject(row.ref);
-          return;
-        }
-        // The cursor isn't on an object (e.g. moved to a category after a query):
-        // fall back to re-browsing whatever object is currently open.
-        const cur = get().current;
-        if (cur) void openObject(cur);
-      },
-
-      treeExpand: async () => {
-        const row = rowsNow()[get().treeIndex];
-        if (!row) return;
-        if (row.type === 'object') {
-          await openObject(row.ref);
-        } else if (row.type === 'connection') {
-          if (!row.active) void get().connect(row.id);
-          else if (!get().rootExpanded) set({ rootExpanded: true });
-        } else if (row.type === 'category') {
-          if (!get().expandedCats.has(row.kind)) {
-            set({ expandedCats: new Set(get().expandedCats).add(row.kind) });
-          }
-        } else {
-          const key = schemaKey(row.kind, row.namespace);
-          if (!get().expandedSchemas.has(key)) {
-            set({ expandedSchemas: new Set(get().expandedSchemas).add(key) });
-          }
-        }
-      },
-
-      treeCollapse: () => {
-        const rows = rowsNow();
-        const i = get().treeIndex;
-        const row = rows[i];
-        if (!row) return;
-        // Jump the cursor to the nearest ancestor row above matching `is`.
-        const parentAbove = (is: (r: TreeRow) => boolean): void => {
-          for (let j = i - 1; j >= 0; j--) {
-            if (is(rows[j]!)) return set({ treeIndex: j });
-          }
-          set({ treeIndex: 0 });
-        };
-        if (row.type === 'object') {
-          // Parent is the schema header when grouped, else the category header.
-          parentAbove((r) => r.type === 'schema' || r.type === 'category');
-        } else if (row.type === 'schema') {
-          if (get().expandedSchemas.has(schemaKey(row.kind, row.namespace))) {
-            const next = new Set(get().expandedSchemas);
-            next.delete(schemaKey(row.kind, row.namespace));
-            set({ expandedSchemas: next });
-            clampTree();
-          } else {
-            parentAbove((r) => r.type === 'category');
-          }
-        } else if (row.type === 'category') {
-          if (get().expandedCats.has(row.kind)) {
-            const next = new Set(get().expandedCats);
-            next.delete(row.kind);
-            set({ expandedCats: next });
-            clampTree();
-          } else {
-            parentAbove((r) => r.type === 'connection'); // jump to the owning root
-          }
-        } else if (row.active && get().rootExpanded) {
-          set({ rootExpanded: false });
-          clampTree();
-        }
-      },
-
-      treeShowDdl: async () => {
-        const row = rowsNow()[get().treeIndex];
-        if (!row || row.type !== 'object') return;
-        await openObject(row.ref);
-        set({ mainTab: 'ddl' });
-        await loadStructure();
-      },
-
-      draftDrop: () => {
-        const row = rowsNow()[get().treeIndex];
-        if (!row || row.type !== 'object') return;
-        if (row.ref.kind !== 'table' && row.ref.kind !== 'view') return;
-        // The adapter builds a quoted, schema-qualified DROP, so a reserved-word
-        // name (e.g. `window`) is dropped correctly. Non-SQL sources lack it.
-        const scriptable = active ? asDdlScriptable(active) : null;
-        if (!scriptable) return;
-        get().setQuery(scriptable.dropStatement(row.ref));
-        get().focusPane('editor');
-      },
+      // Sidebar-tree actions live in treeSlice.ts; browse/grid actions in
+      // browseSlice.ts; the SQL editor + NL→SQL in editorSlice.ts.
+      ...tree,
+      ...browse.actions,
+      ...editor.actions,
 
       refresh: async () => {
         set({ profiles: await connectionService.list() });
         await reloadObjects();
-      },
-
-      setMainTab: (tab) => {
-        set({ mainTab: tab });
-        if (tab === 'ddl') void loadStructure();
-      },
-
-      toggleMainTab: () => {
-        // A source-only object (index/trigger/…) has no Data tab to flip to — the
-        // structure (its definition) is all there is, so the toggle is inert.
-        const s = get().structure;
-        if (s && columnsOf(s).length === 0) return;
-        const next = get().mainTab === 'data' ? 'ddl' : 'data';
-        set({ mainTab: next });
-        if (next === 'ddl') void loadStructure();
       },
 
       connect: async (id) => {
@@ -1233,7 +777,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             set({ error: 'This source does not support SQL queries.' });
             return;
           }
-          if (!get().catalog) void buildCatalog();
+          if (!get().catalog) void editor.buildCatalog();
           set({ focus: 'editor', error: null });
           return;
         }
@@ -1245,224 +789,6 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         // is reached deliberately (`:`) and left with Esc, so it stays off the
         // cycle — Tab never lands you mid-compose.
         set((s) => ({ focus: s.focus === 'sidebar' ? 'grid' : 'sidebar' })),
-
-      gridUp: () => set((s) => ({ gridRow: Math.max(0, s.gridRow - 1) })),
-
-      gridDown: () =>
-        set((s) => ({
-          gridRow: Math.min(
-            Math.max(0, (s.result?.rows.length ?? 1) - 1),
-            s.gridRow + 1,
-          ),
-        })),
-
-      gridLeft: () => set((s) => ({ gridCol: Math.max(0, s.gridCol - 1) })),
-
-      gridRight: () =>
-        set((s) => ({
-          gridCol: Math.min(
-            Math.max(0, (s.result?.columns.length ?? 1) - 1),
-            s.gridCol + 1,
-          ),
-        })),
-
-      gridTop: () => set({ gridRow: 0 }),
-
-      gridBottom: () =>
-        set((s) => ({ gridRow: Math.max(0, (s.result?.rows.length ?? 1) - 1) })),
-
-      gridHalfUp: () =>
-        set((s) => ({
-          gridRow: Math.max(0, s.gridRow - Math.max(1, Math.floor(s.gridViewportRows / 2))),
-        })),
-
-      gridHalfDown: () =>
-        set((s) => ({
-          gridRow: Math.min(
-            Math.max(0, (s.result?.rows.length ?? 1) - 1),
-            s.gridRow + Math.max(1, Math.floor(s.gridViewportRows / 2)),
-          ),
-        })),
-
-      setGridViewport: (rows) =>
-        set((s) => (s.gridViewportRows === rows ? s : { gridViewportRows: rows })),
-
-      applySort: async () => {
-        const { current, sort, filter, result, gridCol } = get();
-        const column = result?.columns[gridCol]?.name;
-        if (!current || !column) return;
-        // Re-sort always returns to the first page for a coherent ordering.
-        const next = cycleSort(sort, column);
-        await load(current, { page: firstPage(PAGE_SIZE), sort: next, filter });
-      },
-
-      pageNext: async () => {
-        const { current, page, sort, filter, total } = get();
-        if (!current || page.offset + page.limit >= total) return;
-        await load(current, { page: nextPage(page), sort, filter });
-      },
-
-      pagePrev: async () => {
-        const { current, page, sort, filter } = get();
-        if (!current || page.offset === 0) return;
-        await load(current, { page: prevPage(page), sort, filter });
-      },
-
-      beginFilter: () => {
-        const { current, result, gridCol } = get();
-        const column = result?.columns[gridCol]?.name;
-        if (!current || !column) return;
-        // The native <input> holds the draft; it is seeded with any existing
-        // filter value for this column (derived in the view), so the store keeps
-        // no draft of its own.
-        set({ mode: 'filter' });
-      },
-
-      cancelFilter: () => set({ mode: 'normal' }),
-
-      commitFilter: async (value) => {
-        const { current, sort, result, gridCol } = get();
-        const column = result?.columns[gridCol]?.name;
-        set({ mode: 'normal' });
-        if (!current || !column) return;
-        const v = value.trim();
-        const filter: Filter | null = v
-          ? { conditions: [{ column, op: 'contains', value: v }] }
-          : null;
-        await load(current, { page: firstPage(PAGE_SIZE), sort, filter });
-      },
-
-      beginEdit: () => {
-        const { result, gridRow, gridCol, pkColumns, structure, current, cellView } = get();
-        const column = result?.columns[gridCol]?.name;
-        if (!result || !column) return;
-        if (pkColumns.length === 0) {
-          set({ error: 'table has no primary key — editing disabled' });
-          return;
-        }
-        // Freeze the row locator NOW: submitEdit must target the cell the draft
-        // was seeded from, whatever the grid cursor does while the overlay is up.
-        const rowKey = currentRowKey();
-        if (!rowKey) {
-          set({ error: 'cannot locate this row by primary key — editing disabled' });
-          return;
-        }
-        const value = result.rows[gridRow]?.[gridCol] ?? null;
-        // Editing happens in the cell inspector overlay (ADR 0011): open it in
-        // edit mode seeded with THIS cell. Binary blobs aren't text-editable.
-        if (value instanceof Uint8Array) {
-          set({ error: 'binary value — not editable here' });
-          return;
-        }
-        // The <textarea> holds the draft (seeded from `seedText`); the store keeps
-        // no draft of its own — submitEdit reads the widget's text on ^S. On a
-        // jsonCanonical column (from the object's cached describe) the seed is
-        // pretty-printed: the store normalizes JSON anyway, so the layout is free.
-        // Mid-navigation `structure` lands before load() commits `current` (the
-        // nav epoch only discards STALE sets, it doesn't order these two), so the
-        // cache may briefly describe the NEXT object — only trust a match.
-        const jsonCanonical =
-          structure != null &&
-          current != null &&
-          objectRefKey(structure.ref) === objectRefKey(current) &&
-          columnsOf(structure).find((c) => c.name === column)?.jsonCanonical === true;
-        const raw = cellEditText(value);
-        const seedText = jsonCanonical ? (prettyJson(raw) ?? raw) : raw;
-        set({
-          cellView: {
-            mode: 'edit',
-            column,
-            value,
-            offset: cellView?.offset ?? 0,
-            seedText,
-            jsonCanonical,
-            rowKey,
-          },
-          error: null,
-        });
-      },
-
-      // Cancel a cell edit → discard the draft and fall back to the value view
-      // (esc). The inspector stays open: editing is only entered from view (`e`),
-      // so esc always pops back to where the edit began. A no-op if nothing's open.
-      cancelEdit: () =>
-        set((s) => (s.cellView ? { cellView: backToView(s.cellView), error: null } : {})),
-
-      submitEdit: (value) => {
-        const { current, cellView } = get();
-        if (!current || cellView?.mode !== 'edit') {
-          set({ mode: 'normal', cellView: null });
-          return;
-        }
-        // Target the cell the draft was SEEDED from (column + frozen row key),
-        // never the live cursor — the grid under the overlay is still clickable,
-        // so gridRow/gridCol may have moved since `e`.
-        const { column, rowKey: key } = cellView;
-        if (cellView.jsonCanonical) {
-          // Untouched pretty seed → nothing to stage: the seed's layout is OUR
-          // reformatting, not the user's edit. Plain columns keep save-always
-          // semantics (a deliberate re-save can fire ON UPDATE triggers).
-          if (value === cellView.seedText) {
-            set({ cellView: backToView(cellView), notice: 'no change', error: null });
-            return;
-          }
-          // A jsonCanonical column would reject malformed JSON anyway — fail
-          // here, next to the draft, instead of at the database.
-          if (!isJsonText(value)) {
-            set({ error: 'not valid JSON — fix the draft or esc to discard' });
-            return;
-          }
-        }
-        // Echo the dialect's own statement (value-inlined) when the source can
-        // render one, so the approved text can't drift from what runs; the
-        // readable fallback covers document/kv sources with no SQL to show.
-        const patch: RowPatch = [{ column, value }];
-        const preview = active ? asEditPreviewable(active) : null;
-        set({
-          mode: 'confirm',
-          cellView: null, // leave the editor; the confirm owns the screen + y/n
-          error: null,
-          pending: {
-            title: `Update ${column} in ${current.name}?`,
-            statement:
-              preview?.previewUpdate(current, key, patch) ??
-              `update ${current.name} set ${column} where ${keyText(key)}`,
-            tone: 'normal',
-            run: async () => {
-              if (!active) return;
-              const r = await updateRow(active, current, key, patch);
-              if (!r.ok) set({ status: 'error', error: r.error.message });
-              else await reloadKeepingCursor();
-            },
-          },
-        });
-      },
-
-      beginDelete: () => {
-        const { current } = get();
-        const key = currentRowKey();
-        if (!current || !key) {
-          set({ error: 'table has no primary key — cannot delete' });
-          return;
-        }
-        const preview = active ? asEditPreviewable(active) : null;
-        set({
-          mode: 'confirm',
-          pending: {
-            title: `Delete this row from ${current.name}?`,
-            statement:
-              preview?.previewDelete(current, key) ??
-              `delete from ${current.name} where ${keyText(key)}`,
-            tone: 'danger',
-            run: async () => {
-              if (!active) return;
-              const r = await deleteRow(active, current, key);
-              if (!r.ok) set({ status: 'error', error: r.error.message });
-              else await reloadKeepingCursor();
-            },
-          },
-        });
-      },
 
       // Export actions live in exportSlice.ts (ADR 0012 owns the flow).
       ...xport.actions,
@@ -1483,146 +809,6 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       cancelPending: () => {
         xport.dropTarget(); // if it was an export confirm, drop its target too
         set({ mode: 'normal', pending: null });
-      },
-
-      // ── query editor ──────────────────────────────────────────────────────
-
-      setQuery: (value, caret) => {
-        const c = caret ?? value.length;
-        // A real edit changes the text; only then reset the history cursor (you're
-        // back on a fresh draft). A SAME-text write is the <textarea> echoing a
-        // programmatic setText (history/NL/clear) back through onContentChange —
-        // keep historyIndex so ↓ (historyNext) can still step forward. Completions
-        // track the caret; suppressed while the toggle is off.
-        const changed = value !== get().queryText;
-        set({
-          queryText: value,
-          editorCaret: c,
-          ...(changed ? { historyIndex: null } : {}),
-          completions: get().completionsOn ? completionsFor(value, c) : [],
-        });
-      },
-
-      toggleCompletions: () => {
-        const on = !get().completionsOn;
-        const { queryText, editorCaret } = get();
-        set({
-          completionsOn: on,
-          completions: on ? completionsFor(queryText, editorCaret) : [],
-        });
-      },
-
-      executeQuery: async () => {
-        if (!active) return;
-        const text = get().queryText.trim();
-        if (!text) return;
-        // A destructive statement (unqualified UPDATE/DELETE, or DROP/TRUNCATE)
-        // stages a confirm rather than running straight off the editor's ⏎. Focus
-        // leaves the editor so its native input can't swallow the y/n the prompt
-        // is waiting on.
-        const kind = dangerKind(text);
-        if (kind) {
-          set({
-            mode: 'confirm',
-            focus: 'grid',
-            pending: {
-              title: dangerHeadline(kind, text),
-              statement: text,
-              tone: 'danger',
-              run: () => runEditorSql(text),
-            },
-          });
-          return;
-        }
-        await runEditorSql(text);
-      },
-
-      historyPrev: () => {
-        const { history, historyIndex } = get();
-        if (history.length === 0) return;
-        const idx =
-          historyIndex === null
-            ? history.length - 1
-            : Math.max(0, historyIndex - 1);
-        const text = history[idx] ?? '';
-        set({ historyIndex: idx, queryText: text, editorCaret: text.length, completions: [] });
-      },
-
-      historyNext: () => {
-        const { history, historyIndex } = get();
-        if (historyIndex === null) return;
-        if (historyIndex >= history.length - 1) {
-          set({ historyIndex: null, queryText: '', editorCaret: 0, completions: [] });
-          return;
-        }
-        const idx = historyIndex + 1;
-        const text = history[idx] ?? '';
-        set({ historyIndex: idx, queryText: text, editorCaret: text.length, completions: [] });
-      },
-
-      acceptCompletion: () => {
-        const { queryText, editorCaret, completions } = get();
-        const top = completions[0];
-        if (!top) return;
-        // Replace the partial identifier ending AT the caret, leaving the rest of
-        // the (possibly multi-line) text untouched; seat the caret after the word.
-        const head = queryText.slice(0, editorCaret);
-        const tail = queryText.slice(editorCaret);
-        const word = head.match(/[A-Za-z_][A-Za-z0-9_]*$/)?.[0] ?? '';
-        const newHead = head.slice(0, head.length - word.length) + top;
-        const next = newHead + tail;
-        set({
-          queryText: next,
-          editorCaret: newHead.length,
-          completions: completionsFor(next, newHead.length),
-        });
-      },
-
-      // ── NL→SQL ────────────────────────────────────────────────────────────
-
-      beginNl: () => {
-        if (!generator) {
-          set({ queryError: 'set ANTHROPIC_API_KEY to enable AI (NL→SQL)' });
-          return;
-        }
-        set({ nlMode: true, queryError: null });
-      },
-
-      cancelNl: () => set({ nlMode: false }),
-
-      generateFromNl: async (prompt) => {
-        const { catalog } = get();
-        const nl = prompt.trim();
-        if (!generator || !nl) {
-          set({ nlMode: false });
-          return;
-        }
-        set({ nlMode: false, generating: true, queryError: null });
-        const schema: SchemaContext = {
-          tables: catalog
-            ? catalog.tables.map((t) => ({
-                name: t,
-                columns: catalog.columnsByTable[t] ?? [],
-              }))
-            : [],
-        };
-        const profile = activeProfile();
-        const dialect = profile ? dialectLabel(profile.driver) : 'SQL';
-        const r = await generateSql(generator, { nl, schema, dialect });
-        if (!r.ok) {
-          set({ generating: false, queryError: r.error.message });
-          return;
-        }
-        // Fill the editor for review — NEVER auto-execute (§5.2).
-        set({
-          generating: false,
-          queryText: r.value.sql,
-          editorCaret: r.value.sql.length,
-          nlExplanation: r.value.explanation,
-          nlKind: r.value.kind,
-          completions: [],
-          focus: 'editor',
-        });
       },
     };
   });

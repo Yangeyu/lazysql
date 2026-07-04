@@ -58,6 +58,11 @@ export interface BrowseSpec {
   readonly page: Page;
   readonly sort?: Sort | null;
   readonly filter?: Filter | null;
+  /** Primary-key (or unique) columns appended to the sort as a deterministic
+   *  tiebreaker, so paging windows and post-write reloads keep a stable row
+   *  order. Optional: sources without a usable key omit it and keep their
+   *  natural order. */
+  readonly stableKey?: readonly string[];
 }
 
 /**

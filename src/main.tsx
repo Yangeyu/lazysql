@@ -209,7 +209,14 @@ const generator: SqlGenerator | null = createSqlGenerator({
 // only disable its built-in ^C so the app decides what ^C means in context
 // (cancel a modal vs. quit). The single exit path is renderer.destroy(), reached
 // from App's `q`/^C handler and from SIGINT/SIGTERM.
-const renderer = await createCliRenderer({ exitOnCtrlC: false });
+const renderer = await createCliRenderer({
+  exitOnCtrlC: false,
+  // On an unhandled error OpenTUI would pop its debug-console overlay, which
+  // grabs keyboard focus and the app binds no key to dismiss it — the UI looks
+  // frozen. Expected failures already surface via Result in the status bar, so
+  // keep the overlay off (errors still land in the console cache for OTUI_DEBUG).
+  openConsoleOnError: false,
+});
 
 // Exit once teardown has run. Deferred to a microtask so the 'destroy'
 // subscribers (Root releases the DB connection) run first, in the same emit.

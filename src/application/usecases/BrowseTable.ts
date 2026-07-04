@@ -14,7 +14,10 @@ import type { ObjectRef } from '../../domain/datasource/schema.ts';
 import type { BrowseSpec } from '../../domain/query/Query.ts';
 import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
 import { ok, err, type Result } from '../../shared/Result.ts';
-import { UnsupportedCapabilityError } from '../../domain/errors/errors.ts';
+import {
+  UnsupportedCapabilityError,
+  DataSourceError,
+} from '../../domain/errors/errors.ts';
 
 export interface BrowseResult {
   readonly rows: ResultSet;
@@ -22,21 +25,30 @@ export interface BrowseResult {
   readonly spec: BrowseSpec;
 }
 
+const toError = (e: unknown): DataSourceError =>
+  e instanceof DataSourceError
+    ? e
+    : new DataSourceError(e instanceof Error ? e.message : String(e));
+
 export const browseTable = async (
   source: DataSource,
   ref: ObjectRef,
   spec: BrowseSpec,
   signal?: AbortSignal,
-): Promise<Result<BrowseResult, UnsupportedCapabilityError>> => {
+): Promise<Result<BrowseResult, DataSourceError>> => {
   const browsable = asBrowsable(source);
   if (!browsable) {
     return err(
       new UnsupportedCapabilityError(`source "${source.id}" cannot browse`),
     );
   }
-  const [rows, total] = await Promise.all([
-    browsable.browse(ref, spec, signal),
-    browsable.count(ref, spec.filter, signal),
-  ]);
-  return ok({ rows, total, spec });
+  try {
+    const [rows, total] = await Promise.all([
+      browsable.browse(ref, spec, signal),
+      browsable.count(ref, spec.filter, signal),
+    ]);
+    return ok({ rows, total, spec });
+  } catch (e) {
+    return err(toError(e));
+  }
 };

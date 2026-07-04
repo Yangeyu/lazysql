@@ -24,7 +24,7 @@ import type {
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
 import type { CascadeDrop } from '../../../../domain/datasource/DataSource.ts';
 import type { RawResult } from '../Driver.ts';
-import { buildWhere } from '../whereBuilder.ts';
+import { buildWhere, buildOrderBy } from '../whereBuilder.ts';
 import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
 
 /** Quote an identifier with backticks, escaping embedded backticks. */
@@ -39,8 +39,9 @@ const qualify = (ref: ObjectRef): string =>
     ? `${quoteIdent(ref.namespace)}.${quoteIdent(ref.name)}`
     : quoteIdent(ref.name);
 
-const orderBy = (sort: Sort | null | undefined): string =>
-  sort ? ` ORDER BY ${quoteIdent(sort.column)} ${sort.direction.toUpperCase()}` : '';
+/** MySQL LIKE coerces non-text operands and the default *_ci collations
+ *  already match case-insensitively. */
+const contains = (column: string, ph: string): string => `${column} LIKE ${ph}`;
 
 const col = (raw: RawResult, name: string): number =>
   raw.columns.findIndex((c) => c.toLowerCase() === name.toLowerCase());
@@ -136,15 +137,15 @@ export class MySqlDialect implements Dialect {
   }
 
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {
-    const where = buildWhere(spec.filter, quoteIdent, ph, 'LIKE');
+    const where = buildWhere(spec.filter, quoteIdent, ph, contains);
     return sql(
-      `SELECT * FROM ${qualify(ref)}${where.clause}${orderBy(spec.sort)} LIMIT ? OFFSET ?`,
+      `SELECT * FROM ${qualify(ref)}${where.clause}${buildOrderBy(spec.sort, spec.stableKey, quoteIdent)} LIMIT ? OFFSET ?`,
       [...where.params, spec.page.limit, spec.page.offset],
     );
   }
 
   countQuery(ref: ObjectRef, filter?: Filter | null): Query {
-    const where = buildWhere(filter, quoteIdent, ph, 'LIKE');
+    const where = buildWhere(filter, quoteIdent, ph, contains);
     return sql(
       `SELECT count(*) AS n FROM ${qualify(ref)}${where.clause}`,
       where.params,

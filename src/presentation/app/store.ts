@@ -699,7 +699,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
     const load = async (ref: ObjectRef, spec: BrowseSpec): Promise<void> => {
       if (!active) return;
       set({ loading: true, error: null, notice: null });
-      const res = await browseTable(active, ref, spec);
+      // The primary key rides along as the ordering tiebreaker: without it an
+      // unsorted browse has no deterministic order, so a row can jump to another
+      // position after every write-then-reload (openObject sets pkColumns first).
+      const res = await browseTable(active, ref, { ...spec, stableKey: get().pkColumns });
       if (!res.ok) {
         set({ loading: false, status: 'error', error: res.error.message });
         return;

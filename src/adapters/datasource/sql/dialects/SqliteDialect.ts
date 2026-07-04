@@ -21,7 +21,7 @@ import type {
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
 import type { CascadeDrop } from '../../../../domain/datasource/DataSource.ts';
 import type { RawResult } from '../Driver.ts';
-import { buildWhere } from '../whereBuilder.ts';
+import { buildWhere, buildOrderBy } from '../whereBuilder.ts';
 import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
 
 /** Quote a SQL identifier, escaping embedded double-quotes. */
@@ -30,9 +30,8 @@ const quoteIdent = (name: string): string => `"${name.replace(/"/g, '""')}"`;
 /** SQLite uses positional `?` placeholders. */
 const ph = (): string => '?';
 
-/** ` ORDER BY "col" ASC|DESC`, or empty when unsorted. */
-const orderBy = (sort: Sort | null | undefined): string =>
-  sort ? ` ORDER BY ${quoteIdent(sort.column)} ${sort.direction.toUpperCase()}` : '';
+/** SQLite LIKE coerces non-text operands and matches ASCII case-insensitively. */
+const contains = (column: string, ph: string): string => `${column} LIKE ${ph}`;
 
 /** Index of a column in a raw result, by name (case-insensitive). */
 const col = (raw: RawResult, name: string): number =>
@@ -89,15 +88,15 @@ export class SqliteDialect implements Dialect {
   }
 
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {
-    const where = buildWhere(spec.filter, quoteIdent, ph, 'LIKE');
+    const where = buildWhere(spec.filter, quoteIdent, ph, contains);
     return sql(
-      `SELECT * FROM ${quoteIdent(ref.name)}${where.clause}${orderBy(spec.sort)} LIMIT ? OFFSET ?`,
+      `SELECT * FROM ${quoteIdent(ref.name)}${where.clause}${buildOrderBy(spec.sort, spec.stableKey, quoteIdent)} LIMIT ? OFFSET ?`,
       [...where.params, spec.page.limit, spec.page.offset],
     );
   }
 
   countQuery(ref: ObjectRef, filter?: Filter | null): Query {
-    const where = buildWhere(filter, quoteIdent, ph, 'LIKE');
+    const where = buildWhere(filter, quoteIdent, ph, contains);
     return sql(
       `SELECT COUNT(*) AS n FROM ${quoteIdent(ref.name)}${where.clause}`,
       where.params,

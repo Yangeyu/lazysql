@@ -226,6 +226,46 @@ pgTest('contains filter uses ILIKE with a bound value', async () => {
   expect(result.rows.rows[0]?.[1]).toBe('w25');
 });
 
+pgTest('contains filter works on a uuid column (cast to text)', async () => {
+  const q = asQueryable(source)!;
+  await q.execute(sql('DROP TABLE IF EXISTS gadget'));
+  await q.execute(sql('CREATE TABLE gadget (id uuid PRIMARY KEY, name text)'));
+  await q.execute(
+    sql(
+      `INSERT INTO gadget VALUES
+         ('6c52b8a9-124f-3dc8-ae10-de8844bbd61e', 'target'),
+         ('00000000-0000-0000-0000-000000000000', 'other')`,
+    ),
+  );
+  const result = unwrap(
+    await browseTable(
+      source,
+      { namespace: 'public', name: 'gadget', kind: 'table' },
+      {
+        page: firstPage(10),
+        filter: { conditions: [{ column: 'id', op: 'contains', value: '6c52b8a9' }] },
+      },
+    ),
+  );
+  expect(result.total).toBe(1);
+  expect(result.rows.rows[0]?.[1]).toBe('target');
+  await q.execute(sql('DROP TABLE gadget'));
+});
+
+pgTest('stableKey keeps an unsorted browse in key order across an update', async () => {
+  // Without the tiebreaker Postgres returns heap order, where an updated row
+  // migrates to the end — the grid row would jump after every save.
+  await asRowEditable(source)!.update(
+    widget,
+    [{ column: 'id', value: 3 }],
+    [{ column: 'label', value: 'w3-touched' }],
+  );
+  const result = unwrap(
+    await browseTable(source, widget, { page: firstPage(10), stableKey: ['id'] }),
+  );
+  expect(result.rows.rows.map((r) => r[0])).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+});
+
 const pgValueAt = async (id: number, column: string): Promise<unknown> => {
   const rs = await asQueryable(source)!.execute(
     sql(`SELECT ${column} FROM widget WHERE id = $1`, [id]),

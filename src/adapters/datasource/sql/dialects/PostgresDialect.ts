@@ -25,7 +25,7 @@ import type { CascadeDrop } from '../../../../domain/datasource/DataSource.ts';
 import type { DataSourceError } from '../../../../domain/errors/errors.ts';
 import { QueryError } from '../../../../domain/errors/errors.ts';
 import type { RawResult } from '../Driver.ts';
-import { buildWhere } from '../whereBuilder.ts';
+import { buildWhere, buildOrderBy } from '../whereBuilder.ts';
 import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
 
 const DEFAULT_SCHEMA = 'public';
@@ -39,9 +39,10 @@ const ph = (index: number): string => `$${index}`;
 const qualify = (ref: ObjectRef): string =>
   `${quoteIdent(ref.namespace ?? DEFAULT_SCHEMA)}.${quoteIdent(ref.name)}`;
 
-/** ` ORDER BY "col" ASC|DESC`, or empty when unsorted. */
-const orderBy = (sort: Sort | null | undefined): string =>
-  sort ? ` ORDER BY ${quoteIdent(sort.column)} ${sort.direction.toUpperCase()}` : '';
+/** Substring match; the cast lets non-text columns (uuid, numeric, jsonb…)
+ *  accept ILIKE, which only exists for text operands. */
+const contains = (column: string, ph: string): string =>
+  `${column}::text ILIKE ${ph}`;
 
 const col = (raw: RawResult, name: string): number =>
   raw.columns.findIndex((c) => c.toLowerCase() === name.toLowerCase());
@@ -188,16 +189,16 @@ export class PostgresDialect implements Dialect {
   }
 
   browseQuery(ref: ObjectRef, spec: BrowseSpec): Query {
-    const where = buildWhere(spec.filter, quoteIdent, ph, 'ILIKE');
+    const where = buildWhere(spec.filter, quoteIdent, ph, contains);
     const n = where.params.length;
     return sql(
-      `SELECT * FROM ${qualify(ref)}${where.clause}${orderBy(spec.sort)} LIMIT ${ph(n + 1)} OFFSET ${ph(n + 2)}`,
+      `SELECT * FROM ${qualify(ref)}${where.clause}${buildOrderBy(spec.sort, spec.stableKey, quoteIdent)} LIMIT ${ph(n + 1)} OFFSET ${ph(n + 2)}`,
       [...where.params, spec.page.limit, spec.page.offset],
     );
   }
 
   countQuery(ref: ObjectRef, filter?: Filter | null): Query {
-    const where = buildWhere(filter, quoteIdent, ph, 'ILIKE');
+    const where = buildWhere(filter, quoteIdent, ph, contains);
     return sql(
       `SELECT count(*) AS n FROM ${qualify(ref)}${where.clause}`,
       where.params,

@@ -1,10 +1,9 @@
 /**
- * MySQL adapter contract test — the SAME assertions as the SQLite and
- * Postgres suites, against a real server (Docker MySQL 8; the jsonCanonical
- * assertion needs MySQL's normalizing json type, which MariaDB's LONGTEXT
- * alias does not provide). Three engines passing one contract is the
- * strongest evidence the capability/dialect abstraction holds. Auto-skips
- * when no server is reachable.
+ * MySQL adapter tests: probes for a real server (auto-skips when absent),
+ * seeds, runs the shared SQL contract (sqlContract.ts — the SAME assertions
+ * SQLite and PG run), then the MySQL-specific extras: trigger/procedure
+ * introspection with definitions, and json-column canonicality (needs real
+ * MySQL 8 — MariaDB's JSON is a LONGTEXT alias that stores text verbatim).
  *
  * Bring one up with:
  *   docker compose -f docker-compose.test.yml up -d --wait mysql
@@ -12,18 +11,16 @@
 
 import { test, expect, beforeAll, afterAll } from 'bun:test';
 import { createDataSource } from '../../registry.ts';
+import { runSqlContract } from './sqlContract.ts';
 import type { ConnectionProfile } from '../../../../domain/connection/ConnectionProfile.ts';
 import type { DataSource } from '../../../../domain/datasource/DataSource.ts';
 import {
   asIntrospectable,
   asQueryable,
-  asRowEditable,
 } from '../../../../domain/datasource/DataSource.ts';
-import { Capability } from '../../../../domain/datasource/capabilities.ts';
 import { listObjects } from '../../../../application/usecases/ListObjects.ts';
-import { browseTable } from '../../../../application/usecases/BrowseTable.ts';
 import { unwrap } from '../../../../shared/Result.ts';
-import { firstPage, sql } from '../../../../domain/query/Query.ts';
+import { sql } from '../../../../domain/query/Query.ts';
 import type { ObjectRef } from '../../../../domain/datasource/schema.ts';
 import { columnsOf } from '../../../../domain/datasource/schema.ts';
 
@@ -83,18 +80,14 @@ afterAll(async () => {
   if (available) await source?.disconnect();
 });
 
-myTest('declares Query/SchemaIntrospect/Browse capabilities', () => {
-  const caps = source.capabilities();
-  expect(caps.has(Capability.SchemaIntrospect)).toBe(true);
-  expect(caps.has(Capability.Browse)).toBe(true);
+runSqlContract({
+  available,
+  source: () => source,
+  widget,
+  ph: () => '?',
 });
 
-myTest('listObjects finds the table in the current database', async () => {
-  const objects = unwrap(await listObjects(source));
-  const found = objects.find((o) => o.name === 'widget');
-  expect(found).toBeDefined();
-  expect(found?.namespace).toBe('lazysql');
-});
+// ── MySQL-specific ──────────────────────────────────────────────────────────
 
 myTest('listObjects surfaces views, triggers and procedures by kind', async () => {
   const objects = unwrap(await listObjects(source));
@@ -116,24 +109,6 @@ myTest('describe yields triggers and procedures their definition', async () => {
   expect(await mySourceText({ namespace: 'lazysql', name: 'inc', kind: 'procedure' })).toMatch(/SELECT/i);
 });
 
-myTest('describe gives a view both its columns and its defining source', async () => {
-  const view: ObjectRef = { namespace: 'lazysql', name: 'pricey', kind: 'view' };
-  const schema = await asIntrospectable(source)!.describe(view);
-  expect(schema.detail.map((d) => d.kind)).toEqual(['columns', 'source']);
-  expect(columnsOf(schema).map((c) => c.name)).toEqual(['id', 'label']);
-  expect(await mySourceText(view)).toMatch(/select/i);
-});
-
-myTest('describe reports the primary key via COLUMN_KEY', async () => {
-  const cols = columnsOf(await asIntrospectable(source)!.describe(widget));
-  const id = cols.find((c) => c.name === 'id');
-  const label = cols.find((c) => c.name === 'label');
-  expect(id?.isPrimaryKey).toBe(true);
-  expect(id?.nullable).toBe(false);
-  expect(label?.isPrimaryKey).toBe(false);
-  expect(label?.nullable).toBe(true);
-});
-
 myTest('describe marks json columns jsonCanonical', async () => {
   const exec = (text: string) => asQueryable(source)!.execute(sql(text));
   await exec('DROP TABLE IF EXISTS jsonshapes');
@@ -147,79 +122,4 @@ myTest('describe marks json columns jsonCanonical', async () => {
   } finally {
     await exec('DROP TABLE jsonshapes');
   }
-});
-
-myTest('browse paginates with backtick quoting and counts', async () => {
-  const result = unwrap(await browseTable(source, widget, { page: firstPage(10) }));
-  expect(result.total).toBe(25);
-  expect(result.rows.rows.length).toBe(10);
-  expect(result.rows.truncated).toBe(true);
-  expect(result.rows.columns.map((c) => c.name)).toEqual(['id', 'label', 'qty']);
-});
-
-myTest('descending sort orders by the column', async () => {
-  const result = unwrap(
-    await browseTable(source, widget, {
-      page: firstPage(5),
-      sort: { column: 'qty', direction: 'desc' },
-    }),
-  );
-  expect(Number(result.rows.rows[0]?.[2])).toBe(25);
-  expect(Number(result.rows.rows[4]?.[2])).toBe(21);
-});
-
-myTest('contains filter narrows rows and count (bound value)', async () => {
-  const result = unwrap(
-    await browseTable(source, widget, {
-      page: firstPage(50),
-      filter: { conditions: [{ column: 'label', op: 'contains', value: '25' }] },
-    }),
-  );
-  expect(result.total).toBe(1);
-  expect(result.rows.rows[0]?.[1]).toBe('w25');
-});
-
-const myValueAt = async (id: number, column: string): Promise<unknown> => {
-  const rs = await asQueryable(source)!.execute(
-    sql(`SELECT ${column} FROM widget WHERE id = ?`, [id]),
-  );
-  return rs.rows[0]?.[0] ?? null;
-};
-
-myTest('update writes one row in a transaction', async () => {
-  const r = await asRowEditable(source)!.update(
-    widget,
-    [{ column: 'id', value: 1 }],
-    [{ column: 'label', value: 'updated-1' }],
-  );
-  expect(r.affected).toBe(1);
-  expect(await myValueAt(1, 'label')).toBe('updated-1');
-});
-
-myTest('non-matching update rolls back (0 rows)', async () => {
-  await expect(
-    asRowEditable(source)!.update(
-      widget,
-      [{ column: 'id', value: 99999 }],
-      [{ column: 'label', value: 'nope' }],
-    ),
-  ).rejects.toThrow(/affected 0/);
-});
-
-myTest('insert then delete round-trips a row', async () => {
-  const ins = await asRowEditable(source)!.insert(widget, [
-    { column: 'label', value: 'temp' },
-    { column: 'qty', value: 999 },
-  ]);
-  expect(ins.affected).toBe(1);
-
-  const created = await asQueryable(source)!.execute(
-    sql('SELECT id FROM widget WHERE qty = ?', [999]),
-  );
-  const id = Number(created.rows[0]?.[0]);
-  const del = await asRowEditable(source)!.delete(widget, [
-    { column: 'id', value: id },
-  ]);
-  expect(del.affected).toBe(1);
-  expect(await myValueAt(id, 'label')).toBeNull();
 });

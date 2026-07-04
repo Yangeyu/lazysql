@@ -1,9 +1,9 @@
 /**
- * Postgres adapter contract test — the SAME assertions as the SQLite suite,
- * run against a real PostgreSQL server (Docker). That both adapters pass one
- * shared contract is the executable proof of the capability/dialect abstraction
- * (docs/ARCHITECTURE.md §10, adr/0002). Skips automatically when no PG is
- * reachable, so it never breaks a machine without Docker.
+ * Postgres adapter tests: probes for a real server (auto-skips when absent),
+ * seeds, runs the shared SQL contract (sqlContract.ts — the SAME assertions
+ * SQLite and MySQL run), then the PG-specific extras: the full catalog of
+ * object kinds (sequence/function/trigger), verbatim definitions, cascade-safe
+ * reserved-word DROP, jsonb-vs-json canonicality, and uuid-column filtering.
  *
  * Bring a server up with:
  *   docker compose -f docker-compose.test.yml up -d --wait postgres
@@ -11,15 +11,14 @@
 
 import { test, expect, beforeAll, afterAll } from 'bun:test';
 import { createDataSource } from '../../registry.ts';
+import { runSqlContract } from './sqlContract.ts';
 import type { ConnectionProfile } from '../../../../domain/connection/ConnectionProfile.ts';
 import type { DataSource } from '../../../../domain/datasource/DataSource.ts';
 import {
   asIntrospectable,
   asQueryable,
-  asRowEditable,
   asDdlScriptable,
 } from '../../../../domain/datasource/DataSource.ts';
-import { Capability } from '../../../../domain/datasource/capabilities.ts';
 import { listObjects } from '../../../../application/usecases/ListObjects.ts';
 import { browseTable } from '../../../../application/usecases/BrowseTable.ts';
 import { unwrap } from '../../../../shared/Result.ts';
@@ -91,18 +90,14 @@ afterAll(async () => {
   if (available) await source?.disconnect();
 });
 
-pgTest('declares Query/SchemaIntrospect/Browse capabilities', () => {
-  const caps = source.capabilities();
-  expect(caps.has(Capability.SchemaIntrospect)).toBe(true);
-  expect(caps.has(Capability.Browse)).toBe(true);
+runSqlContract({
+  available,
+  source: () => source,
+  widget,
+  ph: (i) => `$${i}`,
 });
 
-pgTest('listObjects finds the table in the public schema', async () => {
-  const objects = unwrap(await listObjects(source));
-  const found = objects.find((o) => o.name === 'widget');
-  expect(found).toBeDefined();
-  expect(found?.namespace).toBe('public');
-});
+// ── PG-specific ─────────────────────────────────────────────────────────────
 
 pgTest('listObjects surfaces every object kind by kind', async () => {
   const objects = unwrap(await listObjects(source));
@@ -136,28 +131,9 @@ pgTest('dropStatement quotes a reserved-word table so it drops for real', async 
     kind: 'table',
   });
   expect(stmt).toBe('DROP TABLE "public"."window";');
-  await q.execute(sql(stmt)); // runs without a syntax error — the whole point
+  await q.execute(sql(stmt));
   const objects = unwrap(await listObjects(source));
   expect(objects.find((o) => o.name === 'window')).toBeUndefined();
-});
-
-pgTest('describe gives a view both its columns and its defining source', async () => {
-  const view: ObjectRef = { namespace: 'public', name: 'pricey', kind: 'view' };
-  const schema = await asIntrospectable(source)!.describe(view);
-  expect(schema.detail.map((d) => d.kind)).toEqual(['columns', 'source']);
-  expect(columnsOf(schema).map((c) => c.name)).toEqual(['id', 'label']);
-  expect(await sourceText(view)).toMatch(/SELECT/i);
-});
-
-pgTest('describe reports the primary key and nullability', async () => {
-  const introspectable = asIntrospectable(source)!;
-  const cols = columnsOf(await introspectable.describe(widget));
-  const id = cols.find((c) => c.name === 'id');
-  const label = cols.find((c) => c.name === 'label');
-  expect(id?.isPrimaryKey).toBe(true);
-  expect(id?.nullable).toBe(false);
-  expect(label?.isPrimaryKey).toBe(false);
-  expect(label?.nullable).toBe(true);
 });
 
 pgTest('describe marks jsonb columns jsonCanonical — json stays verbatim', async () => {
@@ -174,55 +150,6 @@ pgTest('describe marks jsonb columns jsonCanonical — json stays verbatim', asy
   } finally {
     await exec('DROP TABLE jsonshapes');
   }
-});
-
-pgTest('browseTable paginates with $-placeholders and counts', async () => {
-  const result = unwrap(await browseTable(source, widget, { page: firstPage(10) }));
-  expect(result.total).toBe(25);
-  expect(result.rows.rows.length).toBe(10);
-  expect(result.rows.truncated).toBe(true);
-  expect(result.rows.columns.map((c) => c.name)).toEqual(['id', 'label', 'qty']);
-});
-
-pgTest('second page returns the remainder window', async () => {
-  const result = unwrap(
-    await browseTable(source, widget, { page: { offset: 20, limit: 10 } }),
-  );
-  expect(result.rows.rows.length).toBe(5);
-  expect(result.rows.truncated).toBe(false);
-});
-
-pgTest('browse with descending sort orders by the column', async () => {
-  const result = unwrap(
-    await browseTable(source, widget, {
-      page: firstPage(5),
-      sort: { column: 'qty', direction: 'desc' },
-    }),
-  );
-  expect(result.rows.rows[0]?.[2]).toBe(25);
-  expect(result.rows.rows[4]?.[2]).toBe(21);
-});
-
-pgTest('numeric filter narrows rows ($-bound) and count matches', async () => {
-  const result = unwrap(
-    await browseTable(source, widget, {
-      page: firstPage(50),
-      filter: { conditions: [{ column: 'qty', op: 'gt', value: '20' }] },
-    }),
-  );
-  expect(result.total).toBe(5);
-  expect(result.rows.rows.length).toBe(5);
-});
-
-pgTest('contains filter uses ILIKE with a bound value', async () => {
-  const result = unwrap(
-    await browseTable(source, widget, {
-      page: firstPage(50),
-      filter: { conditions: [{ column: 'label', op: 'contains', value: '25' }] },
-    }),
-  );
-  expect(result.total).toBe(1);
-  expect(result.rows.rows[0]?.[1]).toBe('w25');
 });
 
 pgTest('contains filter works on a uuid column (cast to text)', async () => {
@@ -249,63 +176,4 @@ pgTest('contains filter works on a uuid column (cast to text)', async () => {
   expect(result.total).toBe(1);
   expect(result.rows.rows[0]?.[1]).toBe('target');
   await q.execute(sql('DROP TABLE gadget'));
-});
-
-pgTest('stableKey keeps an unsorted browse in key order across an update', async () => {
-  // Without the tiebreaker Postgres returns heap order, where an updated row
-  // migrates to the end — the grid row would jump after every save.
-  await asRowEditable(source)!.update(
-    widget,
-    [{ column: 'id', value: 3 }],
-    [{ column: 'label', value: 'w3-touched' }],
-  );
-  const result = unwrap(
-    await browseTable(source, widget, { page: firstPage(10), stableKey: ['id'] }),
-  );
-  expect(result.rows.rows.map((r) => r[0])).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-});
-
-const pgValueAt = async (id: number, column: string): Promise<unknown> => {
-  const rs = await asQueryable(source)!.execute(
-    sql(`SELECT ${column} FROM widget WHERE id = $1`, [id]),
-  );
-  return rs.rows[0]?.[0] ?? null;
-};
-
-pgTest('update writes one row in a transaction', async () => {
-  const r = await asRowEditable(source)!.update(
-    widget,
-    [{ column: 'id', value: 1 }],
-    [{ column: 'label', value: 'updated-1' }],
-  );
-  expect(r.affected).toBe(1);
-  expect(await pgValueAt(1, 'label')).toBe('updated-1');
-});
-
-pgTest('non-matching update rolls back (0 rows)', async () => {
-  await expect(
-    asRowEditable(source)!.update(
-      widget,
-      [{ column: 'id', value: 99999 }],
-      [{ column: 'label', value: 'nope' }],
-    ),
-  ).rejects.toThrow(/affected 0/);
-});
-
-pgTest('insert then delete round-trips a row', async () => {
-  const ins = await asRowEditable(source)!.insert(widget, [
-    { column: 'label', value: 'temp' },
-    { column: 'qty', value: 999 },
-  ]);
-  expect(ins.affected).toBe(1);
-
-  const created = await asQueryable(source)!.execute(
-    sql('SELECT id FROM widget WHERE qty = $1', [999]),
-  );
-  const id = Number(created.rows[0]?.[0]);
-  const del = await asRowEditable(source)!.delete(widget, [
-    { column: 'id', value: id },
-  ]);
-  expect(del.affected).toBe(1);
-  expect(await pgValueAt(id, 'label')).toBeNull();
 });

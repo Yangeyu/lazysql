@@ -469,7 +469,8 @@ test('submitEdit stages a changed, valid draft as an update confirm', () => {
   store.getState().beginEdit();
   store.getState().submitEdit('{"a": 2}');
   expect(store.getState().mode).toBe('confirm');
-  expect(store.getState().pending?.statement).toContain('UPDATE docs SET payload');
+  // The fake source can't render a dialect preview → the readable fallback.
+  expect(store.getState().pending?.statement).toContain('update docs set payload');
 });
 
 test('submitEdit targets the cell the edit was seeded from, not the live cursor', () => {
@@ -479,8 +480,8 @@ test('submitEdit targets the cell the edit was seeded from, not the live cursor'
   store.getState().beginEdit();
   store.setState({ gridCol: 0, gridRow: 99 }); // simulate a click elsewhere
   store.getState().submitEdit('{"a": 2}');
-  expect(store.getState().pending?.statement).toContain('SET payload');
-  expect(store.getState().pending?.statement).toContain('WHERE id=1');
+  expect(store.getState().pending?.statement).toContain('set payload');
+  expect(store.getState().pending?.statement).toContain('where id=1');
 });
 
 test('leaving the edit clears a stale validation error', () => {

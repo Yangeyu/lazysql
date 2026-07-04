@@ -20,6 +20,7 @@ import {
   asQueryable,
   asIntrospectable,
   asDdlScriptable,
+  asEditPreviewable,
 } from '../../../../domain/datasource/DataSource.ts';
 import { columnsOf } from '../../../../domain/datasource/schema.ts';
 import { listObjects } from '../../../../application/usecases/ListObjects.ts';
@@ -107,6 +108,19 @@ test('dropStatement quotes the identifier (reserved-word safe)', () => {
   const ddl = asDdlScriptable(source)!;
   expect(ddl.dropStatement({ name: 'order', kind: 'table' })).toBe('DROP TABLE "order";');
   expect(ddl.dropStatement({ name: 'pricey', kind: 'view' })).toBe('DROP VIEW "pricey";');
+});
+
+test('edit previews echo the dialect statement with values quoted', () => {
+  const preview = asEditPreviewable(source)!;
+  const ref = { name: 'widget', kind: 'table' as const };
+  // The quote-escaping is the point: the old hand-built preview rendered a
+  // value containing a quote as broken SQL.
+  expect(
+    preview.previewUpdate(ref, [{ column: 'id', value: 7 }], [{ column: 'label', value: "it's" }]),
+  ).toBe(`UPDATE "widget" SET "label" = 'it''s' WHERE "id" = 7`);
+  expect(preview.previewDelete(ref, [{ column: 'id', value: 7 }])).toBe(
+    `DELETE FROM "widget" WHERE "id" = 7`,
+  );
 });
 
 test('a failed query surfaces the driver reason, not the echoed SQL', async () => {

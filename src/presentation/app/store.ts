@@ -9,6 +9,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import {
   asBrowsePreviewable,
   asDdlScriptable,
+  asEditPreviewable,
   asIntrospectable,
   asQueryable,
   type DataSource,
@@ -19,7 +20,7 @@ import type {
   ObjectSchema,
 } from '../../domain/datasource/schema.ts';
 import { columnsOf, objectRefKey, sectionsFor } from '../../domain/datasource/schema.ts';
-import type { RowKey, FieldValue } from '../../domain/datasource/edit.ts';
+import type { RowKey, RowPatch, FieldValue } from '../../domain/datasource/edit.ts';
 import {
   buildTree,
   dialectLabel,
@@ -1365,19 +1366,24 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             return;
           }
         }
+        // Echo the dialect's own statement (value-inlined) when the source can
+        // render one, so the approved text can't drift from what runs; the
+        // readable fallback covers document/kv sources with no SQL to show.
+        const patch: RowPatch = [{ column, value }];
+        const preview = active ? asEditPreviewable(active) : null;
         set({
           mode: 'confirm',
           cellView: null, // leave the editor; the confirm owns the screen + y/n
           error: null,
           pending: {
             title: `Update ${column} in ${current.name}?`,
-            statement: `UPDATE ${current.name} SET ${column} = '${value}' WHERE ${keyText(key)}`,
+            statement:
+              preview?.previewUpdate(current, key, patch) ??
+              `update ${current.name} set ${column} where ${keyText(key)}`,
             tone: 'normal',
             run: async () => {
               if (!active) return;
-              const r = await updateRow(active, current, key, [
-                { column, value },
-              ]);
+              const r = await updateRow(active, current, key, patch);
               if (!r.ok) set({ status: 'error', error: r.error.message });
               else await reloadKeepingCursor();
             },
@@ -1392,11 +1398,14 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           set({ error: 'table has no primary key — cannot delete' });
           return;
         }
+        const preview = active ? asEditPreviewable(active) : null;
         set({
           mode: 'confirm',
           pending: {
             title: `Delete this row from ${current.name}?`,
-            statement: `DELETE FROM ${current.name} WHERE ${keyText(key)}`,
+            statement:
+              preview?.previewDelete(current, key) ??
+              `delete from ${current.name} where ${keyText(key)}`,
             tone: 'danger',
             run: async () => {
               if (!active) return;

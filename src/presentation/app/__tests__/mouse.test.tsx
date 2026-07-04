@@ -71,8 +71,9 @@ test('clicking a grid row selects that row (delete confirm shows its key)', asyn
   await h.flush();
   h.press('d'); // delete → confirmation shows the clicked row's primary key
   await h.until((f) => f.includes('DELETE'));
-  // id=3 (not id=1) proves the click moved the cursor to the 3rd row.
-  expect(h.frame()).toContain('id=3');
+  // id 3 (not 1) proves the click moved the cursor to the 3rd row; the preview
+  // is now the dialect's own quoted SQL.
+  expect(h.frame()).toContain('"id" = 3');
   h.press('n'); // cancel — do not actually delete
   h.cleanup();
 });

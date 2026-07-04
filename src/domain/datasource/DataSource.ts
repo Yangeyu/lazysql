@@ -71,6 +71,17 @@ export interface BrowsePreviewable {
 }
 
 /**
+ * Render a row edit as the exact statement the adapter would run (value-inlined,
+ * DISPLAY ONLY — the write itself always goes through RowEditable's bound
+ * parameters). Echoed in the y/n confirm so what the user approves can never
+ * drift from what runs. Optional (ISP), like BrowsePreviewable.
+ */
+export interface EditPreviewable {
+  previewUpdate(ref: ObjectRef, key: RowKey, patch: RowPatch): string;
+  previewDelete(ref: ObjectRef, key: RowKey): string;
+}
+
+/**
  * Render a catalog operation as a runnable, correctly-quoted statement — DISPLAY
  * draft, never executed by the adapter. The UI fills the editor with it for the
  * user to review and run. SQL adapters quote/qualify identifiers via their
@@ -150,6 +161,13 @@ export const asBrowsePreviewable = (
 ): (DataSource & BrowsePreviewable) | null =>
   typeof (s as Partial<BrowsePreviewable>).previewBrowse === 'function'
     ? (s as DataSource & BrowsePreviewable)
+    : null;
+
+export const asEditPreviewable = (
+  s: DataSource,
+): (DataSource & EditPreviewable) | null =>
+  typeof (s as Partial<EditPreviewable>).previewUpdate === 'function'
+    ? (s as DataSource & EditPreviewable)
     : null;
 
 export const asDdlScriptable = (

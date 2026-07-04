@@ -164,13 +164,24 @@ export class SqlDataSource
     return Number(raw.rows[0]?.[0] ?? 0);
   }
 
-  // ── BrowsePreviewable ─────────────────────────────────────────────────────
+  // ── BrowsePreviewable / EditPreviewable ───────────────────────────────────
 
   /** The exact statement `browse()` runs, value-inlined for display (never run).
    *  Derives from the dialect's `browseQuery`, so the echo can never drift from
    *  what actually executes. */
   previewBrowse(ref: ObjectRef, spec: BrowseSpec): string {
     return inlineParams(this.dialect.browseQuery(ref, spec));
+  }
+
+  /** The exact statements `update()`/`delete()` run, value-inlined for the y/n
+   *  confirm — same dialect builders as the write itself, so the approved text
+   *  and the executed SQL cannot drift. */
+  previewUpdate(ref: ObjectRef, key: RowKey, patch: RowPatch): string {
+    return inlineParams(this.dialect.updateQuery(ref, key, patch));
+  }
+
+  previewDelete(ref: ObjectRef, key: RowKey): string {
+    return inlineParams(this.dialect.deleteQuery(ref, key));
   }
 
   // ── DdlScriptable ─────────────────────────────────────────────────────────

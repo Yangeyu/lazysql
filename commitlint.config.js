@@ -25,6 +25,7 @@ export default {
         'schema',
         'app',
         'store',
+        'export',
         'deps',
         'repo',
       ],

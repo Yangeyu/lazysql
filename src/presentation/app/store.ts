@@ -1190,6 +1190,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         await connectionService.save(profile, password);
         set({ profiles: await connectionService.list() });
         clampTree();
+        // A DataSource bakes its options (host/database/…) in at construction,
+        // so editing the ACTIVE connection must rebuild it — a mere refresh
+        // would keep listing objects through the stale connection.
+        if (get().activeId === profile.id) await get().connectProfile(profile);
       },
 
       removeConnection: async (id) => {

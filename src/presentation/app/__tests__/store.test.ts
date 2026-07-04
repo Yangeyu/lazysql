@@ -650,6 +650,54 @@ test('beginRemoveConnection is a no-op when the cursor is not on a connection ro
   expect(store.getState().pending).toBeNull();
 });
 
+// ── save connection: editing the active profile must rebuild its live source ──
+
+/** A service that records the options each open() received and applies save()
+ *  to a mutable list, so a post-save reconnect is observable. */
+const editableService = (initial: ConnectionProfile) => {
+  let profiles = [initial];
+  const opened: unknown[] = [];
+  const service: ConnectionService = {
+    list: async () => [...profiles],
+    open: async (p) => {
+      opened.push(p.options.database);
+      return ok(fakeSource);
+    },
+    save: async (p) => {
+      profiles = profiles.map((x) => (x.id === p.id ? p : x));
+    },
+    remove: async () => {},
+  };
+  return { service, opened };
+};
+
+test('saving an edit to the ACTIVE connection reconnects with the new options', async () => {
+  const a: ConnectionProfile = { id: 'a', name: 'M', driver: 'mongodb', options: { database: 'oops(' } };
+  const { service, opened } = editableService(a);
+  const store = createAppStore({ connectionService: service, initial: a });
+  await store.getState().init();
+  expect(opened).toEqual(['oops(']);
+
+  await store.getState().saveConnection({ ...a, options: { database: 'fixed' } }, null);
+
+  // The live source was rebuilt from the edited profile — not left stale.
+  expect(opened).toEqual(['oops(', 'fixed']);
+  expect(store.getState().activeId).toBe('a');
+});
+
+test('saving an edit to an INACTIVE connection leaves the live one untouched', async () => {
+  const a: ConnectionProfile = { id: 'a', name: 'M', driver: 'mongodb', options: { database: 'live' } };
+  const b: ConnectionProfile = { id: 'b', name: 'N', driver: 'mongodb', options: { database: 'other' } };
+  const { service, opened } = editableService(a);
+  const store = createAppStore({ connectionService: service, initial: a });
+  await store.getState().init();
+
+  await store.getState().saveConnection(b, null);
+
+  expect(opened).toEqual(['live']); // no reconnect
+  expect(store.getState().activeId).toBe('a');
+});
+
 // ── editor: completion toggle + caret-aware accept (ADR 0010) ──
 
 const editorStore = () =>

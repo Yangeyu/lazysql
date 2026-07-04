@@ -11,7 +11,6 @@ import {
   asDdlScriptable,
   asIntrospectable,
   asQueryable,
-  asSqlDumpable,
   type DataSource,
 } from '../../domain/datasource/DataSource.ts';
 import type {
@@ -28,7 +27,6 @@ import {
   firstObjectIndex,
   firstSchemaKey,
   groupsBySchema,
-  refKey,
   schemaKey,
   toConnNodes,
   type TreeRow,
@@ -38,7 +36,7 @@ import type {
   DriverId,
 } from '../../domain/connection/ConnectionProfile.ts';
 import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
-import { resolveUserPath } from '../../shared/path.ts';
+import { createConnFormSlice } from './connFormSlice.ts';
 import type { ResultSet, CellValue } from '../../domain/datasource/ResultSet.ts';
 import {
   firstPage,
@@ -55,21 +53,10 @@ import { browseTable } from '../../application/usecases/BrowseTable.ts';
 import { updateRow, deleteRow } from '../../application/usecases/EditRow.ts';
 import { runQuery } from '../../application/usecases/RunQuery.ts';
 import { generateSql } from '../../application/usecases/GenerateSql.ts';
-import { exportResult } from '../../application/usecases/ExportResult.ts';
 import { cellEditText, isJsonText, prettyJson } from '../components/cellFormat.ts';
-import { exportTable } from '../../application/usecases/ExportTable.ts';
-import { exportTablesCombined } from '../../application/usecases/ExportTablesCombined.ts';
-import {
-  formatterFor,
-  jsonCombinedFormatter,
-  sqlCombinedFormatter,
-  sqlFormatter,
-  type ExportFormat,
-  type RowFormatter,
-} from '../../domain/export/RowFormatter.ts';
-import type { Exporter, ExportSummary } from '../../application/ports/Exporter.ts';
-import { ok, err, type Result } from '../../shared/Result.ts';
-import { ExportError } from '../../domain/errors/errors.ts';
+import type { ExportFormat } from '../../domain/export/RowFormatter.ts';
+import type { Exporter } from '../../application/ports/Exporter.ts';
+import { createExportSlice } from './exportSlice.ts';
 import type {
   SqlGenerator,
   SchemaContext,
@@ -114,8 +101,9 @@ export interface ConnFormField {
 /** Focus index of the Driver selector row — it sits above the fields, so the
  *  navigable range is [DRIVER_ROW, fields.length-1]. ←/→ only cycles the driver
  *  while it's focused, which keeps ←/→ free for in-field cursor movement on the
- *  native <input> fields below. */
-export const DRIVER_ROW = -1;
+ *  native <input> fields below. Owned by the form slice; re-exported so form
+ *  consumers keep one import site. */
+export { DRIVER_ROW } from './connFormSlice.ts';
 
 /** State of a one-off "test connection" probe, shown until the next edit. */
 export interface ConnProbe {
@@ -480,84 +468,6 @@ export interface AppState {
 
 export type AppStore = StoreApi<AppState>;
 
-/** Drivers offered by the new-connection form, in cycle order. */
-const FORM_DRIVERS: DriverId[] = [
-  'postgres',
-  'mysql',
-  'sqlite',
-  'mongodb',
-  'redis',
-];
-
-const DEFAULT_PORT: Record<DriverId, string> = {
-  postgres: '5432',
-  mysql: '3306',
-  mongodb: '27017',
-  redis: '6379',
-  sqlite: '',
-};
-
-/** The form fields for a driver (SQLite needs only a file; servers need host…). */
-const fieldsForDriver = (driver: DriverId): ConnFormField[] => {
-  const name: ConnFormField = { key: 'name', label: 'Name', value: '' };
-  if (driver === 'sqlite') {
-    return [name, { key: 'file', label: 'File', value: '' }];
-  }
-  const common: ConnFormField[] = [
-    name,
-    { key: 'host', label: 'Host', value: 'localhost' },
-    { key: 'port', label: 'Port', value: DEFAULT_PORT[driver] },
-    { key: 'user', label: 'User', value: '' },
-    { key: 'password', label: 'Password', value: '', secret: true },
-  ];
-  return driver === 'redis'
-    ? [...common, { key: 'db', label: 'DB', value: '0' }]
-    : [...common, { key: 'database', label: 'Database', value: '' }];
-};
-
-/** Prefill the driver's fields from a saved profile (for the edit form). The
- *  password is never prefilled — left blank, it keeps the stored secret. */
-const fieldsForProfile = (profile: ConnectionProfile): ConnFormField[] =>
-  fieldsForDriver(profile.driver).map((f) => {
-    if (f.key === 'name') return { ...f, value: profile.name };
-    if (f.secret) return f; // never echo a stored password
-    const v = profile.options[f.key];
-    return v === undefined || v === null ? f : { ...f, value: String(v) };
-  });
-
-/** Stable id from a connection name, e.g. "Local PG" → "local-pg". */
-const slugify = (name: string): string =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '') || 'connection';
-
-/** The profile + inline password a connection form currently describes. Shared
- *  by save and the test probe so the two read the form's fields identically. */
-const formProfile = (
-  f: ConnForm,
-): { profile: ConnectionProfile; password: string | null } => {
-  const val = (k: string) => (f.fields.find((x) => x.key === k)?.value ?? '').trim();
-  const password = val('password') || null;
-  const options: Record<string, unknown> = {};
-  if (f.driver === 'sqlite') {
-    // Store an absolute path so a relative entry (e.g. "data/x.db") can't bind to
-    // a different file later when lazysql is launched from another directory.
-    options.file = resolveUserPath(val('file'));
-  } else {
-    options.host = val('host');
-    options.port = val('port');
-    options.user = val('user');
-    if (f.driver === 'redis') options.db = val('db');
-    else options.database = val('database');
-  }
-  const name = val('name');
-  return {
-    profile: { id: f.editingId ?? slugify(name), name, driver: f.driver, options },
-    password,
-  };
-};
-
 export const createAppStore = (deps: AppStoreDeps): AppStore =>
   createStore<AppState>((set, get) => {
     const { connectionService, generator = null, initial = null, historyStore = null, exporter = null } = deps;
@@ -565,19 +475,6 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
     // owns it but reaches it only through the segregated capability guards
     // (asQueryable/asIntrospectable), never as a concrete driver. (docs/adr/0002)
     let active: DataSource | null = null;
-
-    // The in-flight export's abort handle (out of reactive state — a transient
-    // control channel, like `active`); `cancelExport` fires it. (ADR 0012)
-    let exportAbort: AbortController | null = null;
-
-    // What the staged export confirm is about — captured when export is invoked,
-    // held out of reactive state (only the confirm reads it). Kept so the format
-    // can be re-cycled (`f`) against the same target without re-selecting it.
-    let exportReq:
-      | { readonly kind: 'result'; readonly result: ResultSet }
-      | { readonly kind: 'table'; readonly ref: ObjectRef; readonly sort: Sort | null; readonly filter: Filter | null }
-      | { readonly kind: 'tables'; readonly refs: readonly ObjectRef[] }
-      | null = null;
 
     /** The profile of the live connection, if any. */
     const activeProfile = (): ConnectionProfile | null =>
@@ -770,172 +667,19 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
     const keyText = (key: RowKey): string =>
       key.map((k) => `${k.column}=${String(k.value)}`).join(' AND ');
 
-    /** Default export filename for an object (namespaced tables stay distinct). */
-    const exportName = (ref: ObjectRef, ext: string): string =>
-      `${ref.namespace ? `${ref.namespace}_` : ''}${ref.name}.${ext}`;
+    // Export lives in its own slice (exportSlice.ts); it borrows the live
+    // connection and the tree projections, and owns the rest of the flow.
+    // Connection-form UI lives in its own slice; lifecycle stays here.
+    const formSlice = createConnFormSlice({ set, get, connectionService, rowsNow });
 
-    /** Filename for a combined batch file: the shared namespace when the tables
-     *  all live in one schema (e.g. `public.sql`), else a neutral `export.<ext>`. */
-    const combinedName = (refs: readonly ObjectRef[], ext: string): string => {
-      const namespaces = [...new Set(refs.map((r) => r.namespace).filter((n): n is string => !!n))];
-      return `${namespaces.length === 1 ? namespaces[0] : 'export'}.${ext}`;
-    };
-
-    /** Drive an export task to a status-bar notice (success) or error. The task's
-     *  errors are Error subclasses (Export/UnsupportedCapability), so `.message`
-     *  reads uniformly. */
-    /** Run a staged export: enter `exporting` mode (input captured so `esc` can
-     *  cancel), stream progress to the status bar, then land on a success / error
-     *  / cancelled notice. `run` gets the abort signal + a progress reporter. */
-    const runExport = async (
-      run: (signal: AbortSignal, onProgress: (rows: number) => void) => Promise<Result<ExportSummary, Error>>,
-    ): Promise<void> => {
-      exportReq = null; // the confirm's target is consumed once it runs
-      const ctrl = new AbortController();
-      exportAbort = ctrl;
-      set({ mode: 'exporting', notice: 'exporting…', error: null });
-      const r = await run(ctrl.signal, (rows) => set({ notice: `exporting… ${rows} rows` }));
-      exportAbort = null;
-      if (get().mode === 'exporting') set({ mode: 'normal' });
-      if (r.ok) set({ notice: `exported ${r.value.rows} rows → ${r.value.path}`, error: null });
-      // Neutral wording: a cancelled multi-file batch may have written some
-      // complete files already, so don't claim "nothing written".
-      else if (ctrl.signal.aborted) set({ notice: 'export cancelled', error: null });
-      else set({ error: `export failed: ${r.error.message}`, notice: null });
-    };
-
-    /** Formats offered for a target: SQL needs a dialect (INSERTs) and a table to
-     *  insert into, so it's table-only; a query result gets CSV/JSON. */
-    const formatsFor = (req: NonNullable<typeof exportReq>): ExportFormat[] =>
-      (req.kind === 'table' || req.kind === 'tables') && active && asSqlDumpable(active)
-        ? ['csv', 'json', 'sql']
-        : ['csv', 'json'];
-
-    /** CSV batch: one file per table (`<ns>_<name>.csv`) in the working dir —
-     *  CSV's columns differ per table so a shared file makes no sense (JSON/SQL
-     *  combine into one file via `exportTablesCombined` instead, so this path is
-     *  CSV-only). Stops at the first failure (报错停止 policy, ADR 0012). Progress
-     *  reports the running row total across tables. */
-    const exportCsvFilesPerTable = async (
-      src: DataSource,
-      refs: readonly ObjectRef[],
-      ex: Exporter,
-      signal: AbortSignal,
-      onProgress: (rows: number) => void,
-    ): Promise<Result<ExportSummary, Error>> => {
-      let total = 0;
-      let done = 0;
-      let dir = '';
-      for (const ref of refs) {
-        // Cancel between tables reports as cancelled (not a partial success) so
-        // the notice matches the mid-table and combined paths; files already
-        // fully written stay on disk, the in-flight one is discarded.
-        if (signal.aborted) return err(new ExportError('export cancelled'));
-        const r = await exportTable(
-          src, ref, formatterFor('csv'), ex, { path: exportName(ref, 'csv') }, {}, signal,
-          (rows) => onProgress(total + rows),
-        );
-        if (!r.ok) return r;
-        total += r.value.rows;
-        done += 1;
-        const slash = r.value.path.lastIndexOf('/');
-        if (slash >= 0) dir = r.value.path.slice(0, slash);
-      }
-      return ok({ rows: total, path: `${done} files → ${dir}` });
-    };
-
-    /** (Re)stage the export confirm from the held target + current format —
-     *  unified with every other write (ADR 0012). Shows the resolved destination
-     *  and the format; `f` re-cycles the format through here. */
-    const stageExportConfirm = (): void => {
-      const req = exportReq;
-      const ex = exporter;
-      if (!req || !ex) return;
-      const fmt = get().exportFormat;
-
-      const choice: PendingChoice = {
-        label: 'format',
-        options: formatsFor(req).map((f) => f.toUpperCase()),
-        selected: fmt.toUpperCase(),
-      };
-      const present = (
-        title: string,
-        statement: string,
-        run: (signal: AbortSignal, onProgress: (rows: number) => void) => Promise<Result<ExportSummary, Error>>,
-      ): void =>
-        set({
-          mode: 'confirm',
-          pending: { title, statement, choice, tone: 'normal', run: () => runExport(run) },
-        });
-
-      if (req.kind === 'result') {
-        const view = fmt === 'sql' ? 'csv' : fmt; // SQL isn't offered for a query result
-        const path = `query-result.${view}`;
-        present('Export the query result', `→ ${resolveUserPath(path)}`, (signal, onProgress) =>
-          exportResult(req.result, formatterFor(view), ex, { path }, signal, onProgress),
-        );
-        return;
-      }
-
-      const src = active;
-      if (!src) return;
-
-      // One whole-table formatter for `ref` in the chosen format: SQL needs the
-      // source's dialect-backed INSERT dump (per row-chunk); CSV/JSON are
-      // ref-agnostic. `formatsFor` already gates SQL to a SqlDumpable source, so
-      // the fallback below is unreachable — it only satisfies the null guard.
-      const makeFormatter = (ref: ObjectRef): RowFormatter => {
-        if (fmt === 'sql') {
-          const dumpable = asSqlDumpable(src);
-          if (!dumpable) return formatterFor('csv');
-          return sqlFormatter((cols, rows) => dumpable.insertDump(ref, cols, rows));
-        }
-        return formatterFor(fmt);
-      };
-
-      if (req.kind === 'tables') {
-        const { refs } = req;
-        // CSV can't share a file (columns differ per table) → one file each.
-        // JSON nests tables in an object, SQL concatenates INSERT blocks → one file.
-        if (fmt === 'csv') {
-          const example = resolveUserPath(exportName(refs[0]!, 'csv'));
-          present(
-            `Export ${refs.length} tables (CSV, one file each)`,
-            `→ ${refs.length} files, e.g. ${example}`,
-            (signal, onProgress) => exportCsvFilesPerTable(src, refs, ex, signal, onProgress),
-          );
-          return;
-        }
-        const path = combinedName(refs, fmt);
-        const dumpable = asSqlDumpable(src);
-        const combined =
-          fmt === 'sql'
-            ? sqlCombinedFormatter((ref, cols, rows) => (dumpable ? dumpable.insertDump(ref, cols, rows) : ''))
-            : jsonCombinedFormatter();
-        present(
-          `Export ${refs.length} tables → one ${fmt.toUpperCase()} file`,
-          `→ ${resolveUserPath(path)}`,
-          (signal, onProgress) => exportTablesCombined(src, refs, combined, ex, { path }, signal, onProgress),
-        );
-        return;
-      }
-
-      const ref = req.ref;
-      present(
-        `Export ${ref.name} (whole table)`,
-        `→ ${resolveUserPath(exportName(ref, fmt))}`,
-        (signal, onProgress) =>
-          exportTable(src, ref, makeFormatter(ref), ex, { path: exportName(ref, fmt) }, { sort: req.sort, filter: req.filter }, signal, onProgress),
-      );
-    };
-
-    /** Point the format at an allowed value for the held target (e.g. drop SQL
-     *  when the target became a query result). */
-    const clampExportFormat = (): void => {
-      if (exportReq && !formatsFor(exportReq).includes(get().exportFormat)) {
-        set({ exportFormat: 'csv' });
-      }
-    };
+    const xport = createExportSlice({
+      set,
+      get,
+      exporter,
+      source: () => active,
+      rowsNow,
+      objectsUnder,
+    });
 
     /** Run the editor's SQL and take over the shared grid with the result. The
      *  execution proper, shared by the direct run and the guarded (confirmed)
@@ -1431,161 +1175,9 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         clampTree();
       },
 
-      beginNewConnection: () => {
-        const driver: DriverId = 'postgres';
-        set({
-          mode: 'connform',
-          connForm: {
-            driver,
-            fields: fieldsForDriver(driver),
-            index: 0,
-            reveal: false,
-            error: null,
-            probe: null,
-            editingId: null,
-          },
-        });
-      },
-
-      beginEditConnection: () => {
-        const row = rowsNow()[get().treeIndex];
-        // A connection row edits itself; a category/object row belongs to the
-        // active connection, so edit that.
-        const id =
-          row?.type === 'connection' ? row.id : get().activeId;
-        const profile = id
-          ? get().profiles.find((p) => p.id === id)
-          : null;
-        if (!profile) return;
-        set({
-          mode: 'connform',
-          connForm: {
-            driver: profile.driver,
-            fields: fieldsForProfile(profile),
-            index: 0,
-            reveal: false,
-            error: null,
-            probe: null,
-            editingId: profile.id,
-          },
-        });
-      },
-
-      beginRemoveConnection: () => {
-        // Removal only acts on a connection row — never the active connection by
-        // proxy of a deeper category/object row (unlike edit's fallback).
-        const row = rowsNow()[get().treeIndex];
-        if (row?.type !== 'connection') return;
-        const profile = get().profiles.find((p) => p.id === row.id);
-        if (!profile) return;
-        set({
-          mode: 'confirm',
-          pending: {
-            title: `Remove connection "${profile.name}"?`,
-            details: ['Deletes the saved profile and its stored password.'],
-            tone: 'danger',
-            run: () => get().removeConnection(profile.id),
-          },
-        });
-      },
-
-      connFormSetField: (key, value) => {
-        const f = get().connForm;
-        if (!f) return;
-        const fields = f.fields.map((x) => (x.key === key ? { ...x, value } : x));
-        set({ connForm: { ...f, fields, probe: null } });
-      },
-
-      // The non-secret fields are native <input>s that own their own editing;
-      // the dispatcher only routes raw chars here for the masked secret field,
-      // so these no-op unless the focused field is actually secret.
-      connFormType: (ch) => {
-        const f = get().connForm;
-        if (!f || !f.fields[f.index]?.secret) return;
-        const fields = f.fields.map((field, i) =>
-          i === f.index ? { ...field, value: field.value + ch } : field,
-        );
-        set({ connForm: { ...f, fields, probe: null } });
-      },
-
-      connFormBackspace: () => {
-        const f = get().connForm;
-        if (!f || !f.fields[f.index]?.secret) return;
-        const fields = f.fields.map((field, i) =>
-          i === f.index ? { ...field, value: field.value.slice(0, -1) } : field,
-        );
-        set({ connForm: { ...f, fields, probe: null } });
-      },
-
-      connFormMove: (delta) => {
-        const f = get().connForm;
-        if (!f) return;
-        const index = Math.max(
-          DRIVER_ROW,
-          Math.min(f.fields.length - 1, f.index + delta),
-        );
-        set({ connForm: { ...f, index } });
-      },
-
-      // Only acts while the Driver row is focused — otherwise ←/→ belongs to the
-      // focused field's <input> cursor. Stays on the Driver row after cycling.
-      connFormCycleDriver: (dir) => {
-        const f = get().connForm;
-        if (!f || f.index !== DRIVER_ROW) return;
-        const at = FORM_DRIVERS.indexOf(f.driver);
-        const driver =
-          FORM_DRIVERS[(at + dir + FORM_DRIVERS.length) % FORM_DRIVERS.length]!;
-        // Carry the typed name across a driver change.
-        const name = f.fields.find((x) => x.key === 'name')?.value ?? '';
-        const fields = fieldsForDriver(driver).map((x) =>
-          x.key === 'name' ? { ...x, value: name } : x,
-        );
-        set({ connForm: { ...f, driver, fields, index: DRIVER_ROW } });
-      },
-
-      connFormToggleReveal: () => {
-        const f = get().connForm;
-        if (!f) return;
-        set({ connForm: { ...f, reveal: !f.reveal } });
-      },
-
-      connFormCancel: () => set({ mode: 'normal', connForm: null }),
-
-      connFormSubmit: async () => {
-        const f = get().connForm;
-        if (!f) return;
-        // Editing keeps the original id so the saved secret stays linked; a blank
-        // password leaves that secret untouched (saveConnection only writes a
-        // secret when one is provided).
-        const { profile, password } = formProfile(f);
-        if (!profile.name) {
-          set({ connForm: { ...f, error: 'name is required' } });
-          return;
-        }
-        set({ mode: 'normal', connForm: null });
-        await get().saveConnection(profile, password);
-      },
-
-      connFormTest: async () => {
-        const f = get().connForm;
-        if (!f) return;
-        const { profile, password } = formProfile(f);
-        // The probe connects with the typed password inlined (it isn't in the
-        // keychain yet); openConnection falls back to the stored secret when the
-        // field is blank, so editing an existing connection tests too.
-        const probeProfile = password
-          ? { ...profile, options: { ...profile.options, password } }
-          : profile;
-        set({ connForm: { ...f, error: null, probe: { state: 'testing', message: 'testing…' } } });
-        const r = await connectionService.open(probeProfile);
-        if (r.ok) await r.value.disconnect().catch(() => {});
-        const result: ConnProbe = r.ok
-          ? { state: 'ok', message: 'connection ok' }
-          : { state: 'fail', message: r.error.message };
-        // Drop the result if the form was edited or closed while the probe ran.
-        const cur = get().connForm;
-        if (cur && cur.probe?.state === 'testing') set({ connForm: { ...cur, probe: result } });
-      },
+      // Connection-form actions live in connFormSlice.ts (form UI only;
+      // the connection lifecycle stays here).
+      ...formSlice,
 
       focusPane: (target) => {
         if (target === 'editor') {
@@ -1816,72 +1408,8 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         });
       },
 
-      exportGrid: () => {
-        if (!exporter) return set({ error: 'export is unavailable' });
-        const { surface, result, current, sort, filter } = get();
-        // A query surface has only its in-memory result; a browse surface exports
-        // the WHOLE table behind the view (its filter/sort applied), not one page.
-        if (surface === 'query') {
-          if (!result) return set({ error: 'nothing to export' });
-          exportReq = { kind: 'result', result };
-        } else {
-          if (!active || !current) return set({ error: 'nothing to export' });
-          exportReq = { kind: 'table', ref: current, sort, filter };
-        }
-        clampExportFormat();
-        stageExportConfirm();
-      },
-
-      exportSelectedTable: () => {
-        if (!exporter) return set({ error: 'export is unavailable' });
-        if (!active) return set({ error: 'nothing to export' });
-        // Marks win over the cursor when present (a selection overrides position);
-        // otherwise the cursor's node decides — a schema/category exports all its
-        // tables, an object row just itself.
-        const marks = get().marks;
-        const picked =
-          marks.size > 0
-            ? get().objects.filter((o) => marks.has(refKey(o)))
-            : objectsUnder(rowsNow()[get().treeIndex]);
-        const refs = picked.filter((o) => o.kind === 'table' || o.kind === 'view');
-        if (refs.length === 0) {
-          return set({ error: 'select a table, a schema, or mark tables (v) to export' });
-        }
-        exportReq =
-          refs.length === 1
-            ? { kind: 'table', ref: refs[0]!, sort: null, filter: null }
-            : { kind: 'tables', refs };
-        clampExportFormat();
-        stageExportConfirm();
-      },
-
-      toggleMark: () => {
-        const row = rowsNow()[get().treeIndex];
-        if (row?.type !== 'object') return;
-        // Only tables/views hold rows worth exporting; skip index/trigger/… rows.
-        if (row.ref.kind !== 'table' && row.ref.kind !== 'view') return;
-        const key = refKey(row.ref);
-        const next = new Set(get().marks);
-        next.has(key) ? next.delete(key) : next.add(key);
-        set({ marks: next });
-      },
-
-      clearMarks: () => {
-        if (get().marks.size > 0) set({ marks: new Set() });
-      },
-
-      cycleExportFormat: () => {
-        if (!exportReq) return; // a non-export confirm — `f` does nothing
-        const allowed = formatsFor(exportReq);
-        const next = allowed[(allowed.indexOf(get().exportFormat) + 1) % allowed.length];
-        if (next) set({ exportFormat: next });
-        stageExportConfirm();
-      },
-
-      cancelExport: () => {
-        exportAbort?.abort();
-        if (get().mode === 'exporting') set({ notice: 'cancelling…' });
-      },
+      // Export actions live in exportSlice.ts (ADR 0012 owns the flow).
+      ...xport.actions,
 
       widenSidebar: () => set((s) => ({ sidebarWidth: clampSidebarWidth(s.sidebarWidth + SIDEBAR_STEP) })),
       narrowSidebar: () => set((s) => ({ sidebarWidth: clampSidebarWidth(s.sidebarWidth - SIDEBAR_STEP) })),
@@ -1897,7 +1425,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       },
 
       cancelPending: () => {
-        exportReq = null; // if it was an export confirm, drop its target too
+        xport.dropTarget(); // if it was an export confirm, drop its target too
         set({ mode: 'normal', pending: null });
       },
 

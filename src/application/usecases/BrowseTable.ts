@@ -16,7 +16,7 @@ import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
 import { ok, err, type Result } from '../../shared/Result.ts';
 import {
   UnsupportedCapabilityError,
-  toDataSourceError,
+  attempt,
   type DataSourceError,
 } from '../../domain/errors/errors.ts';
 
@@ -38,13 +38,11 @@ export const browseTable = async (
       new UnsupportedCapabilityError(`source "${source.id}" cannot browse`),
     );
   }
-  try {
+  return attempt(async () => {
     const [rows, total] = await Promise.all([
       browsable.browse(ref, spec, signal),
       browsable.count(ref, spec.filter, signal),
     ]);
-    return ok({ rows, total, spec });
-  } catch (e) {
-    return err(toDataSourceError(e));
-  }
+    return { rows, total, spec };
+  });
 };

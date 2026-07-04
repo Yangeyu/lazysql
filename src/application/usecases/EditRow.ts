@@ -17,7 +17,7 @@ import type {
 import { ok, err, type Result } from '../../shared/Result.ts';
 import {
   UnsupportedCapabilityError,
-  toDataSourceError,
+  attempt,
   type DataSourceError,
 } from '../../domain/errors/errors.ts';
 
@@ -31,11 +31,7 @@ export const updateRow = async (
   if (!editable) {
     return err(new UnsupportedCapabilityError(`source cannot edit rows`));
   }
-  try {
-    return ok(await editable.update(ref, key, patch));
-  } catch (e) {
-    return err(toDataSourceError(e));
-  }
+  return attempt(() => editable.update(ref, key, patch));
 };
 
 export const deleteRow = async (
@@ -47,9 +43,5 @@ export const deleteRow = async (
   if (!editable) {
     return err(new UnsupportedCapabilityError(`source cannot edit rows`));
   }
-  try {
-    return ok(await editable.delete(ref, key));
-  } catch (e) {
-    return err(toDataSourceError(e));
-  }
+  return attempt(() => editable.delete(ref, key));
 };

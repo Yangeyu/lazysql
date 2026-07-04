@@ -1,5 +1,7 @@
 /** Typed domain errors so callers can branch on failure kind, not message text. */
 
+import { ok, err, type Result } from '../../shared/Result.ts';
+
 export class DataSourceError extends Error {
   constructor(message: string, cause?: unknown) {
     // Forward `cause` to the standard Error.cause (ES2022) rather than
@@ -41,6 +43,19 @@ export const toDataSourceError = (e: unknown): DataSourceError =>
   e instanceof DataSourceError
     ? e
     : new DataSourceError(e instanceof Error ? e.message : String(e));
+
+/** Run an adapter call inside the Result boundary: ok(value) on success, any
+ *  throw trapped as err(toDataSourceError). Use cases wrap every capability
+ *  call with this so a rejection can never escape to the UI. */
+export const attempt = async <T>(
+  fn: () => Promise<T>,
+): Promise<Result<T, DataSourceError>> => {
+  try {
+    return ok(await fn());
+  } catch (e) {
+    return err(toDataSourceError(e));
+  }
+};
 
 /** An export failed to write its destination (open / write / rename / close). */
 export class ExportError extends Error {

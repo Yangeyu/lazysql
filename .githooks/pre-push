@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# DONE gate (CLAUDE.md §4): typecheck + tests must be green before anything
+# leaves this machine. No-ops when bun isn't installed (fresh clone), matching
+# commit-msg's graceful-skip behaviour.
+command -v bun >/dev/null 2>&1 || exit 0
+
+bun run typecheck && bun test

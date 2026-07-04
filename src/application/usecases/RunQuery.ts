@@ -13,7 +13,7 @@ import { sql } from '../../domain/query/Query.ts';
 import { ok, err, type Result } from '../../shared/Result.ts';
 import {
   UnsupportedCapabilityError,
-  toDataSourceError,
+  attempt,
   type DataSourceError,
 } from '../../domain/errors/errors.ts';
 
@@ -31,10 +31,8 @@ export const runQuery = async (
     return err(new UnsupportedCapabilityError('source cannot run queries'));
   }
   const started = performance.now();
-  try {
+  return attempt(async () => {
     const result = await queryable.execute(sql(text));
-    return ok({ result, elapsedMs: Math.round(performance.now() - started) });
-  } catch (e) {
-    return err(toDataSourceError(e));
-  }
+    return { result, elapsedMs: Math.round(performance.now() - started) };
+  });
 };

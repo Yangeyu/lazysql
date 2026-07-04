@@ -1,12 +1,15 @@
 /**
  * ConnectionForm — the `n`/`e` connection modal. A driver selector over the
- * driver-appropriate fields; navigation lives in the store (mode 'connform').
+ * driver-appropriate fields, with an action-button row ([Test] [Save] [Cancel])
+ * at the bottom; navigation lives in the store (mode 'connform').
  *
  * Every editable field is a native <input> (real cursor, mid-string editing,
  * the same accent caret as the rest of the app) EXCEPT the password: OpenTUI's
  * input can't mask, so the one secret field is store-rendered as bullets with a
  * ^R reveal. The Driver is its own focusable row so ←/→ can cycle it without
- * stealing the in-field cursor movement the native inputs need.
+ * stealing the in-field cursor movement the native inputs need; the button row
+ * reuses the same convention (↑/↓ reaches it, ←/→ cycles, ⏎ presses). Rows and
+ * buttons also respond to the mouse, like every other pane.
  */
 
 import React from 'react';
@@ -18,10 +21,21 @@ import { Caret } from './Caret.tsx';
 
 const LABEL_COL = 10;
 
+/** Display order must match FORM_BUTTONS in connFormSlice.ts. */
+const BUTTONS = [
+  { label: 'Test', keys: '^T' },
+  { label: 'Save', keys: '⏎' },
+  { label: 'Cancel', keys: 'esc' },
+] as const;
+
 interface Props {
   readonly form: ConnForm;
   /** Push a non-secret field edit back to the store (inputs are controlled). */
   readonly onFieldInput: (key: string, value: string) => void;
+  /** Focus a row on click (DRIVER_ROW, a field index, or the button row). */
+  readonly onFocusRow: (index: number) => void;
+  /** Press an action button on click (an index into BUTTONS/FORM_BUTTONS). */
+  readonly onButton: (index: number) => void;
 }
 
 /** The masked password field: bullets (or the clear value under ^R), with the
@@ -57,9 +71,11 @@ const Label = ({ text: label, focused }: { text: string; focused: boolean }) => 
   </text>
 );
 
-const ConnectionFormImpl = ({ form, onFieldInput }: Props) => {
+const ConnectionFormImpl = ({ form, onFieldInput, onFocusRow, onButton }: Props) => {
   const editing = form.editingId !== null;
   const driverFocused = form.index === DRIVER_ROW;
+  const buttonRow = form.fields.length;
+  const onButtons = form.index === buttonRow;
   const driverName = dialectLabel(form.driver);
   const arrow = driverFocused ? theme.accent : theme.border;
   return (
@@ -75,7 +91,7 @@ const ConnectionFormImpl = ({ form, onFieldInput }: Props) => {
         width={56}
       >
         {/* Driver — a focusable row; ←/→ cycles it while it holds the focus. */}
-        <box flexDirection="row">
+        <box flexDirection="row" onMouseDown={() => onFocusRow(DRIVER_ROW)}>
           <Label text="Driver" focused={driverFocused} />
           <text wrapMode="none">
             <span fg={arrow}>‹ </span>
@@ -91,7 +107,7 @@ const ConnectionFormImpl = ({ form, onFieldInput }: Props) => {
         {form.fields.map((f, i) => {
           const focused = form.index === i;
           return (
-            <box key={f.key} flexDirection="row">
+            <box key={f.key} flexDirection="row" onMouseDown={() => onFocusRow(i)}>
               <Label text={f.label} focused={focused} />
               {f.secret ? (
                 <SecretField field={f} focused={focused} reveal={form.reveal} editing={editing} />
@@ -112,6 +128,11 @@ const ConnectionFormImpl = ({ form, onFieldInput }: Props) => {
                   {f.value}
                 </text>
               )}
+              {f.hint ? (
+                <text wrapMode="none" fg={theme.muted}>
+                  ({f.hint})
+                </text>
+              ) : null}
             </box>
           );
         })}
@@ -141,6 +162,27 @@ const ConnectionFormImpl = ({ form, onFieldInput }: Props) => {
             </text>
           </box>
         ) : null}
+
+        <text> </text>
+        <box flexDirection="row" justifyContent="center" gap={3}>
+          {BUTTONS.map((b, i) => {
+            const focused = onButtons && form.button === i;
+            return (
+              <text
+                key={b.label}
+                wrapMode="none"
+                fg={focused ? theme.accent : theme.muted}
+                attributes={focused ? TextAttributes.BOLD : undefined}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  onButton(i);
+                }}
+              >
+                [ {b.label} {b.keys} ]
+              </text>
+            );
+          })}
+        </box>
       </box>
     </box>
   );

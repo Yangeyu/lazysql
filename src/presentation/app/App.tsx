@@ -159,6 +159,8 @@ export const App = ({ clipboard }: AppProps) => {
     <ConnectionForm
       form={connForm}
       onFieldInput={(k, v) => store.getState().connFormSetField(k, v)}
+      onFocusRow={(i) => store.getState().connFormFocus(i)}
+      onButton={(i) => store.getState().connFormPressButton(i)}
     />
   ) : status === 'connecting' ? (
     <box flexGrow={1} alignItems="center" justifyContent="center">

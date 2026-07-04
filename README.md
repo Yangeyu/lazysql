@@ -178,12 +178,14 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 
 | Key | Action |
 |----|------|
-| `↑` / `↓` | Move between drivers and fields |
-| `←` / `→` | Switch driver (on the Driver row) |
+| `↑` / `↓` | Move between the driver, fields and buttons |
+| `←` / `→` | Cycle the driver / focused button (on that row) |
 | `^R` | Show / hide password |
-| `^T` | Test the connection (without saving) |
-| `⏎` | Save the connection |
+| `^T` | Test the connection (without saving) — reports the visible object count |
+| `⏎` | Save — or press the focused button |
 | `esc` | Cancel |
+
+Port/DB fields accept digits only; required fields are validated on save (the error names the field). Everything is also clickable.
 
 ## ⚙️ Configuration
 

@@ -15,9 +15,25 @@ import type {
 import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
 import type { TreeRow } from '../tree/tree.ts';
 import { resolveUserPath } from '../../shared/path.ts';
+import { asIntrospectable } from '../../domain/datasource/DataSource.ts';
+
+/** What the ^T probe counts per driver, for the "ok · N …" message. */
+const OBJECT_NOUN: Record<DriverId, string> = {
+  postgres: 'tables',
+  mysql: 'tables',
+  sqlite: 'tables',
+  mongodb: 'collections',
+  redis: 'keys',
+};
 
 /** Focused row sentinel for the driver selector (above the field rows). */
 export const DRIVER_ROW = -1;
+
+/** Action buttons on the form's bottom row, in ←/→ cycle order. The row's
+ *  focus index is fields.length (one past the last field). */
+export const FORM_BUTTONS = ['test', 'save', 'cancel'] as const;
+/** Default focused button — Save, the dialog's primary action. */
+export const SAVE_BUTTON = 1;
 
 /** Drivers offered by the new-connection form, in cycle order. */
 const FORM_DRIVERS: DriverId[] = [
@@ -40,18 +56,47 @@ const DEFAULT_PORT: Record<DriverId, string> = {
 const fieldsForDriver = (driver: DriverId): ConnFormField[] => {
   const name: ConnFormField = { key: 'name', label: 'Name', value: '' };
   if (driver === 'sqlite') {
-    return [name, { key: 'file', label: 'File', value: '' }];
+    return [name, { key: 'file', label: 'File', value: '', hint: '~ expands' }];
   }
+  // Local Mongo/Redis commonly run unauthenticated — say so instead of leaving
+  // the user to guess whether a blank User will be rejected.
+  const auth = driver === 'redis' || driver === 'mongodb' ? { hint: 'optional' } : {};
   const common: ConnFormField[] = [
     name,
     { key: 'host', label: 'Host', value: 'localhost' },
-    { key: 'port', label: 'Port', value: DEFAULT_PORT[driver] },
-    { key: 'user', label: 'User', value: '' },
+    { key: 'port', label: 'Port', value: DEFAULT_PORT[driver], numeric: true },
+    { key: 'user', label: 'User', value: '', ...auth },
     { key: 'password', label: 'Password', value: '', secret: true },
   ];
   return driver === 'redis'
-    ? [...common, { key: 'db', label: 'DB', value: '0' }]
-    : [...common, { key: 'database', label: 'Database', value: '' }];
+    ? [...common, { key: 'db', label: 'DB', value: '0', numeric: true, hint: 'index 0–15' }]
+    : [
+        ...common,
+        {
+          key: 'database',
+          label: 'Database',
+          value: '',
+          ...(driver === 'mongodb' ? { hint: 'required' } : {}),
+        },
+      ];
+};
+
+/** First required-but-blank field, or null. Mongo's database is required here
+ *  because the server accepts ANY name (databases are created lazily) — a typo
+ *  would "connect" fine and then browse an empty database. */
+const firstMissing = (f: ConnForm): { index: number; label: string } | null => {
+  const required =
+    f.driver === 'sqlite'
+      ? ['name', 'file']
+      : f.driver === 'mongodb'
+        ? ['name', 'host', 'database']
+        : ['name', 'host'];
+  for (const key of required) {
+    const i = f.fields.findIndex((x) => x.key === key);
+    const field = f.fields[i];
+    if (field && !field.value.trim()) return { index: i, label: field.label };
+  }
+  return null;
 };
 
 /** Prefill the driver's fields from a saved profile (for the edit form). The
@@ -114,7 +159,9 @@ export type ConnFormActions = Pick<
   | 'connFormType'
   | 'connFormBackspace'
   | 'connFormMove'
-  | 'connFormCycleDriver'
+  | 'connFormCycle'
+  | 'connFormFocus'
+  | 'connFormPressButton'
   | 'connFormToggleReveal'
   | 'connFormCancel'
   | 'connFormSubmit'
@@ -132,6 +179,7 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
           driver,
           fields: fieldsForDriver(driver),
           index: 0,
+          button: SAVE_BUTTON,
           reveal: false,
           error: null,
           probe: null,
@@ -153,6 +201,7 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
           driver: profile.driver,
           fields: fieldsForProfile(profile),
           index: 0,
+          button: SAVE_BUTTON,
           reveal: false,
           error: null,
           probe: null,
@@ -182,7 +231,11 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
     connFormSetField: (key, value) => {
       const f = get().connForm;
       if (!f) return;
-      const fields = f.fields.map((x) => (x.key === key ? { ...x, value } : x));
+      const fields = f.fields.map((x) =>
+        x.key === key
+          ? { ...x, value: x.numeric ? value.replace(/\D/g, '') : value }
+          : x,
+      );
       set({ connForm: { ...f, fields, probe: null } });
     },
 
@@ -210,18 +263,26 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
     connFormMove: (delta) => {
       const f = get().connForm;
       if (!f) return;
+      // fields.length is the action-button row below the last field.
       const index = Math.max(
         DRIVER_ROW,
-        Math.min(f.fields.length - 1, f.index + delta),
+        Math.min(f.fields.length, f.index + delta),
       );
       set({ connForm: { ...f, index } });
     },
 
-    // Only acts while the Driver row is focused — otherwise ←/→ belongs to the
-    // focused field's <input> cursor. Stays on the Driver row after cycling.
-    connFormCycleDriver: (dir) => {
+    // ←/→ has a per-row meaning: cycles the driver on the Driver row, the
+    // focused button on the action row — anywhere else it belongs to the
+    // focused field's <input> cursor, so this no-ops.
+    connFormCycle: (dir) => {
       const f = get().connForm;
-      if (!f || f.index !== DRIVER_ROW) return;
+      if (!f) return;
+      if (f.index === f.fields.length) {
+        const button = (f.button + dir + FORM_BUTTONS.length) % FORM_BUTTONS.length;
+        set({ connForm: { ...f, button } });
+        return;
+      }
+      if (f.index !== DRIVER_ROW) return;
       const at = FORM_DRIVERS.indexOf(f.driver);
       const driver =
         FORM_DRIVERS[(at + dir + FORM_DRIVERS.length) % FORM_DRIVERS.length]!;
@@ -231,6 +292,26 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
         x.key === 'name' ? { ...x, value: name } : x,
       );
       set({ connForm: { ...f, driver, fields, index: DRIVER_ROW } });
+    },
+
+    connFormFocus: (index) => {
+      const f = get().connForm;
+      if (!f) return;
+      set({
+        connForm: {
+          ...f,
+          index: Math.max(DRIVER_ROW, Math.min(f.fields.length, index)),
+        },
+      });
+    },
+
+    connFormPressButton: (button) => {
+      const f = get().connForm;
+      if (!f || !FORM_BUTTONS[button]) return;
+      // Focus what was clicked first, so the submit below presses THIS button
+      // (and the focus ring reflects the click even for the async test).
+      set({ connForm: { ...f, index: f.fields.length, button } });
+      void get().connFormSubmit();
     },
 
     connFormToggleReveal: () => {
@@ -244,14 +325,27 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
     connFormSubmit: async () => {
       const f = get().connForm;
       if (!f) return;
+      // On the action row ⏎ presses the FOCUSED button; anywhere else it saves.
+      if (f.index === f.fields.length) {
+        const action = FORM_BUTTONS[f.button];
+        if (action === 'test') return void get().connFormTest();
+        if (action === 'cancel') return get().connFormCancel();
+      }
+      const missing = firstMissing(f);
+      if (missing) {
+        set({
+          connForm: {
+            ...f,
+            index: missing.index,
+            error: `${missing.label.toLowerCase()} is required`,
+          },
+        });
+        return;
+      }
       // Editing keeps the original id so the saved secret stays linked; a blank
       // password leaves that secret untouched (saveConnection only writes a
       // secret when one is provided).
       const { profile, password } = formProfile(f);
-      if (!profile.name) {
-        set({ connForm: { ...f, error: 'name is required' } });
-        return;
-      }
       set({ mode: 'normal', connForm: null });
       await get().saveConnection(profile, password);
     },
@@ -268,9 +362,25 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
         : profile;
       set({ connForm: { ...f, error: null, probe: { state: 'testing', message: 'testing…' } } });
       const r = await connectionService.open(probeProfile);
-      if (r.ok) await r.value.disconnect().catch(() => {});
+      let message = 'connection ok';
+      if (r.ok) {
+        // Report what's VISIBLE, not just reachable — "ok · 0 collections"
+        // exposes a mistyped database name that a bare connect would happily
+        // accept (Mongo creates databases lazily; Redis SELECTs any index).
+        const intro = asIntrospectable(r.value);
+        if (intro) {
+          try {
+            const n = (await intro.introspect()).objects.length;
+            const noun = OBJECT_NOUN[f.driver];
+            message += ` · ${n} ${n === 1 ? noun.slice(0, -1) : noun}`;
+          } catch {
+            // Best-effort garnish — the connect itself already succeeded.
+          }
+        }
+        await r.value.disconnect().catch(() => {});
+      }
       const result: ConnProbe = r.ok
-        ? { state: 'ok', message: 'connection ok' }
+        ? { state: 'ok', message }
         : { state: 'fail', message: r.error.message };
       // Drop the result if the form was edited or closed while the probe ran.
       const cur = get().connForm;

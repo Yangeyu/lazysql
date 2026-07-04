@@ -664,7 +664,9 @@ const editableService = (initial: ConnectionProfile) => {
       return ok(fakeSource);
     },
     save: async (p) => {
-      profiles = profiles.map((x) => (x.id === p.id ? p : x));
+      profiles = profiles.some((x) => x.id === p.id)
+        ? profiles.map((x) => (x.id === p.id ? p : x))
+        : [...profiles, p];
     },
     remove: async () => {},
   };
@@ -696,6 +698,11 @@ test('saving an edit to an INACTIVE connection leaves the live one untouched', a
 
   expect(opened).toEqual(['live']); // no reconnect
   expect(store.getState().activeId).toBe('a');
+
+  // The cursor lands on the saved connection, ready for ⏎ to connect it.
+  const s = store.getState();
+  const row = s.treeRows()[s.treeIndex];
+  expect(row?.type === 'connection' && row.id === 'b').toBe(true);
 });
 
 // ── editor: completion toggle + caret-aware accept (ADR 0010) ──

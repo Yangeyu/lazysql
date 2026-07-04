@@ -60,6 +60,45 @@ test('connFormTest surfaces the failure message', async () => {
   });
 });
 
+test('a probe on an introspectable source reports the visible object count', async () => {
+  // 0 objects is the payoff case: a mistyped database still "connects", but
+  // "· 0 tables" makes the typo visible right in the form.
+  const emptySource = {
+    ...fakeSource,
+    introspect: async () => ({ objects: [] }),
+    describe: async () => {
+      throw new Error('unused');
+    },
+  } as unknown as DataSource;
+  const store = createAppStore({ connectionService: serviceWith(async () => ok(emptySource)) });
+  store.getState().beginNewConnection(); // postgres
+  store.getState().connFormSetField('name', 'Local');
+
+  await store.getState().connFormTest();
+
+  expect(store.getState().connForm?.probe).toEqual({
+    state: 'ok',
+    message: 'connection ok · 0 tables',
+  });
+});
+
+test('the probe count uses a singular noun for exactly one object', async () => {
+  const oneSource = {
+    ...fakeSource,
+    introspect: async () => ({ objects: [{ name: 'widgets', kind: 'table' }] }),
+    describe: async () => {
+      throw new Error('unused');
+    },
+  } as unknown as DataSource;
+  const store = createAppStore({ connectionService: serviceWith(async () => ok(oneSource)) });
+  store.getState().beginNewConnection();
+  store.getState().connFormSetField('name', 'Local');
+
+  await store.getState().connFormTest();
+
+  expect(store.getState().connForm?.probe?.message).toBe('connection ok · 1 table');
+});
+
 test('editing a field clears a stale probe result', async () => {
   const store = createAppStore({ connectionService: serviceWith(async () => ok(fakeSource)) });
   store.getState().beginNewConnection();

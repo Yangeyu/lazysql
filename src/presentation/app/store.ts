@@ -97,6 +97,11 @@ export interface ConnFormField {
   value: string;
   /** Masked input (passwords). */
   readonly secret?: boolean;
+  /** Muted usage note rendered beside the value, e.g. "optional". */
+  readonly hint?: string;
+  /** Digits-only field (ports, db indexes) — other characters are dropped as
+   *  typed, so an invalid value can never reach the profile. */
+  readonly numeric?: boolean;
 }
 
 /** Focus index of the Driver selector row — it sits above the fields, so the
@@ -116,8 +121,11 @@ export interface ConnProbe {
 export interface ConnForm {
   driver: DriverId;
   fields: ConnFormField[];
-  /** Focused row: DRIVER_ROW for the driver selector, else a field index. */
+  /** Focused row: DRIVER_ROW for the driver selector, a field index, or
+   *  fields.length for the action-button row below the fields. */
   index: number;
+  /** Focused button on the action row (an index into FORM_BUTTONS). */
+  button: number;
   /** Whether the secret (password) field shows its value instead of bullets. */
   reveal: boolean;
   error: string | null;
@@ -403,7 +411,13 @@ export interface AppState {
   connFormType: (ch: string) => void;
   connFormBackspace: () => void;
   connFormMove: (delta: 1 | -1) => void;
-  connFormCycleDriver: (dir: 1 | -1) => void;
+  /** ←/→: cycles the driver on the Driver row, the focused button on the action
+   *  row; inert elsewhere (the arrows belong to the field <input> cursor). */
+  connFormCycle: (dir: 1 | -1) => void;
+  /** Focus a form row directly (mouse click on it). */
+  connFormFocus: (index: number) => void;
+  /** Focus AND activate an action button (mouse click on it). */
+  connFormPressButton: (button: number) => void;
   /** Toggle showing the password in clear (^R) to verify what was typed. */
   connFormToggleReveal: () => void;
   connFormSubmit: () => Promise<void>;
@@ -1190,6 +1204,11 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         await connectionService.save(profile, password);
         set({ profiles: await connectionService.list() });
         clampTree();
+        // Land the cursor on the saved connection so the next ⏎ connects it.
+        const at = rowsNow().findIndex(
+          (r) => r.type === 'connection' && r.id === profile.id,
+        );
+        if (at >= 0) set({ treeIndex: at });
         // A DataSource bakes its options (host/database/…) in at construction,
         // so editing the ACTIVE connection must rebuild it — a mere refresh
         // would keep listing objects through the stale connection.

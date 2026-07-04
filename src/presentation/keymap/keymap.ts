@@ -277,6 +277,14 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
  *  and the footer/help, so what's advertised is exactly what fires. */
 const NAV: ReadonlySet<KeyContext> = new Set<KeyContext>(['sidebar', 'grid', 'ddl']);
 
+/** The longest binding description across EVERY context and the globals. The
+ *  help overlay derives its fixed panel width from this, so the panel is the
+ *  same size wherever `?` is pressed and no description ever clips. */
+export const widestHelpDesc: number = Math.max(
+  ...Object.values(GROUPS).flatMap((g) => g.bindings.map((b) => b.desc.length)),
+  ...GLOBAL.map((b) => b.desc.length),
+);
+
 const NAMED: ReadonlySet<string> = new Set([
   'up', 'down', 'left', 'right', 'return', 'escape', 'tab', 'backspace', 'delete', 'f12',
 ]);

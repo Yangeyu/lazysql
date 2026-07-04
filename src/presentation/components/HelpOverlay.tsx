@@ -2,9 +2,9 @@
  * HelpOverlay — the `?` cheat-sheet. A centered floating panel listing the
  * keybindings for the focused context plus the global keys, rendered entirely
  * from the keymap registry so it never drifts from what actually works. It
- * floats OVER the workbench (via Overlay), sizes its width to the longest
- * binding line (clamped to the terminal), and when the list outgrows the
- * screen the body scrolls — j/k/↓↑/^d/^u via the dispatcher, or the wheel —
+ * floats OVER the workbench (via Overlay) at a FIXED width — sized once from
+ * the registry's longest description, identical in every context — and when
+ * the list outgrows the screen the body scrolls (j/k/↓↑/^d/^u, or the wheel)
  * with `offset` owned by the store (helpScroll) like every other overlay.
  * The overlay reports its scroll range back through `onViewport` so the store
  * can clamp instead of scrolling past the end. Esc or ? closes it.
@@ -12,7 +12,7 @@
 
 import React, { useEffect } from 'react';
 import { TextAttributes } from '@opentui/core';
-import type { KeyGroup } from '../keymap/keymap.ts';
+import { widestHelpDesc, type KeyGroup } from '../keymap/keymap.ts';
 import { theme } from '../theme/theme.ts';
 import { Overlay } from './Overlay.tsx';
 
@@ -27,7 +27,11 @@ interface Props {
 }
 
 const KEY_COL = 14;
-const MIN_WIDTH = 58;
+
+/** Fixed panel width: sized once from the registry's longest description (the
+ *  same in every context — a panel that resizes per context reads as jumpy),
+ *  clamped to the terminal at render. +4 = border + paddingX. */
+const PANEL_WIDTH = KEY_COL + widestHelpDesc + 4;
 
 /** One renderable body line of the cheat-sheet. */
 type Line =
@@ -42,12 +46,7 @@ const HelpOverlayImpl = ({ groups, termRows, termCols, offset, onScroll, onViewp
     { kind: 'blank' },
   ]);
 
-  // Width follows the longest line so no description is ever clipped; the
-  // terminal (minus a margin) is the ceiling. +4 = border + paddingX.
-  const longest = groups
-    .flatMap((g) => g.bindings)
-    .reduce((n, b) => Math.max(n, KEY_COL + b.desc.length), MIN_WIDTH);
-  const width = Math.min(termCols - 2, longest + 4);
+  const width = Math.min(termCols - 2, PANEL_WIDTH);
 
   // Fixed chrome: border (2) + header (title + blank = 2) + footer (1).
   const height = Math.min(termRows, body.length + 5);

@@ -33,12 +33,13 @@ export const theme = {
 } as const;
 
 /**
- * The text-insertion caret — a thin vertical bar (one-eighth block), the modern
- * I-beam look. Deliberately NOT a half/full block (too heavy) and NOT `│` (which
- * the grid uses as a column separator), so a caret never reads as a divider. One
- * glyph, one source of truth, painted in `accent` wherever an input is editable.
+ * The text-insertion caret — the ASCII pipe, which renders reliably in every
+ * terminal font (the one-eighth block `▏` it replaced draws inconsistently).
+ * It resembles the grid's `│` column separator, but the caret is painted in
+ * `accent` while separators use `border`, which keeps them apart. One glyph,
+ * one source of truth, wherever an input is editable.
  */
-export const CARET = '▏';
+export const CARET = '|';
 
 /**
  * The native `<input>` text cursor: a steady (non-blinking) thin vertical bar in

@@ -183,6 +183,12 @@ const ConnectionFormImpl = ({ form, onFieldInput, onFocusRow, onButton }: Props)
             );
           })}
         </box>
+        <text> </text>
+        <box flexDirection="row" justifyContent="center">
+          <text wrapMode="none" fg={theme.border}>
+            paste a connection URL into any field to fill
+          </text>
+        </box>
       </box>
     </box>
   );

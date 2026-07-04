@@ -112,6 +112,49 @@ test('⏎ on the Save button saves; a button click presses without ⏎', async (
   expect(store.getState().connForm?.probe?.state).toBe('ok');
 });
 
+// ── paste a connection URL into any field ──
+
+test('a pasted URL fills the whole form, switching driver to its scheme', () => {
+  const { store } = storeWith();
+  store.getState().beginNewConnection(); // postgres
+  store.getState().connFormSetField('host', 'redis://ops:s3c%40ret@cache.internal:6390/3');
+
+  const f = store.getState().connForm!;
+  expect(f.driver).toBe('redis');
+  const val = (k: string) => f.fields.find((x) => x.key === k)?.value;
+  expect(val('host')).toBe('cache.internal');
+  expect(val('port')).toBe('6390');
+  expect(val('user')).toBe('ops');
+  expect(val('password')).toBe('s3c@ret'); // percent-decoded, into the masked field
+  expect(val('db')).toBe('3');
+  expect(val('name')).toBe('3'); // defaulted from the URL path (no typed name)
+});
+
+test('a pasted URL keeps a hand-typed name and defaults missing parts', () => {
+  const { store } = storeWith();
+  store.getState().beginNewConnection();
+  store.getState().connFormSetField('name', 'prod');
+  store.getState().connFormSetField('host', 'postgres://db.internal/appdb');
+
+  const f = store.getState().connForm!;
+  const val = (k: string) => f.fields.find((x) => x.key === k)?.value;
+  expect(f.driver).toBe('postgres');
+  expect(val('name')).toBe('prod'); // the typed name survives the fill
+  expect(val('port')).toBe('5432'); // no port in the URL → driver default
+  expect(val('database')).toBe('appdb');
+});
+
+test('an unsupported URL scheme reports an error and leaves the fields alone', () => {
+  const { store } = storeWith();
+  store.getState().beginNewConnection();
+  store.getState().connFormSetField('host', 'mongodb+srv://cluster0.example.net/app');
+
+  const f = store.getState().connForm!;
+  expect(f.error).toBe('unsupported URL scheme: mongodb+srv');
+  expect(f.driver).toBe('postgres'); // untouched
+  expect(f.fields.find((x) => x.key === 'host')?.value).toBe('localhost');
+});
+
 test('the button row is reachable with ↓ and ←/→ cycles within it', () => {
   const { store } = storeWith();
   store.getState().beginNewConnection();

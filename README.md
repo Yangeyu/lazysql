@@ -187,6 +187,8 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 
 Port/DB fields accept digits only; required fields are validated on save (the error names the field). Everything is also clickable.
 
+Paste a connection URL (`postgres://`, `mysql://`, `mongodb://`, `redis://`) into any field to fill the whole form — driver, host, port, user, password and database are split out automatically; a name you typed is kept. `mongodb+srv` and `rediss` URLs are not supported by the form (use the `url` option in `connections.yml`).
+
 ## ⚙️ Configuration
 
 All under `~/.config/lazysql/`:

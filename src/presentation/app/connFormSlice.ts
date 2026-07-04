@@ -81,6 +81,66 @@ const fieldsForDriver = (driver: DriverId): ConnFormField[] => {
       ];
 };
 
+/** Driver for a pasted connection-URL scheme. Deliberately absent: mongodb+srv
+ *  (DNS seedlist can't round-trip through host/port fields), rediss/TLS (no
+ *  TLS fields in the form — the connections.yml `url` option covers it). */
+const URL_DRIVERS: Record<string, DriverId> = {
+  'postgres:': 'postgres',
+  'postgresql:': 'postgres',
+  'mysql:': 'mysql',
+  'mongodb:': 'mongodb',
+  'redis:': 'redis',
+};
+
+/** A pasted connection URL (scheme:// with an authority), as opposed to a
+ *  value being typed into the field it landed in. */
+const looksLikeUrl = (v: string): boolean => /^[a-z][a-z0-9+.-]*:\/\/.+/i.test(v.trim());
+
+const safeDecode = (s: string): string => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
+
+/** Expand a pasted connection URL into a full field set for its driver, or an
+ *  error for schemes the form can't represent. Query params (?sslmode=…) are
+ *  dropped — the form has no fields for them. */
+const fieldsFromUrl = (
+  raw: string,
+): { driver: DriverId; fields: ConnFormField[] } | { error: string } => {
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    return { error: 'unrecognized URL' };
+  }
+  const driver = URL_DRIVERS[u.protocol];
+  if (!driver) return { error: `unsupported URL scheme: ${u.protocol.slice(0, -1)}` };
+  const dbName = safeDecode(u.pathname.replace(/^\//, ''));
+  const fields = fieldsForDriver(driver).map((f): ConnFormField => {
+    switch (f.key) {
+      case 'name':
+        return { ...f, value: dbName || u.hostname };
+      case 'host':
+        return { ...f, value: u.hostname || f.value };
+      case 'port':
+        return { ...f, value: u.port || f.value };
+      case 'user':
+        return { ...f, value: safeDecode(u.username) };
+      case 'password':
+        return { ...f, value: safeDecode(u.password) };
+      case 'db':
+      case 'database':
+        return { ...f, value: dbName || f.value };
+      default:
+        return f;
+    }
+  });
+  return { driver, fields };
+};
+
 /** First required-but-blank field, or null. Mongo's database is required here
  *  because the server accepts ANY name (databases are created lazily) — a typo
  *  would "connect" fine and then browse an empty database. */
@@ -231,6 +291,24 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
     connFormSetField: (key, value) => {
       const f = get().connForm;
       if (!f) return;
+      // A connection URL pasted into ANY field fills the whole form (and
+      // switches the driver to the URL's scheme). A hand-typed name it would
+      // overwrite is kept.
+      if (looksLikeUrl(value)) {
+        const parsed = fieldsFromUrl(value);
+        if ('error' in parsed) {
+          set({ connForm: { ...f, error: parsed.error, probe: null } });
+          return;
+        }
+        const typedName = f.fields.find((x) => x.key === 'name')?.value.trim() ?? '';
+        const fields = parsed.fields.map((x) =>
+          x.key === 'name' && typedName ? { ...x, value: typedName } : x,
+        );
+        set({
+          connForm: { ...f, driver: parsed.driver, fields, error: null, probe: null },
+        });
+        return;
+      }
       const fields = f.fields.map((x) =>
         x.key === key
           ? { ...x, value: x.numeric ? value.replace(/\D/g, '') : value }

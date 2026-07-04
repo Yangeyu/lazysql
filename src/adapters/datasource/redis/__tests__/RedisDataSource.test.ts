@@ -6,7 +6,7 @@
  * ResultSet shape. Skips automatically when no Redis is reachable.
  *
  * Bring a server up with:
- *   docker run -d --name lazysql-redis -p 6379:6379 redis:7-alpine
+ *   docker compose -f docker-compose.test.yml up -d --wait redis
  */
 
 import { test, expect, beforeAll, afterAll } from 'bun:test';

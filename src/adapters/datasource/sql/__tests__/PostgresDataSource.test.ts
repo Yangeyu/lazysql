@@ -6,8 +6,7 @@
  * reachable, so it never breaks a machine without Docker.
  *
  * Bring a server up with:
- *   docker run -d --name lazysql-pg -e POSTGRES_PASSWORD=lazysql \
- *     -e POSTGRES_USER=lazysql -e POSTGRES_DB=lazysql -p 55432:5432 postgres:16-alpine
+ *   docker compose -f docker-compose.test.yml up -d --wait postgres
  */
 
 import { test, expect, beforeAll, afterAll } from 'bun:test';

@@ -1,13 +1,13 @@
 /**
- * MySQL/MariaDB adapter contract test — the SAME assertions as the SQLite and
- * Postgres suites, against a real server (Docker MariaDB). Three engines passing
- * one contract is the strongest evidence the capability/dialect abstraction
- * holds. Auto-skips when no server is reachable.
+ * MySQL adapter contract test — the SAME assertions as the SQLite and
+ * Postgres suites, against a real server (Docker MySQL 8; the jsonCanonical
+ * assertion needs MySQL's normalizing json type, which MariaDB's LONGTEXT
+ * alias does not provide). Three engines passing one contract is the
+ * strongest evidence the capability/dialect abstraction holds. Auto-skips
+ * when no server is reachable.
  *
  * Bring one up with:
- *   docker run -d --name lazysql-mysql -e MARIADB_ROOT_PASSWORD=root \
- *     -e MARIADB_DATABASE=lazysql -e MARIADB_USER=lazysql -e MARIADB_PASSWORD=lazysql \
- *     -p 33060:3306 mariadb:11
+ *   docker compose -f docker-compose.test.yml up -d --wait mysql
  */
 
 import { test, expect, beforeAll, afterAll } from 'bun:test';

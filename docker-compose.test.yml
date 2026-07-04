@@ -1,0 +1,66 @@
+# Contract-test databases (docs/ARCHITECTURE.md §10). Each suite auto-skips when
+# its server is unreachable, and every default URL in the test files matches a
+# service here exactly, so this is all it takes to run the full adapter matrix:
+#
+#   docker compose -f docker-compose.test.yml up -d --wait
+#   bun test
+#   docker compose -f docker-compose.test.yml down
+#
+# Postgres/MariaDB ports are offset (55432/33060) so they never collide with a
+# developer's real server of the same engine; Mongo/Redis sit on their defaults
+# because the test URLs do.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lazysql
+      POSTGRES_PASSWORD: lazysql
+      POSTGRES_DB: lazysql
+    ports:
+      - '55432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lazysql']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # Real MySQL, not MariaDB: the jsonCanonical contract (json normalized on
+  # write) only holds for MySQL's binary json type — MariaDB's JSON is a
+  # LONGTEXT alias that stores text verbatim.
+  mysql:
+    image: mysql:8
+    # The suite creates triggers/functions as the non-SUPER test user, which
+    # MySQL 8 blocks by default when binary logging is on.
+    command: ['--log-bin-trust-function-creators=1']
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: lazysql
+      MYSQL_USER: lazysql
+      MYSQL_PASSWORD: lazysql
+    ports:
+      - '33060:3306'
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-uroot', '-proot']
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+  mongo:
+    image: mongo:7
+    ports:
+      - '27017:27017'
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.runCommand({ping:1}).ok']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 2s
+      retries: 30

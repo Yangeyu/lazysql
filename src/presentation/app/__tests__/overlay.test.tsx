@@ -79,6 +79,21 @@ test('the ? help widens to fit long descriptions and scrolls on overflow', async
   h.cleanup();
 });
 
+test('on a narrow terminal the ? help wraps long descriptions instead of clipping', async () => {
+  const h = await renderTest(<Root connectionService={svc} initial={profile} />, {
+    width: 70, // narrower than the fixed panel width → descriptions must wrap
+    height: 34,
+  });
+  await h.until((f) => f.includes('CONNECTIONS'));
+
+  h.press('?');
+  await h.until((f) => f.includes('Keybindings'));
+  // The tail of the longest description survives on a continuation row —
+  // clipping would have cut it at the panel edge.
+  expect(h.frame()).toContain('else this one');
+  h.cleanup();
+});
+
 test('the cell inspector floats over the grid — the table stays visible', async () => {
   const h = await renderTest(<Root connectionService={svc} initial={profile} />, {
     width: 120,

@@ -3,8 +3,10 @@
  * keybindings for the focused context plus the global keys, rendered entirely
  * from the keymap registry so it never drifts from what actually works. It
  * floats OVER the workbench (via Overlay) at a FIXED width — sized once from
- * the registry's longest description, identical in every context — and when
- * the list outgrows the screen the body scrolls (j/k/↓↑/^d/^u, or the wheel)
+ * the registry's longest description, identical in every context. On a
+ * terminal too narrow for that width, descriptions WRAP into indented rows
+ * (never a horizontal scroll); when the list outgrows the screen the body
+ * scrolls vertically (j/k/↓↑/^d/^u, or the wheel)
  * with `offset` owned by the store (helpScroll) like every other overlay.
  * The overlay reports its scroll range back through `onViewport` so the store
  * can clamp instead of scrolling past the end. Esc or ? closes it.
@@ -15,6 +17,7 @@ import { TextAttributes } from '@opentui/core';
 import { widestHelpDesc, type KeyGroup } from '../keymap/keymap.ts';
 import { theme } from '../theme/theme.ts';
 import { Overlay } from './Overlay.tsx';
+import { wrapByWidth } from './wrapText.ts';
 
 interface Props {
   groups: KeyGroup[];
@@ -33,20 +36,30 @@ const KEY_COL = 14;
  *  clamped to the terminal at render. +4 = border + paddingX. */
 const PANEL_WIDTH = KEY_COL + widestHelpDesc + 4;
 
-/** One renderable body line of the cheat-sheet. */
+/** One renderable body line of the cheat-sheet. A wrapped description's
+ *  continuation rows carry an empty `keys`, indenting under the first row. */
 type Line =
   | { readonly kind: 'group'; readonly text: string }
   | { readonly kind: 'binding'; readonly keys: string; readonly desc: string }
   | { readonly kind: 'blank' };
 
 const HelpOverlayImpl = ({ groups, termRows, termCols, offset, onScroll, onViewport }: Props) => {
+  const width = Math.min(termCols - 2, PANEL_WIDTH);
+
+  // On a terminal narrower than the fixed width a description would clip —
+  // wrap it into indented continuation rows instead (vertical scroll is the
+  // only scroll; wrapping happens BEFORE slicing so the scroll math counts
+  // display rows, not logical bindings). -4 = border + paddingX.
+  const descWidth = width - 4 - KEY_COL;
   const body: Line[] = groups.flatMap((g): Line[] => [
     { kind: 'group', text: g.title },
-    ...g.bindings.map((b): Line => ({ kind: 'binding', keys: b.keys, desc: b.desc })),
+    ...g.bindings.flatMap((b): Line[] =>
+      wrapByWidth(b.desc, descWidth).map(
+        (row, i): Line => ({ kind: 'binding', keys: i === 0 ? b.keys : '', desc: row }),
+      ),
+    ),
     { kind: 'blank' },
   ]);
-
-  const width = Math.min(termCols - 2, PANEL_WIDTH);
 
   // Fixed chrome: border (2) + header (title + blank = 2) + footer (1).
   const height = Math.min(termRows, body.length + 5);

@@ -16,7 +16,8 @@ import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
 import { ok, err, type Result } from '../../shared/Result.ts';
 import {
   UnsupportedCapabilityError,
-  DataSourceError,
+  toDataSourceError,
+  type DataSourceError,
 } from '../../domain/errors/errors.ts';
 
 export interface BrowseResult {
@@ -24,11 +25,6 @@ export interface BrowseResult {
   readonly total: number;
   readonly spec: BrowseSpec;
 }
-
-const toError = (e: unknown): DataSourceError =>
-  e instanceof DataSourceError
-    ? e
-    : new DataSourceError(e instanceof Error ? e.message : String(e));
 
 export const browseTable = async (
   source: DataSource,
@@ -49,6 +45,6 @@ export const browseTable = async (
     ]);
     return ok({ rows, total, spec });
   } catch (e) {
-    return err(toError(e));
+    return err(toDataSourceError(e));
   }
 };

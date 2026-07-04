@@ -13,18 +13,14 @@ import { sql } from '../../domain/query/Query.ts';
 import { ok, err, type Result } from '../../shared/Result.ts';
 import {
   UnsupportedCapabilityError,
-  DataSourceError,
+  toDataSourceError,
+  type DataSourceError,
 } from '../../domain/errors/errors.ts';
 
 export interface QueryRun {
   readonly result: ResultSet;
   readonly elapsedMs: number;
 }
-
-const toError = (e: unknown): DataSourceError =>
-  e instanceof DataSourceError
-    ? e
-    : new DataSourceError(e instanceof Error ? e.message : String(e));
 
 export const runQuery = async (
   source: DataSource,
@@ -39,6 +35,6 @@ export const runQuery = async (
     const result = await queryable.execute(sql(text));
     return ok({ result, elapsedMs: Math.round(performance.now() - started) });
   } catch (e) {
-    return err(toError(e));
+    return err(toDataSourceError(e));
   }
 };

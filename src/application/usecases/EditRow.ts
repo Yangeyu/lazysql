@@ -17,13 +17,9 @@ import type {
 import { ok, err, type Result } from '../../shared/Result.ts';
 import {
   UnsupportedCapabilityError,
-  DataSourceError,
+  toDataSourceError,
+  type DataSourceError,
 } from '../../domain/errors/errors.ts';
-
-const toError = (e: unknown): DataSourceError =>
-  e instanceof DataSourceError
-    ? e
-    : new DataSourceError(e instanceof Error ? e.message : String(e));
 
 export const updateRow = async (
   source: DataSource,
@@ -38,7 +34,7 @@ export const updateRow = async (
   try {
     return ok(await editable.update(ref, key, patch));
   } catch (e) {
-    return err(toError(e));
+    return err(toDataSourceError(e));
   }
 };
 
@@ -54,6 +50,6 @@ export const deleteRow = async (
   try {
     return ok(await editable.delete(ref, key));
   } catch (e) {
-    return err(toError(e));
+    return err(toDataSourceError(e));
   }
 };

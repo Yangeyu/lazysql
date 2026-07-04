@@ -35,6 +35,13 @@ export class QueryError extends DataSourceError {
 /** The source does not support the requested capability. */
 export class UnsupportedCapabilityError extends DataSourceError {}
 
+/** Coerce an unknown thrown value to a DataSourceError, passing one through
+ *  untouched — the boundary helper use cases wrap adapter calls with. */
+export const toDataSourceError = (e: unknown): DataSourceError =>
+  e instanceof DataSourceError
+    ? e
+    : new DataSourceError(e instanceof Error ? e.message : String(e));
+
 /** An export failed to write its destination (open / write / rename / close). */
 export class ExportError extends Error {
   constructor(message: string, cause?: unknown) {

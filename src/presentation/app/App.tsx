@@ -101,6 +101,7 @@ export const App = ({ clipboard }: AppProps) => {
     dispatchKey(store.getState(), key, {
       quit: () => renderer.destroy(),
       copy: (text) => clipboard.write(text),
+      toggleConsole: () => renderer.console.toggle(),
     }),
   );
 

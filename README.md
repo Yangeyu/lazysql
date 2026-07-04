@@ -104,6 +104,7 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 | `:` | Open the SQL editor |
 | `tab` | Toggle focus between tree ↔ results |
 | `^⇧-` / `^⇧+` | Shrink / widen the connections sidebar |
+| `F12` | Toggle the debug console (captured logs & errors) |
 | `?` | Toggle help |
 | `q` | Quit |
 

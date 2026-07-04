@@ -92,7 +92,7 @@ const stub = (over: Partial<AppState> = {}): AppState =>
     ...over,
   }) as unknown as AppState;
 
-const env = () => ({ quit: mock(() => {}), copy: mock(() => {}) });
+const env = () => ({ quit: mock(() => {}), copy: mock(() => {}), toggleConsole: mock(() => {}) });
 
 test('dispatchKey: ⌃C quits from any context but the editor', () => {
   const e = env();
@@ -197,4 +197,13 @@ test('dispatchKey: g/G jump the tree to its first / last row', () => {
   dispatchKey(s, key({ name: 'G', sequence: 'G' }), env());
   expect(treeTop).toHaveBeenCalledTimes(1);
   expect(treeBottom).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: F12 toggles the debug console from a nav pane, not while typing', () => {
+  const nav = env();
+  dispatchKey(stub({ focus: 'grid' }), key({ name: 'f12' }), nav);
+  expect(nav.toggleConsole).toHaveBeenCalledTimes(1);
+  const typing = env();
+  dispatchKey(stub({ focus: 'editor' }), key({ name: 'f12' }), typing);
+  expect(typing.toggleConsole).not.toHaveBeenCalled();
 });

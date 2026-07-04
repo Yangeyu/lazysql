@@ -43,6 +43,9 @@ export interface KeyFlags {
 export interface DispatchEnv {
   readonly quit: () => void;
   readonly copy: (text: string) => void;
+  /** Show/hide OpenTUI's debug console overlay (captured logs & errors — it no
+   *  longer opens itself on error, so this is the way in). */
+  readonly toggleConsole: () => void;
 }
 
 /** The minimal slice of UI state that selects the active key context. */
@@ -129,6 +132,7 @@ const GLOBAL: readonly KeyBinding[] = [
   // distinguishable; degrades silently on legacy terminals (ADR 0007).
   { keys: '^⇧-', hint: 'shrink', desc: 'Shrink the connections sidebar', match: ['^⇧-', '^⇧_'], run: (s) => s.narrowSidebar() },
   { keys: '^⇧+', hint: 'widen', desc: 'Widen the connections sidebar', match: ['^⇧=', '^⇧+'], run: (s) => s.widenSidebar() },
+  { keys: 'F12', hint: 'console', desc: 'Toggle the debug console (captured logs & errors)', match: ['f12'], run: (_s, env) => env.toggleConsole() },
 ];
 
 const GROUPS: Record<KeyContext, KeyGroup> = {
@@ -274,7 +278,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
 const NAV: ReadonlySet<KeyContext> = new Set<KeyContext>(['sidebar', 'grid', 'ddl']);
 
 const NAMED: ReadonlySet<string> = new Set([
-  'up', 'down', 'left', 'right', 'return', 'escape', 'tab', 'backspace', 'delete',
+  'up', 'down', 'left', 'right', 'return', 'escape', 'tab', 'backspace', 'delete', 'f12',
 ]);
 
 const usable = (b: KeyBinding, f: KeyFlags): boolean => !b.enabled || b.enabled(f);

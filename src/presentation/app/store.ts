@@ -1335,8 +1335,9 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         // no draft of its own — submitEdit reads the widget's text on ^S. On a
         // jsonCanonical column (from the object's cached describe) the seed is
         // pretty-printed: the store normalizes JSON anyway, so the layout is free.
-        // The describe cache can lag mid-navigation (openObject's async sets are
-        // unserialized), so only trust it when it describes the browsed object.
+        // Mid-navigation `structure` lands before load() commits `current` (the
+        // nav epoch only discards STALE sets, it doesn't order these two), so the
+        // cache may briefly describe the NEXT object — only trust a match.
         const jsonCanonical =
           structure != null &&
           current != null &&

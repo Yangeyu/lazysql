@@ -7,7 +7,8 @@
  * the actual behaviour can never drift. Adding a feature is adding one row.
  *
  * `run` receives the live store state (every action hangs off it) and a small
- * env for the one effect the store doesn't own — quitting the renderer. Capability
+ * env for the effects the store doesn't own (quit / clipboard / debug console),
+ * injected at the composition root. Capability
  * gates (`enabled`) decide both whether a binding shows AND whether it fires, so a
  * key that isn't advertised genuinely does nothing.
  */
@@ -94,8 +95,8 @@ export interface KeyBinding {
    *  (e.g. ⏎ submits an <input>), shown in the footer/help but not dispatched. */
   readonly match?: readonly string[];
   /** What the binding does. Reads/acts on the live store state; `env` covers the
-   *  lone non-store effect (quit). Async actions are fired and not awaited.
-   *  Omitted together with `match` for a documentation-only row. */
+   *  non-store effects (quit/copy/console). Async actions are fired and not
+   *  awaited. Omitted together with `match` for a documentation-only row. */
   readonly run?: (s: AppState, env: DispatchEnv) => void;
   /** When present, the binding shows AND fires only if this predicate holds. */
   readonly enabled?: (f: KeyFlags) => boolean;

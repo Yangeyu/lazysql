@@ -8,6 +8,7 @@ import { ok, type Result } from '../../../shared/Result.ts';
 import type { DataSource } from '../../../domain/datasource/DataSource.ts';
 import type { ColumnMeta, ResultSet, Row } from '../../../domain/datasource/ResultSet.ts';
 import type { ObjectRef } from '../../../domain/datasource/schema.ts';
+import type { BrowseSpec } from '../../../domain/query/Query.ts';
 import type { Exporter, ExportSink } from '../../ports/Exporter.ts';
 import type { ExportError } from '../../../domain/errors/errors.ts';
 
@@ -80,6 +81,45 @@ test('exportTable pages the whole table (short final page ends it)', async () =>
   expect(calls.browse).toBe(3); // 2 + 2 + 1(short → stop)
   expect(progress).toEqual([2, 4, 5]); // running count reported per page
   expect(state.closed).toBe(true);
+});
+
+test('exportTable pages in primary-key order when the source can introspect', async () => {
+  const { exporter } = fakeExporter();
+  const specs: BrowseSpec[] = [];
+  const rows: Row[] = [[1, 'a'], [2, 'b'], [3, 'c']];
+  const source = {
+    id: 'fake',
+    connect: async () => ok(undefined),
+    disconnect: async () => {},
+    ping: async () => true,
+    capabilities: () => new CapabilitySet([]),
+    introspect: async () => ({ objects: [] }),
+    describe: async (r: ObjectRef) => ({
+      ref: r,
+      detail: [{
+        kind: 'columns',
+        columns: [
+          { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true },
+          { name: 'label', dataType: 'text', nullable: true, isPrimaryKey: false },
+        ],
+      }],
+    }),
+    browse: async (_ref: ObjectRef, spec: BrowseSpec): Promise<ResultSet> => {
+      specs.push(spec);
+      return {
+        shape: 'tabular',
+        columns: cols,
+        rows: rows.slice(spec.page.offset, spec.page.offset + spec.page.limit),
+        truncated: false,
+      };
+    },
+    count: async () => rows.length,
+  } as unknown as DataSource;
+
+  const r = await exportTable(source, ref, formatterFor('csv'), exporter, { path: 't.csv' }, { pageSize: 2 });
+
+  expect(r.ok).toBe(true);
+  expect(specs.map((s) => s.stableKey)).toEqual([['id'], ['id']]); // every page, not just the first
 });
 
 test('exportTable rejects a non-browsable source without opening a file', async () => {

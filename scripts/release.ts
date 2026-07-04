@@ -70,6 +70,7 @@ await $`bunx git-cliff --tag ${tag} -o CHANGELOG.md`;
 
 await $`git add package.json CHANGELOG.md`;
 await $`git commit -m ${'chore(repo): release ' + tag}`;
-await $`git tag ${tag}`;
+// Annotated, not lightweight: `git push --follow-tags` only pushes annotated tags.
+await $`git tag -a ${tag} -m ${tag}`;
 
 console.log(`\nreleased ${tag} locally. To publish (npm + GitHub Release via CI):\n\n  git push --follow-tags\n`);

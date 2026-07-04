@@ -4,11 +4,21 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
-## [Unreleased]
+## [0.1.11](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.11) - 2026-07-04
 
 ### Features
 
 - **browse:** Pretty-print JSON when editing canonical columns ([8a01ff3](https://github.com/Yangeyu/lazysql/commit/8a01ff32b7851c01ee929262a35993f29c9c35cc))
+
+### Bug Fixes
+
+- **browse:** Uuid filters, stable row order, and error surfacing ([81fdc22](https://github.com/Yangeyu/lazysql/commit/81fdc229acf6e62ceda3277f7bf33c2a12fc3092))
+- **export:** Page exports in primary-key order ([a38ab3f](https://github.com/Yangeyu/lazysql/commit/a38ab3fccdd634851aa5c380e3a42cb391e6fff4))
+- **tui:** Switch the caret glyph to an ASCII pipe ([bd3a80e](https://github.com/Yangeyu/lazysql/commit/bd3a80ef2bb1f88cb0cf948a4d60e4a324f3615c))
+
+### Refactoring
+
+- **app:** Hoist toDataSourceError into domain/errors ([17e4666](https://github.com/Yangeyu/lazysql/commit/17e466624128be1cc72036264addc3c493e86959))
 
 ### Documentation
 

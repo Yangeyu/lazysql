@@ -1,6 +1,6 @@
 {
   "name": "@vascent/lazysql",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "A lazygit-style TUI database manager.",
   "keywords": [
     "tui",

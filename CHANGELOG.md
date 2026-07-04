@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.12](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.12) - 2026-07-04
+
+### Features
+
+- **tui:** Toggle the OpenTUI debug console with F12 ([dfbdf89](https://github.com/Yangeyu/lazysql/commit/dfbdf89b4506ddb665acc0d8759753712c925803))
+
+### Bug Fixes
+
+- **repo:** Create the release tag annotated so --follow-tags pushes it ([e1f7244](https://github.com/Yangeyu/lazysql/commit/e1f724448e90a057c60a0bf2a51d85092a82286d))
+- **datasource:** Mongo browse always tiebreaks on _id ([3da78de](https://github.com/Yangeyu/lazysql/commit/3da78de68f8e086edec3938ad3ce08c63db76a5e))
+- **store:** Stale navigations abort and can no longer overwrite the UI ([fc2c751](https://github.com/Yangeyu/lazysql/commit/fc2c7516f7b825b8fdb83a0f770afd0f706b4f52))
+- **browse:** Render write confirms through the dialect (EditPreviewable) ([c7c40c8](https://github.com/Yangeyu/lazysql/commit/c7c40c87d96e3e6d3770afe5a14864284c225b36))
+- **tui:** Size the ? help to its content and scroll it on overflow ([8a0650a](https://github.com/Yangeyu/lazysql/commit/8a0650ab6e8f87782424e60a27ee03e471aca931))
+- **tui:** Give the ? help one fixed width across every context ([c05ad64](https://github.com/Yangeyu/lazysql/commit/c05ad64383a1a338860c533fd8ee709ebc859395))
+- **tui:** Wrap help descriptions on narrow terminals — vertical scroll only ([a332690](https://github.com/Yangeyu/lazysql/commit/a332690dd4d2eea4f709d3fafc416d7f14f972b6))
+
+### Refactoring
+
+- **store:** Extract export and connection-form feature slices ([88b2b4c](https://github.com/Yangeyu/lazysql/commit/88b2b4cbc7d49358d8194ae7bf62825c36967c2c))
+
+### Documentation
+
+- **repo:** Sync ARCHITECTURE/CLAUDE.md and stale comments with reality ([85adf3b](https://github.com/Yangeyu/lazysql/commit/85adf3b3dc38b4126a4deeabc7970f5ff7a98b44))
+
 ## [0.1.11](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.11) - 2026-07-04
 
 ### Features

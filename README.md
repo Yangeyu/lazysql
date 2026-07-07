@@ -20,7 +20,7 @@ Work with databases in your terminal the way lazygit works with git: connect, br
 - 📤 **Data export**: to **CSV · JSON · SQL** — the current grid view, a whole table, an entire schema/category, or a multi-select of tables (`v` to mark); streamed to disk at constant memory, cancellable (`esc`), with a live row count. CSV writes one file per table; JSON and SQL each combine into a single file
 - 🧬 **Schema introspection**: tables / views / indexes / sequences / triggers / stored procedures; inspect an object's columns and DDL definition
 - 🛡️ **Destructive-operation guard**: a `WHERE`-less `UPDATE/DELETE`, `DROP`, or `TRUNCATE` always pops a **centered confirmation dialog** echoing the full SQL to be run; when a Postgres `DROP` fails due to dependents, it offers a `CASCADE` retry and **names the objects that would be dropped along with it**
-- 🌳 **Live tree sync**: the object tree refreshes automatically after a successful DDL (`CREATE/DROP/ALTER/…`)
+- 🌳 **Object tree**: filter objects by name with `/` (live-narrows as you type) · auto-refreshes after a successful DDL (`CREATE/DROP/ALTER/…`)
 - 🤖 **NL→SQL**: press `^G`, type natural language, and the LLM generates SQL **placed into the editor for review** (never auto-executed); destructive statements are flagged with a red ⚠
 - 🗂️ **Connection management**: multi-connection config · create / edit / test connections in-TUI · passwords stored separately from config (optional OS Keychain)
 - 🖱️ **Modern terminal UX**: mouse / scroll wheel · system-clipboard copy · full-cell inspector (long text wraps by display width, no CJK truncation)
@@ -117,9 +117,10 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 | `→` / `l` | Expand |
 | `←` / `h` | Collapse / jump to parent |
 | `a` | Clean `SELECT *` browse of the selected table |
+| `/` | Filter objects by name — live-narrows the tree (`⏎` keep · `esc` clear) |
 | `v` | Mark / unmark a table for a batch export (multi-select) |
 | `X` | Export — marked tables, else all tables under the node (schema / category), else this one |
-| `esc` | Clear all export marks |
+| `esc` | Clear the tree filter, else all export marks |
 | `g` / `G` | Jump to first / last |
 | `D` | View the object's DDL / structure |
 | `d` | Draft a `DROP` into the editor |

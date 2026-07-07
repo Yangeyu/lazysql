@@ -181,3 +181,72 @@ test('shortTag maps known dialects and passes others through', () => {
   expect(shortTag('MongoDB')).toBe('Mongo');
   expect(shortTag('Snowflake')).toBe('Snowflake');
 });
+
+// ── filter (object-name narrowing) ───────────────────────────────────────────
+
+test('filter narrows to matching objects and drops the categories left empty', () => {
+  const rows = buildTree({
+    connections: [active],
+    objects, // users, orders (table); active_users (view)
+    rootExpanded: true,
+    expandedCats: new Set(), // collapsed — the filter must force containers open
+    filter: 'user',
+  });
+  // 'users' and 'active_users' match; 'orders' drops, and with it nothing else
+  // in Tables besides users. The Views category survives (active_users matches).
+  const objs = rows.filter((r) => r.type === 'object').map((r) => r.label);
+  expect(objs).toEqual(['users', 'active_users']);
+  // Every surviving container is force-open despite the empty expandedCats set.
+  expect(rows.filter((r) => r.type === 'category').every((c) => c.expanded)).toBe(true);
+  // The category count reflects the matches, not the full membership.
+  const tables = rows.find((r) => r.type === 'category' && r.label === 'Tables');
+  if (tables?.type === 'category') expect(tables.count).toBe(1);
+});
+
+test('filter is case-insensitive over a substring anywhere in the name', () => {
+  const rows = buildTree({
+    connections: [active],
+    objects,
+    rootExpanded: true,
+    expandedCats: new Set(),
+    filter: 'ORD', // uppercase, mid-name substring of 'orders'
+  });
+  expect(rows.filter((r) => r.type === 'object').map((r) => r.label)).toEqual(['orders']);
+});
+
+test('a filter with no match collapses to just the connection root', () => {
+  const rows = buildTree({
+    connections: [active],
+    objects,
+    rootExpanded: true,
+    expandedCats: new Set(['table', 'view']),
+    filter: 'zzz',
+  });
+  expect(rows.map((r) => r.type)).toEqual(['connection']);
+});
+
+test('a blank/whitespace filter leaves the full tree untouched', () => {
+  const base = {
+    connections: [active],
+    objects,
+    rootExpanded: true,
+    expandedCats: new Set<typeof objects[number]['kind']>(['table', 'view']),
+  };
+  expect(buildTree({ ...base, filter: '   ' })).toEqual(buildTree(base));
+});
+
+test('filter under the schema tier force-opens schemas and drops the empty ones', () => {
+  const rows = buildTree({
+    connections: [active],
+    objects: pgObjects, // users/orders@public, audit@drizzle, v_active@public(view)
+    rootExpanded: true,
+    expandedCats: new Set(), // collapsed — forced open by the filter
+    groupBySchema: true,
+    expandedSchemas: new Set(), // collapsed — forced open by the filter
+    filter: 'user', // only 'users' (public) matches
+  });
+  // [drizzle] (audit) and Views (v_active) carry no match, so they drop; [public]
+  // survives, force-open, showing the single matching object.
+  expect(rows.filter((r) => r.type === 'schema').map((r) => r.label)).toEqual(['public']);
+  expect(rows.filter((r) => r.type === 'object').map((r) => r.label)).toEqual(['users']);
+});

@@ -13,6 +13,10 @@
  * Rows carry a `depth` so the view indents uniformly instead of hardcoding a
  * prefix per row type — the schema tier deepens objects without the renderer
  * having to know whether they were grouped.
+ *
+ * An optional `filter` narrows the projection to objects whose name matches a
+ * substring: empty categories/schemas drop out and every surviving container is
+ * force-expanded, so a hit is never buried in a fold (see `buildTree`).
  */
 
 import type { ObjectKind, ObjectRef } from '../../domain/datasource/schema.ts';
@@ -145,6 +149,11 @@ export interface TreeInput {
   readonly groupBySchema?: boolean;
   /** Which schema rows are expanded, keyed by `schemaKey(kind, namespace)`. */
   readonly expandedSchemas?: ReadonlySet<string>;
+  /** Case-insensitive substring matched against object NAMES only. While set,
+   *  non-matching objects and the containers left empty by them drop out, and
+   *  every surviving category/schema is force-expanded (the stored fold state is
+   *  ignored) so a match is never hidden. Empty/undefined ⇒ the full tree. */
+  readonly filter?: string;
 }
 
 const NO_SCHEMAS: ReadonlySet<string> = new Set();
@@ -152,6 +161,12 @@ const NO_SCHEMAS: ReadonlySet<string> = new Set();
 /** Flatten the tree to the list of currently visible rows, top to bottom. */
 export const buildTree = (input: TreeInput): TreeRow[] => {
   const expandedSchemas = input.expandedSchemas ?? NO_SCHEMAS;
+  // Filtering narrows the object set AND forces every container open, so a match
+  // is never buried in a collapsed fold; an empty needle leaves everything as-is.
+  const needle = input.filter?.trim().toLowerCase() ?? '';
+  const filtering = needle !== '';
+  const hit = (o: ObjectRef): boolean =>
+    !filtering || o.name.toLowerCase().includes(needle);
   const rows: TreeRow[] = [];
   for (const conn of input.connections) {
     const expanded = conn.active && input.rootExpanded;
@@ -166,9 +181,9 @@ export const buildTree = (input: TreeInput): TreeRow[] => {
     });
     if (!expanded) continue;
     for (const cat of CATEGORY_ORDER) {
-      const objs = input.objects.filter((o) => o.kind === cat.kind);
+      const objs = input.objects.filter((o) => o.kind === cat.kind && hit(o));
       if (objs.length === 0) continue;
-      const catExpanded = input.expandedCats.has(cat.kind);
+      const catExpanded = filtering || input.expandedCats.has(cat.kind);
       rows.push({
         type: 'category',
         kind: cat.kind,
@@ -187,7 +202,7 @@ export const buildTree = (input: TreeInput): TreeRow[] => {
       }
       for (const ns of distinctNamespaces(objs)) {
         const schemaObjs = objs.filter((o) => (o.namespace ?? '') === ns);
-        const schExpanded = expandedSchemas.has(schemaKey(cat.kind, ns));
+        const schExpanded = filtering || expandedSchemas.has(schemaKey(cat.kind, ns));
         rows.push({
           type: 'schema',
           kind: cat.kind,

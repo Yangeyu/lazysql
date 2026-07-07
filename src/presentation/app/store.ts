@@ -59,7 +59,9 @@ export type Status = 'connecting' | 'ready' | 'error';
 // overlay (`CellInspect.mode`), so it isn't listed here (ADR 0011).
 // `exporting`: a long export is running; input is captured so `esc` can cancel it
 // and the status bar shows the live row count (ADR 0012).
-export type Mode = 'normal' | 'filter' | 'confirm' | 'connform' | 'exporting';
+// `filter` captures the grid's per-column filter input; `treeFilter` the sidebar's
+// object-name filter — distinct input surfaces on distinct panes.
+export type Mode = 'normal' | 'filter' | 'treeFilter' | 'confirm' | 'connform' | 'exporting';
 
 /** One editable field in the new-connection form. */
 export interface ConnFormField {
@@ -213,6 +215,10 @@ export interface AppState {
   expandedSchemas: Set<string>;
   /** Cursor into the flattened visible tree rows. */
   treeIndex: number;
+  /** Active sidebar object-name filter (empty ⇒ no filter). `buildTree` narrows
+   *  the tree to matching objects; `mode:'treeFilter'` is the editing state whose
+   *  value this holds (mirrors the grid's `filter` vs `mode:'filter'`). */
+  treeFilter: string;
   /** Tables/views marked for a batch export (multi-select via `v`), keyed by
    *  `refKey`. Empty ⇒ no marks, and `X` falls back to the cursor's node. Reset
    *  on connection switch. */
@@ -310,6 +316,15 @@ export interface AppState {
   /** Jump the tree selection to the first / last visible row (vim g/G). */
   treeTop: () => void;
   treeBottom: () => void;
+  /** `/`: begin editing the sidebar object-name filter (enters mode:'treeFilter'). */
+  beginTreeFilter: () => void;
+  /** Live-narrow the tree as the filter input changes, seating the cursor on the
+   *  first match so a commit lands ready to open it. */
+  setTreeFilter: (value: string) => void;
+  /** ⏎: keep the filter, leave the input, return to tree navigation. */
+  commitTreeFilter: () => void;
+  /** esc: clear the filter and leave the input. */
+  clearTreeFilter: () => void;
   /** Enter/Space: toggle a container's fold, or open an object. */
   treeToggle: () => Promise<void>;
   /** Browse the selected object (or the open one) as a clean SELECT * — resets
@@ -456,7 +471,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
      *  tier is gated on the active driver — the store owns that policy so the
      *  pure projection never names a driver. */
     const rowsNow = (): TreeRow[] => {
-      const { profiles, activeId, objects, rootExpanded, expandedCats, expandedSchemas } = get();
+      const { profiles, activeId, objects, rootExpanded, expandedCats, expandedSchemas, treeFilter } = get();
       const profile = activeProfile();
       return buildTree({
         connections: toConnNodes(profiles, activeId),
@@ -464,6 +479,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         rootExpanded,
         expandedCats,
         expandedSchemas,
+        filter: treeFilter,
         groupBySchema: profile ? groupsBySchema(profile.driver) : false,
       });
     };
@@ -580,6 +596,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         expandedCats: new Set<ObjectKind>(),
         expandedSchemas: new Set<string>(),
         treeIndex: 0,
+        treeFilter: '',
         marks: new Set<string>(),
         focus: 'sidebar',
         current: null,
@@ -624,6 +641,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       expandedCats: new Set<ObjectKind>(),
       expandedSchemas: new Set<string>(),
       treeIndex: 0,
+      treeFilter: '',
       marks: new Set<string>(),
       focus: 'sidebar',
       sidebarWidth: SIDEBAR_WIDTH,
@@ -738,6 +756,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           cellView: null,
           rootExpanded: true,
           treeIndex: 0,
+          treeFilter: '',
           marks: new Set<string>(),
           focus: 'sidebar',
         });

@@ -11,7 +11,7 @@ import type { StoreApi } from 'zustand/vanilla';
 import type { AppState } from '../store.ts';
 import { asDdlScriptable, type DataSource } from '../../../domain/datasource/DataSource.ts';
 import type { ObjectRef } from '../../../domain/datasource/schema.ts';
-import { schemaKey, type TreeRow } from '../../tree/tree.ts';
+import { firstObjectIndex, refKey, schemaKey, type TreeRow } from '../../tree/tree.ts';
 
 export interface TreeSliceCtx {
   readonly set: StoreApi<AppState>['setState'];
@@ -36,6 +36,10 @@ export type TreeActions = Pick<
   | 'treeDown'
   | 'treeTop'
   | 'treeBottom'
+  | 'beginTreeFilter'
+  | 'setTreeFilter'
+  | 'commitTreeFilter'
+  | 'clearTreeFilter'
   | 'treeToggle'
   | 'browseSelected'
   | 'treeExpand'
@@ -65,6 +69,40 @@ export const createTreeSlice = (ctx: TreeSliceCtx): TreeActions => {
     treeTop: () => set({ treeIndex: 0 }),
 
     treeBottom: () => set({ treeIndex: Math.max(0, rowsNow().length - 1) }),
+
+    beginTreeFilter: () => set({ mode: 'treeFilter' }),
+
+    setTreeFilter: (value) => {
+      // Live-narrow, then seat the cursor on the first surviving object so ⏎
+      // (commit) lands ready to open it; firstObjectIndex falls to 0 (the root)
+      // when nothing matches, which is the sensible resting spot for "no hits".
+      set({ treeFilter: value });
+      set({ treeIndex: firstObjectIndex(rowsNow()) });
+    },
+
+    commitTreeFilter: () =>
+      set({ mode: 'normal', treeIndex: firstObjectIndex(rowsNow()) }),
+
+    clearTreeFilter: () => {
+      // Clearing restores the full tree, so the pre-filter cursor index now points
+      // at an unrelated row. Land it on the open object instead — where the user
+      // actually is — revealing its container(s) first, since the restored fold
+      // state may have hidden it. No open object ⇒ fall back to the first object.
+      const cur = get().current;
+      set((s) => ({
+        mode: 'normal',
+        treeFilter: '',
+        expandedCats: cur ? new Set(s.expandedCats).add(cur.kind) : s.expandedCats,
+        expandedSchemas: cur?.namespace
+          ? new Set(s.expandedSchemas).add(schemaKey(cur.kind, cur.namespace))
+          : s.expandedSchemas,
+      }));
+      const rows = rowsNow();
+      const at = cur
+        ? rows.findIndex((r) => r.type === 'object' && refKey(r.ref) === refKey(cur))
+        : -1;
+      set({ treeIndex: at >= 0 ? at : firstObjectIndex(rows) });
+    },
 
     treeToggle: async () => {
       const row = rowsNow()[get().treeIndex];

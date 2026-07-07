@@ -59,6 +59,8 @@ const contextBadge = (context: KeyContext): { label: string; bg: string } => {
       return { label: 'CELL', bg: theme.cyan };
     case 'cellEdit':
       return { label: 'EDIT', bg: theme.magenta };
+    case 'treeFilter':
+      return { label: 'filter', bg: theme.yellow };
     default:
       return { label: 'lazysql', bg: theme.accent };
   }

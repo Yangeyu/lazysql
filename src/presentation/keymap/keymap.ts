@@ -25,6 +25,7 @@ export type KeyContext =
   | 'ddl'
   | 'editor'
   | 'filter'
+  | 'treeFilter'
   | 'confirm'
   | 'connform'
   | 'cell'
@@ -74,6 +75,7 @@ export const deriveContext = (s: ContextInput): KeyContext => {
   if (s.cellView) return s.cellView.mode === 'edit' ? 'cellEdit' : 'cell';
   if (s.mode === 'connform') return 'connform';
   if (s.mode === 'filter') return 'filter';
+  if (s.mode === 'treeFilter') return 'treeFilter';
   if (s.mode === 'confirm') return 'confirm';
   if (s.nlMode) return 'nl';
   if (s.focus === 'editor') return 'editor';
@@ -144,9 +146,10 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '↑/↓ k/j', hint: 'move', desc: 'Move the selection', match: ['down', 'j'], run: (s) => s.treeDown() },
       { keys: '⏎/space', hint: 'open', desc: 'Expand/collapse a node · open an object', match: ['return', ' '], primary: true, run: (s) => void s.treeToggle() },
       { keys: 'a', hint: 'all', desc: 'Browse the selected table — clean SELECT *', match: ['a'], primary: true, run: (s) => s.browseSelected() },
+      { keys: '/', hint: 'filter', desc: 'Filter objects by name (live-narrows the tree)', match: ['/'], primary: true, run: (s) => s.beginTreeFilter() },
       { keys: 'v', hint: 'mark', desc: 'Mark/unmark this table for a batch export (multi-select)', match: ['v'], primary: true, run: (s) => s.toggleMark() },
       { keys: 'X', hint: 'export', desc: 'Export: marked tables, else all tables under the node (schema/category), else this one', match: ['X'], primary: true, run: (s) => s.exportSelectedTable() },
-      { keys: 'esc', hint: 'unmark', desc: 'Clear all export marks', match: ['escape'], run: (s) => s.clearMarks() },
+      { keys: 'esc', hint: 'clear', desc: 'Clear the tree filter, else the export marks', match: ['escape'], run: (s) => (s.treeFilter ? s.clearTreeFilter() : s.clearMarks()) },
       { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last row', match: ['g'], run: (s) => s.treeTop() },
       { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last row', match: ['G'], run: (s) => s.treeBottom() },
       { keys: '→/l', hint: 'expand', desc: 'Expand a node · open an object', match: ['right', 'l'], run: (s) => void s.treeExpand() },
@@ -212,6 +215,14 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       // ⏎ is owned by the native <input> (onSubmit) — documentation-only here.
       { keys: '⏎', hint: 'apply', desc: 'Apply the filter (empty clears it)' },
       { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelFilter() },
+    ],
+  },
+  treeFilter: {
+    title: 'Filter tree',
+    bindings: [
+      // ⏎ is owned by the sidebar's native <input> (onSubmit) — doc-only here.
+      { keys: '⏎', hint: 'apply', desc: 'Keep the filter and return to the tree' },
+      { keys: 'esc', hint: 'clear', desc: 'Clear the filter', match: ['escape'], run: (s) => s.clearTreeFilter() },
     ],
   },
   confirm: {

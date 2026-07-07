@@ -67,6 +67,7 @@ export const App = ({ clipboard }: AppProps) => {
   const sort = useApp((s) => s.sort);
   const filter = useApp((s) => s.filter);
   const mode = useApp((s) => s.mode);
+  const treeFilter = useApp((s) => s.treeFilter);
   const connForm = useApp((s) => s.connForm);
   const pending = useApp((s) => s.pending);
   const loading = useApp((s) => s.loading);
@@ -139,9 +140,10 @@ export const App = ({ clipboard }: AppProps) => {
         rootExpanded,
         expandedCats,
         expandedSchemas,
+        filter: treeFilter,
         groupBySchema: activeProfile ? groupsBySchema(activeProfile.driver) : false,
       }),
-    [profiles, activeId, objects, rootExpanded, expandedCats, expandedSchemas, activeProfile],
+    [profiles, activeId, objects, rootExpanded, expandedCats, expandedSchemas, treeFilter, activeProfile],
   );
 
   const flags: KeyFlags = { queryable, nlAvailable };
@@ -172,11 +174,15 @@ export const App = ({ clipboard }: AppProps) => {
         width={sidebarWidth}
         marks={marks}
         viewportRows={sidebarRows}
+        filter={treeFilter}
+        editing={mode === 'treeFilter'}
         onRowClick={(i) => store.getState().clickTree(i)}
         onPaneClick={() => store.getState().focusPane('sidebar')}
         onScroll={(dir) =>
           dir === 'up' ? store.getState().treeUp() : store.getState().treeDown()
         }
+        onFilterInput={(v) => store.getState().setTreeFilter(v)}
+        onFilterSubmit={() => store.getState().commitTreeFilter()}
       />
       {/* Right column: the SQL editor (top, ~1/4) directly over the results panel
           (~3/4), stacked flush with no gap. Both stretch to the full column width. */}

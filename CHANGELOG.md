@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.14](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.14) - 2026-07-07
+
+### Features
+
+- **tui:** Filter the sidebar object tree by name ([a7b8190](https://github.com/Yangeyu/lazysql/commit/a7b8190d0bb8ef092aa096bffc49764d26339365))
+
 ## [0.1.13](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.13) - 2026-07-04
 
 ### Features

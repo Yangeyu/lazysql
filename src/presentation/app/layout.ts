@@ -17,12 +17,21 @@ export const SIDEBAR_STEP = 3;
 export const clampSidebarWidth = (w: number): number =>
   Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, w));
 
+/** Rows the data grid spends on its own column header + divider — the only chrome
+ *  between the raw results-panel body and the grid's scrollable data rows. The
+ *  DDL/structure view draws none of it, so it fills the full body. */
+export const GRID_CHROME_ROWS = 2;
+
 export interface Layout {
   /** Inner content width shared by the editor and results panels. */
   readonly viewportCols: number;
   /** Height (incl. border) of the SQL editor; 0 when the source can't query. */
   readonly editorRows: number;
-  /** Grid body rows that fill the results panel exactly. */
+  /** The results panel's body height (below the tab, inside the border) — the
+   *  view-agnostic budget every body view fills. Each view subtracts its own
+   *  chrome from this; nothing reaches into another view's layout. */
+  readonly resultsBodyRows: number;
+  /** Data grid rows: the body minus the grid's own header + divider. */
   readonly gridBodyRows: number;
   /** Tree rows the sidebar body can show; drives its vertical virtualization. */
   readonly sidebarRows: number;
@@ -34,9 +43,11 @@ export interface Layout {
  * gap separates them, mirroring the 1-cell gap that sets off the sidebar.
  *
  * The deductions are the visible chrome: viewportCols removes the sidebar, its
- * gap, and a panel's border + horizontal padding (4); gridBodyRows removes the
- * header (1), status (1), the editor and its gap, and the results panel's own
- * chrome — full border (2) + tab row (1) + grid header (1) + grid divider (1).
+ * gap, and a panel's border + horizontal padding (4); resultsBodyRows removes the
+ * app header (1), status (1), the editor and its gap, and the results panel's own
+ * frame — border (2) + tab row (1). That body is view-agnostic; the grid alone
+ * spends GRID_CHROME_ROWS more on its header + divider (gridBodyRows), while the
+ * DDL view fills resultsBodyRows outright.
  *
  * sidebarRows is the full left column (terminal minus header + status = 2) less
  * the sidebar's own chrome: border (2) + the CONNECTIONS title row (1).
@@ -53,9 +64,15 @@ export const computeLayout = (
   // soft-wraps and scrolls WITHIN this fixed height, so the panel never grows with
   // the query — the grid's share of the column stays predictable.
   const editorRows = queryable ? 10 : 0;
-  const gridBodyRows = Math.max(3, rows - editorRows - (queryable ? 8 : 7));
+  // The panel body (below the tab, inside the border) is the base truth; the grid
+  // then carves out its own header + divider. Floor keeps the grid at ≥3 rows.
+  const resultsBodyRows = Math.max(
+    3 + GRID_CHROME_ROWS,
+    rows - editorRows - (queryable ? 6 : 5),
+  );
+  const gridBodyRows = resultsBodyRows - GRID_CHROME_ROWS;
   const sidebarRows = Math.max(1, rows - 5);
-  return { viewportCols, editorRows, gridBodyRows, sidebarRows };
+  return { viewportCols, editorRows, resultsBodyRows, gridBodyRows, sidebarRows };
 };
 
 /**

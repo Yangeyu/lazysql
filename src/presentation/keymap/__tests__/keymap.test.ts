@@ -86,6 +86,7 @@ const stub = (over: Partial<AppState> = {}): AppState =>
     completions: [],
     queryText: '',
     gridDown: mock(() => {}),
+    scrollStructure: mock(() => {}),
     toggleMainTab: mock(() => {}),
     focusPane: mock(() => {}),
     setQuery: mock(() => {}),
@@ -144,10 +145,11 @@ test('dispatchKey: y in the cell inspector copies the full value', () => {
   expect(e.copy).toHaveBeenCalledWith('gamma');
 });
 
-test('dispatchKey: the DDL context only answers the tab toggle', () => {
+test('dispatchKey: the DDL context scrolls the structure and toggles the tab', () => {
   const s = stub({ mainTab: 'ddl' });
-  dispatchKey(s, key({ name: 'j', sequence: 'j' }), env()); // swallowed, no nav
+  dispatchKey(s, key({ name: 'j', sequence: 'j' }), env()); // scrolls, not grid nav
   expect(s.gridDown).not.toHaveBeenCalled();
+  expect(s.scrollStructure).toHaveBeenCalledWith(1);
   dispatchKey(s, key({ sequence: 'D' }), env());
   expect(s.toggleMainTab).toHaveBeenCalledTimes(1);
 });

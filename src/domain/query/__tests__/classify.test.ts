@@ -57,6 +57,7 @@ test('isUnqualifiedWrite fails open when "where" appears as a literal', () => {
 
 test('dangerKind flags DROP and TRUNCATE', () => {
   expect(dangerKind('DROP TABLE "public"."widget";')).toBe('drop');
+  expect(dangerKind('DROP TYPE "public"."mood";')).toBe('drop-type');
   expect(dangerKind('truncate table t')).toBe('truncate');
 });
 

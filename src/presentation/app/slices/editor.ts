@@ -41,6 +41,8 @@ const dangerHeadline = (kind: DangerKind, sql: string): string => {
   switch (kind) {
     case 'drop':
       return 'DROP — irreversible';
+    case 'drop-type':
+      return 'DROP TYPE — a shared type; refused while any column still uses it';
     case 'truncate':
       return 'TRUNCATE — irreversible';
     case 'unqualified-write': {
@@ -105,7 +107,11 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
           mode: 'confirm',
           focus: 'grid',
           pending: {
-            title: 'Other objects depend on it — drop them too?',
+            // A type's dependents are columns in live tables, not standalone
+            // objects — CASCADE alters those tables, so say so plainly.
+            title: /^\s*drop\s+type\b/i.test(text)
+              ? 'Columns still use this type — CASCADE will DROP them from their tables'
+              : 'Other objects depend on it — drop them too?',
             statement: cascade.sql,
             details: cascade.dependents,
             tone: 'danger',

@@ -533,7 +533,7 @@ test('a dependents-blocked DROP escalates to a CASCADE confirm, then runs it', a
       }
       return okResult;
     },
-    dropStatement: (ref) => dialect.dropQuery(ref).text,
+    dropStatement: (ref) => dialect.dropQuery(ref)?.text ?? null,
     cascadeRetry: (sql, error) => dialect.cascadeDrop(sql, error),
   };
   const profile: ConnectionProfile = { id: 'pg', name: 'PG', driver: 'postgres', options: {} };

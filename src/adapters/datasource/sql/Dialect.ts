@@ -39,9 +39,10 @@ export interface Dialect {
   /** Query counting an object's rows under the same optional filter. */
   countQuery(ref: ObjectRef, filter?: Filter | null): Query;
 
-  /** A `DROP TABLE`/`DROP VIEW` statement for `ref` with the identifier quoted and
-   *  schema-qualified — a display draft the UI runs, never executed here. */
-  dropQuery(ref: ObjectRef): Query;
+  /** A quoted, schema-qualified DROP for `ref` — a display draft the UI runs,
+   *  never executed here — or null for a kind this dialect can't drop directly
+   *  (so it never silently emits a wrong `DROP TABLE` for an index/sequence). */
+  dropQuery(ref: ObjectRef): Query | null;
 
   /** The CASCADE retry (and the dependents it will also drop) for a failed
    *  `dropSql` when `error` is this dialect's "dependent objects still exist"

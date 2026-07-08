@@ -210,13 +210,14 @@ export const createTreeSlice = (ctx: TreeSliceCtx): TreeActions => {
     draftDrop: () => {
       const row = rowsNow()[get().treeIndex];
       if (!row || row.type !== 'object') return;
-      if (row.ref.kind !== 'table' && row.ref.kind !== 'view') return;
-      // The adapter builds a quoted, schema-qualified DROP, so a reserved-word
-      // name (e.g. `window`) is dropped correctly. Non-SQL sources lack it.
+      // The adapter builds a quoted, schema-qualified DROP (reserved-word safe)
+      // and returns null for a kind it can't drop directly — the authority on
+      // droppability, so no kind list lives here. Non-SQL sources lack it.
       const active = source();
       const scriptable = active ? asDdlScriptable(active) : null;
-      if (!scriptable) return;
-      get().setQuery(scriptable.dropStatement(row.ref));
+      const stmt = scriptable?.dropStatement(row.ref) ?? null;
+      if (stmt === null) return;
+      get().setQuery(stmt);
       get().focusPane('editor');
     },
   };

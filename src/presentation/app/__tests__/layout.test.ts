@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { rowWindow, computeLayout, SIDEBAR_WIDTH } from '../layout.ts';
+import { rowWindow, computeLayout, SIDEBAR_WIDTH, GRID_CHROME_ROWS } from '../layout.ts';
 
 // Screen→pane hit-testing is gone: OpenTUI dispatches native onMouseDown to the
 // box under the cursor, so the geometry left to test is the row window and the
@@ -26,6 +26,14 @@ test('computeLayout deducts an extra row for the editor gap when queryable', () 
   // queryable loses the editor block, the 1-row gap, and one more border row.
   expect(q.gridBodyRows).toBe(40 - q.editorRows - 8);
   expect(noEditor.gridBodyRows).toBe(40 - 7);
+});
+
+test('the results body is the grid body plus exactly the grid chrome, at any size', () => {
+  for (const rows of [6, 24, 40, 120]) {
+    const l = computeLayout(100, rows, true);
+    // The DDL view fills resultsBodyRows; the grid carves GRID_CHROME_ROWS off it.
+    expect(l.resultsBodyRows).toBe(l.gridBodyRows + GRID_CHROME_ROWS);
+  }
 });
 
 test('computeLayout floors every pane dimension so a tiny terminal never goes negative', () => {

@@ -30,6 +30,24 @@ import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
 /** Quote an identifier with backticks, escaping embedded backticks. */
 const quoteIdent = (name: string): string => `\`${name.replace(/`/g, '``')}\``;
 
+/** Object kinds MySQL can draft a standalone DROP for → their DROP keyword.
+ *  MySQL has no standalone user types; other kinds yield no draft (null). */
+const DROP_KEYWORD: Partial<Record<ObjectKind, string>> = {
+  table: 'TABLE',
+  view: 'VIEW',
+};
+
+/** Pull the label list out of a MySQL `enum('a','b','c')` column_type. Labels
+ *  are single-quoted with `''` escaping a literal quote; commas inside a label
+ *  are handled because we match quoted spans, not split on commas. */
+const parseEnumValues = (columnType: string): string[] => {
+  const out: string[] = [];
+  const re = /'((?:[^']|'')*)'/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(columnType)) !== null) out.push(m[1]!.replace(/''/g, "'"));
+  return out;
+};
+
 /** MySQL uses positional `?` placeholders. */
 const ph = (): string => '?';
 
@@ -83,7 +101,8 @@ export class MySqlDialect implements Dialect {
 
   describeQuery(ref: ObjectRef): Query {
     return sql(
-      `SELECT column_name, data_type, is_nullable, column_key
+      // column_type carries the ENUM(...) value list; data_type is only 'enum'.
+      `SELECT column_name, data_type, column_type, is_nullable, column_key
        FROM information_schema.columns
        WHERE table_schema = DATABASE() AND table_name = ?
        ORDER BY ordinal_position`,
@@ -94,15 +113,21 @@ export class MySqlDialect implements Dialect {
   parseColumns(raw: RawResult): ColumnDef[] {
     const iName = col(raw, 'column_name');
     const iType = col(raw, 'data_type');
+    const iColType = col(raw, 'column_type');
     const iNullable = col(raw, 'is_nullable');
     const iKey = col(raw, 'column_key');
     return raw.rows.map((r) => {
       const dataType = String(r[iType] ?? '');
+      const enumValues =
+        dataType === 'enum' && iColType >= 0
+          ? parseEnumValues(String(r[iColType] ?? ''))
+          : undefined;
       return {
         name: String(r[iName]),
         dataType,
         nullable: r[iNullable] === 'YES',
         isPrimaryKey: r[iKey] === 'PRI',
+        ...(enumValues && enumValues.length > 0 ? { enumValues } : {}),
         // MySQL json is stored in a normalized binary form — reformat-safe.
         ...(dataType === 'json' ? { jsonCanonical: true as const } : {}),
       };
@@ -152,8 +177,9 @@ export class MySqlDialect implements Dialect {
     );
   }
 
-  dropQuery(ref: ObjectRef): Query {
-    return sql(`DROP ${ref.kind === 'view' ? 'VIEW' : 'TABLE'} ${qualify(ref)};`);
+  dropQuery(ref: ObjectRef): Query | null {
+    const keyword = DROP_KEYWORD[ref.kind];
+    return keyword ? sql(`DROP ${keyword} ${qualify(ref)};`) : null;
   }
 
   // MySQL parses CASCADE on DROP TABLE but ignores it (the fix is dropping the

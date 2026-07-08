@@ -30,6 +30,16 @@ import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
 
 const DEFAULT_SCHEMA = 'public';
 
+/** Object kinds Postgres can draft a standalone DROP for → their DROP keyword.
+ *  Absent kinds (index/trigger/sequence/procedure) yield no draft: they are
+ *  dropped through their owning object or not at all. Add a kind here to make
+ *  it droppable everywhere — the one source of truth callers gate on. */
+const DROP_KEYWORD: Partial<Record<ObjectKind, string>> = {
+  table: 'TABLE',
+  view: 'VIEW',
+  enum: 'TYPE', // an enum is a user-defined TYPE in Postgres DDL
+};
+
 const quoteIdent = (name: string): string => `"${name.replace(/"/g, '""')}"`;
 
 /** Postgres uses numbered `$n` placeholders. */
@@ -88,6 +98,12 @@ export class PostgresDialect implements Dialect {
        SELECT routine_schema, routine_name, 'procedure'
          FROM information_schema.routines
         WHERE routine_schema NOT IN ('pg_catalog', 'information_schema')
+       UNION ALL
+       SELECT n.nspname, t.typname, 'enum'
+         FROM pg_type t
+         JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE t.typtype = 'e'
+          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
        ORDER BY ns, kind, name`,
     );
   }
@@ -105,8 +121,19 @@ export class PostgresDialect implements Dialect {
 
   describeQuery(ref: ObjectRef): Query {
     return sql(
-      `SELECT c.column_name, c.data_type, c.is_nullable,
-              COALESCE(pk.is_pk, false) AS is_pk
+      // udt_name + a per-column label aggregate resolve an enum column, which
+      // information_schema reports only as the opaque data_type 'USER-DEFINED'.
+      // ARRAY(…) yields text[] (empty for non-enum columns).
+      `SELECT c.column_name, c.data_type, c.udt_name, c.is_nullable,
+              COALESCE(pk.is_pk, false) AS is_pk,
+              ARRAY(
+                SELECT e.enumlabel
+                  FROM pg_enum e
+                  JOIN pg_type t ON t.oid = e.enumtypid
+                  JOIN pg_namespace tn ON tn.oid = t.typnamespace
+                 WHERE t.typname = c.udt_name AND tn.nspname = c.udt_schema
+                 ORDER BY e.enumsortorder
+              ) AS enum_values
        FROM information_schema.columns c
        LEFT JOIN (
          SELECT kcu.column_name, true AS is_pk
@@ -126,15 +153,26 @@ export class PostgresDialect implements Dialect {
   parseColumns(raw: RawResult): ColumnDef[] {
     const iName = col(raw, 'column_name');
     const iType = col(raw, 'data_type');
+    const iUdt = col(raw, 'udt_name');
     const iNullable = col(raw, 'is_nullable');
     const iPk = col(raw, 'is_pk');
+    const iEnum = col(raw, 'enum_values');
     return raw.rows.map((r) => {
-      const dataType = String(r[iType] ?? '');
+      const declared = String(r[iType] ?? '');
+      // A user-defined type surfaces as 'USER-DEFINED'; the real name is udt_name.
+      const udt = iUdt >= 0 ? String(r[iUdt] ?? '') : '';
+      const dataType = declared === 'USER-DEFINED' && udt ? udt : declared;
+      const rawEnum = iEnum >= 0 ? r[iEnum] : undefined;
+      const enumValues =
+        Array.isArray(rawEnum) && rawEnum.length > 0
+          ? rawEnum.map(String)
+          : undefined;
       return {
         name: String(r[iName]),
         dataType,
         nullable: r[iNullable] === 'YES',
         isPrimaryKey: r[iPk] === true,
+        ...(enumValues ? { enumValues } : {}),
         // jsonb is stored normalized; `json` keeps its text verbatim, so it is
         // deliberately NOT marked.
         ...(dataType === 'jsonb' ? { jsonCanonical: true as const } : {}),
@@ -179,6 +217,21 @@ export class PostgresDialect implements Dialect {
              FROM pg_sequences WHERE schemaname = $1 AND sequencename = $2`,
           args,
         );
+      case 'enum':
+        // Reconstruct the CREATE TYPE … AS ENUM so the DDL tab shows the label
+        // set — the value list PG omits from information_schema entirely — in
+        // declared order (enumsortorder).
+        return sql(
+          `SELECT format('CREATE TYPE %I.%I AS ENUM (%s);',
+              n.nspname, t.typname,
+              string_agg(quote_literal(e.enumlabel), ', ' ORDER BY e.enumsortorder))
+             FROM pg_type t
+             JOIN pg_namespace n ON n.oid = t.typnamespace
+             JOIN pg_enum e ON e.enumtypid = t.oid
+            WHERE n.nspname = $1 AND t.typname = $2
+            GROUP BY n.nspname, t.typname`,
+          args,
+        );
       default: // view
         return sql(
           `SELECT view_definition FROM information_schema.views
@@ -205,15 +258,16 @@ export class PostgresDialect implements Dialect {
     );
   }
 
-  dropQuery(ref: ObjectRef): Query {
-    return sql(`DROP ${ref.kind === 'view' ? 'VIEW' : 'TABLE'} ${qualify(ref)};`);
+  dropQuery(ref: ObjectRef): Query | null {
+    const keyword = DROP_KEYWORD[ref.kind];
+    return keyword ? sql(`DROP ${keyword} ${qualify(ref)};`) : null;
   }
 
   cascadeDrop(dropSql: string, error: DataSourceError): CascadeDrop | null {
     // SQLSTATE 2BP01 = dependent_objects_still_exist: the DROP was refused because
     // other objects (views, FKs, …) reference this one. CASCADE removes them too.
     if (!(error instanceof QueryError) || error.code !== '2BP01') return null;
-    if (!/^\s*drop\s+(table|view)\b/i.test(dropSql)) return null;
+    if (!/^\s*drop\s+(table|view|type)\b/i.test(dropSql)) return null;
     return {
       sql: dropSql.replace(/\s*;?\s*$/, ' CASCADE;'),
       dependents: parseDependents(error.detail),

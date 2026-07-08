@@ -53,6 +53,8 @@ export type BrowseActions = Pick<
   | 'openCell'
   | 'closeCell'
   | 'scrollCell'
+  | 'scrollStructure'
+  | 'setStructureViewport'
   | 'setMainTab'
   | 'toggleMainTab'
   | 'gridUp'
@@ -144,6 +146,7 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
       pkColumns: [],
       structure: null,
       structureError: null,
+      structureScroll: 0,
       // Browsing is a fresh context: drop any leftover draft so the editor
       // echoes this object's browse statement, not the last query you ran.
       queryText: '',
@@ -249,8 +252,20 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
           : {},
       ),
 
+    scrollStructure: (delta) =>
+      set((s) => ({
+        structureScroll: Math.max(0, Math.min(s.structureMaxScroll, s.structureScroll + delta)),
+      })),
+
+    setStructureViewport: (maxScroll) =>
+      set((s) =>
+        s.structureMaxScroll === maxScroll
+          ? s
+          : { structureMaxScroll: maxScroll, structureScroll: Math.min(s.structureScroll, maxScroll) },
+      ),
+
     setMainTab: (tab) => {
-      set({ mainTab: tab });
+      set({ mainTab: tab, structureScroll: 0 });
       if (tab === 'ddl') void loadStructure();
     },
 
@@ -260,7 +275,7 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
       const s = get().structure;
       if (s && columnsOf(s).length === 0) return;
       const next = get().mainTab === 'data' ? 'ddl' : 'data';
-      set({ mainTab: next });
+      set({ mainTab: next, structureScroll: 0 });
       if (next === 'ddl') void loadStructure();
     },
 

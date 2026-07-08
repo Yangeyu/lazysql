@@ -43,8 +43,11 @@ interface Props {
   gridCol: number;
   sort: Sort | null;
   loading: boolean;
-  /** Rows of vertical space available for the grid body. */
+  /** Rows the data grid's body gets (panel body minus the grid's header/divider). */
   viewportRows: number;
+  /** The full results-panel body height — what the DDL view, which draws no grid
+   *  chrome, fills. */
+  structureRows: number;
   /** Columns (terminal cells) of horizontal space available. */
   viewportCols: number;
   /** A grid cell was clicked (row, plus column when a specific cell was hit). */
@@ -53,6 +56,10 @@ interface Props {
   structure: ObjectSchema | null;
   structureLoading: boolean;
   structureError: string | null;
+  /** First visible line of the DDL view (its scroll offset). */
+  structureScroll: number;
+  /** The DDL view reports its scroll range here so the store can clamp. */
+  onStructureViewport: (maxScroll: number) => void;
 }
 
 const ResultsPanelImpl = ({
@@ -69,11 +76,14 @@ const ResultsPanelImpl = ({
   sort,
   loading,
   viewportRows,
+  structureRows,
   viewportCols,
   onCellClick,
   structure,
   structureLoading,
   structureError,
+  structureScroll,
+  onStructureViewport,
 }: Props) => (
   <box
     flexGrow={1}
@@ -129,6 +139,9 @@ const ResultsPanelImpl = ({
         loading={structureLoading}
         error={structureError}
         hasTable={current !== null}
+        scroll={structureScroll}
+        viewportRows={structureRows}
+        onViewport={onStructureViewport}
       />
     ) : (
       <DataGrid

@@ -18,9 +18,9 @@ Work with databases in your terminal the way lazygit works with git: connect, br
 - 📊 **Browse / edit**: pagination · column sort · column filter · row-level edit and delete (parameterized, run inside a real transaction, auto-rollback when `affected≠1`)
 - ⌨️ **SQL editor**: **multi-line editing** · execute · per-connection persistent history (`^P/^N`) · **schema-aware completion** (table names / column names scoped by FROM / keywords, toggle with `^T`)
 - 📤 **Data export**: to **CSV · JSON · SQL** — the current grid view, a whole table, an entire schema/category, or a multi-select of tables (`v` to mark); streamed to disk at constant memory, cancellable (`esc`), with a live row count. CSV writes one file per table; JSON and SQL each combine into a single file
-- 🧬 **Schema introspection**: tables / views / indexes / sequences / triggers / stored procedures; inspect an object's columns and DDL definition
+- 🧬 **Schema introspection**: tables / views / indexes / sequences / triggers / stored procedures / Postgres enums; inspect an object's columns (enum columns show their allowed values) and DDL definition
 - 🛡️ **Destructive-operation guard**: a `WHERE`-less `UPDATE/DELETE`, `DROP`, or `TRUNCATE` always pops a **centered confirmation dialog** echoing the full SQL to be run; when a Postgres `DROP` fails due to dependents, it offers a `CASCADE` retry and **names the objects that would be dropped along with it**
-- 🌳 **Object tree**: filter objects by name with `/` (live-narrows as you type) · auto-refreshes after a successful DDL (`CREATE/DROP/ALTER/…`)
+- 🌳 **Object tree**: filter objects by name with `/` or `f` (live-narrows as you type) · auto-refreshes after a successful DDL (`CREATE/DROP/ALTER/…`)
 - 🤖 **NL→SQL**: press `^G`, type natural language, and the LLM generates SQL **placed into the editor for review** (never auto-executed); destructive statements are flagged with a red ⚠
 - 🗂️ **Connection management**: multi-connection config · create / edit / test connections in-TUI · passwords stored separately from config (optional OS Keychain)
 - 🖱️ **Modern terminal UX**: mouse / scroll wheel · system-clipboard copy · full-cell inspector (long text wraps by display width, no CJK truncation)
@@ -117,7 +117,7 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 | `→` / `l` | Expand |
 | `←` / `h` | Collapse / jump to parent |
 | `a` | Clean `SELECT *` browse of the selected table |
-| `/` | Filter objects by name — live-narrows the tree (`⏎` keep · `esc` clear) |
+| `/` or `f` | Filter objects by name — live-narrows the tree (`⏎` keep · `esc` clear) |
 | `v` | Mark / unmark a table for a batch export (multi-select) |
 | `X` | Export — marked tables, else all tables under the node (schema / category), else this one |
 | `esc` | Clear the tree filter, else all export marks |
@@ -143,6 +143,14 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 | `e` / `d` | Edit cell / delete row |
 | `X` | Export the view — a browsed table to CSV / JSON / SQL (filtered & sorted), a query result to CSV / JSON |
 | `n` / `p` | Next / previous page |
+| `D` | Toggle Data / DDL tab |
+
+**DDL / structure tab**
+
+| Key | Action |
+|----|------|
+| `↑`/`↓` `k`/`j` | Scroll the structure / DDL |
+| `g` / `G` | Jump to the first / last line |
 | `D` | Toggle Data / DDL tab |
 
 **SQL editor**

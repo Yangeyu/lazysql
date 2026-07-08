@@ -27,6 +27,13 @@ import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
 /** Quote a SQL identifier, escaping embedded double-quotes. */
 const quoteIdent = (name: string): string => `"${name.replace(/"/g, '""')}"`;
 
+/** Object kinds SQLite can draft a standalone DROP for → their DROP keyword.
+ *  SQLite has no standalone user types; other kinds yield no draft (null). */
+const DROP_KEYWORD: Partial<Record<ObjectKind, string>> = {
+  table: 'TABLE',
+  view: 'VIEW',
+};
+
 /** SQLite uses positional `?` placeholders. */
 const ph = (): string => '?';
 
@@ -103,8 +110,9 @@ export class SqliteDialect implements Dialect {
     );
   }
 
-  dropQuery(ref: ObjectRef): Query {
-    return sql(`DROP ${ref.kind === 'view' ? 'VIEW' : 'TABLE'} ${quoteIdent(ref.name)};`);
+  dropQuery(ref: ObjectRef): Query | null {
+    const keyword = DROP_KEYWORD[ref.kind];
+    return keyword ? sql(`DROP ${keyword} ${quoteIdent(ref.name)};`) : null;
   }
 
   // SQLite does not enforce cross-object dependencies on DROP, so the "dependents

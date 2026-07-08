@@ -146,7 +146,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '↑/↓ k/j', hint: 'move', desc: 'Move the selection', match: ['down', 'j'], run: (s) => s.treeDown() },
       { keys: '⏎/space', hint: 'open', desc: 'Expand/collapse a node · open an object', match: ['return', ' '], primary: true, run: (s) => void s.treeToggle() },
       { keys: 'a', hint: 'all', desc: 'Browse the selected table — clean SELECT *', match: ['a'], primary: true, run: (s) => s.browseSelected() },
-      { keys: '/', hint: 'filter', desc: 'Filter objects by name (live-narrows the tree)', match: ['/'], primary: true, run: (s) => s.beginTreeFilter() },
+      { keys: '/ f', hint: 'filter', desc: 'Filter objects by name (live-narrows the tree)', match: ['/', 'f'], primary: true, run: (s) => s.beginTreeFilter() },
       { keys: 'v', hint: 'mark', desc: 'Mark/unmark this table for a batch export (multi-select)', match: ['v'], primary: true, run: (s) => s.toggleMark() },
       { keys: 'X', hint: 'export', desc: 'Export: marked tables, else all tables under the node (schema/category), else this one', match: ['X'], primary: true, run: (s) => s.exportSelectedTable() },
       { keys: 'esc', hint: 'clear', desc: 'Clear the tree filter, else the export marks', match: ['escape'], run: (s) => (s.treeFilter ? s.clearTreeFilter() : s.clearMarks()) },
@@ -155,7 +155,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '→/l', hint: 'expand', desc: 'Expand a node · open an object', match: ['right', 'l'], run: (s) => void s.treeExpand() },
       { keys: '←/h', hint: 'collapse', desc: 'Collapse a node · jump to parent', match: ['left', 'h'], run: (s) => s.treeCollapse() },
       { keys: 'D', hint: 'ddl', desc: 'Open the object showing its DDL/structure', match: ['D'], run: (s) => void s.treeShowDdl() },
-      { keys: 'd', hint: 'drop', desc: 'Draft a DROP for the table in the editor (review, then run)', match: ['d'], enabled: (f) => f.queryable, primary: true, run: (s) => s.draftDrop() },
+      { keys: 'd', hint: 'drop', desc: 'Draft a DROP for the object in the editor (review, then run)', match: ['d'], enabled: (f) => f.queryable, primary: true, run: (s) => s.draftDrop() },
       { keys: 'r', hint: 'refresh', desc: 'Reload connections and re-read the object tree', match: ['r'], run: (s) => void s.refresh() },
       { keys: 'n', hint: 'new', desc: 'New connection', match: ['n'], primary: true, run: (s) => s.beginNewConnection() },
       { keys: 'e', hint: 'edit', desc: 'Edit the selected connection’s config', match: ['e'], run: (s) => s.beginEditConnection() },
@@ -189,6 +189,10 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
   ddl: {
     title: 'Structure',
     bindings: [
+      { keys: '↑/↓ k/j', hint: 'scroll', desc: 'Scroll the structure / DDL', match: ['up', 'k'], run: (s) => s.scrollStructure(-1) },
+      { keys: '↑/↓ k/j', hint: 'scroll', desc: 'Scroll the structure / DDL', match: ['down', 'j'], run: (s) => s.scrollStructure(1) },
+      { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last line', match: ['g'], run: (s) => s.scrollStructure(-Number.MAX_SAFE_INTEGER) },
+      { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last line', match: ['G'], run: (s) => s.scrollStructure(Number.MAX_SAFE_INTEGER) },
       { keys: 'D', hint: 'data/ddl', desc: 'Toggle the Data / DDL tab', match: ['D'], primary: true, run: (s) => s.toggleMainTab() },
     ],
   },

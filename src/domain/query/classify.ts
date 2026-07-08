@@ -49,13 +49,19 @@ export const isUnqualifiedWrite = (sql: string): boolean => {
 };
 
 /** Why a statement deserves a confirm before it runs from the editor. */
-export type DangerKind = 'unqualified-write' | 'drop' | 'truncate';
+export type DangerKind =
+  | 'unqualified-write'
+  | 'drop'
+  | 'drop-type'
+  | 'truncate';
 
 /**
  * Classify the footgun in a statement, or null if it can run straight off ⏎: an
  * unqualified UPDATE/DELETE (rewrites every row), or a DROP/TRUNCATE (destroys an
- * object or all its data, irreversibly). Returns the structured kind, not prose —
- * the presentation layer owns the wording.
+ * object or all its data, irreversibly). `DROP TYPE` is called out separately —
+ * a type is shared across tables, so its drop (esp. CASCADE) reaches further than
+ * a single object. Returns the structured kind, not prose — presentation owns the
+ * wording.
  */
 export const dangerKind = (sql: string): DangerKind | null => {
   if (isUnqualifiedWrite(sql)) return 'unqualified-write';
@@ -63,7 +69,7 @@ export const dangerKind = (sql: string): DangerKind | null => {
     .trim()
     .match(/^([a-z]+)/i)?.[1]
     ?.toLowerCase();
-  if (keyword === 'drop') return 'drop';
+  if (keyword === 'drop') return /^\s*drop\s+type\b/i.test(sql) ? 'drop-type' : 'drop';
   if (keyword === 'truncate') return 'truncate';
   return null;
 };

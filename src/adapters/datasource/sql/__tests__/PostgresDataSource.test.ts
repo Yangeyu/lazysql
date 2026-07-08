@@ -131,7 +131,7 @@ pgTest('dropStatement quotes a reserved-word table so it drops for real', async 
     kind: 'table',
   });
   expect(stmt).toBe('DROP TABLE "public"."window";');
-  await q.execute(sql(stmt));
+  await q.execute(sql(stmt!));
   const objects = unwrap(await listObjects(source));
   expect(objects.find((o) => o.name === 'window')).toBeUndefined();
 });

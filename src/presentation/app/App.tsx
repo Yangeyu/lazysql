@@ -59,6 +59,7 @@ export const App = ({ clipboard }: AppProps) => {
   const structure = useApp((s) => s.structure);
   const structureLoading = useApp((s) => s.structureLoading);
   const structureError = useApp((s) => s.structureError);
+  const structureScroll = useApp((s) => s.structureScroll);
   const result = useApp((s) => s.result);
   const total = useApp((s) => s.total);
   const page = useApp((s) => s.page);
@@ -110,7 +111,7 @@ export const App = ({ clipboard }: AppProps) => {
   // Clamp the user's chosen width so the grid always keeps a usable minimum,
   // however narrow the terminal — the sidebar can't eat the whole screen.
   const sidebarWidth = Math.min(sidebarPref, Math.max(SIDEBAR_MIN, terminalCols - 30));
-  const { viewportCols, editorRows, gridBodyRows, sidebarRows } = computeLayout(
+  const { viewportCols, editorRows, gridBodyRows, resultsBodyRows, sidebarRows } = computeLayout(
     terminalCols,
     terminalRows,
     queryable,
@@ -212,9 +213,12 @@ export const App = ({ clipboard }: AppProps) => {
           focused={gridFocused}
           onPaneClick={() => store.getState().focusPane('grid')}
           onScroll={(dir) => {
-            // Only the data grid scrolls; the DDL view has no scroll of its own.
-            if (surface === 'browse' && mainTab === 'ddl') return;
             const s = store.getState();
+            if (surface === 'browse' && mainTab === 'ddl') {
+              if (dir === 'up') s.scrollStructure(-1);
+              else if (dir === 'down') s.scrollStructure(1);
+              return;
+            }
             if (dir === 'up') s.gridUp();
             else if (dir === 'down') s.gridDown();
             else if (dir === 'left') s.gridLeft();
@@ -230,11 +234,14 @@ export const App = ({ clipboard }: AppProps) => {
           sort={sort}
           loading={loading}
           viewportRows={gridBodyRows}
+          structureRows={resultsBodyRows}
           viewportCols={viewportCols}
           onCellClick={(r, c) => store.getState().clickGrid(r, c)}
           structure={structure}
           structureLoading={structureLoading}
           structureError={structureError}
+          structureScroll={structureScroll}
+          onStructureViewport={(m) => store.getState().setStructureViewport(m)}
         />
       </box>
     </box>

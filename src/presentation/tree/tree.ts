@@ -92,6 +92,7 @@ const CATEGORY_ORDER: ReadonlyArray<{ kind: ObjectKind; label: string }> = [
   { kind: 'trigger', label: 'Triggers' },
   { kind: 'sequence', label: 'Sequences' },
   { kind: 'procedure', label: 'Procedures' },
+  { kind: 'enum', label: 'Enums' },
   { kind: 'collection', label: 'Collections' },
   { kind: 'keyspace', label: 'Keyspaces' },
 ];

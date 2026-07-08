@@ -235,6 +235,11 @@ export interface AppState {
   structure: ObjectSchema | null;
   structureLoading: boolean;
   structureError: string | null;
+  /** First visible line of the DDL view, for its vertical scroll. */
+  structureScroll: number;
+  /** Largest useful structureScroll, reported by the DDL view from its viewport
+   *  so scroll actions clamp to real content (mirrors helpMaxScroll). */
+  structureMaxScroll: number;
   result: ResultSet | null;
   page: Page;
   sort: Sort | null;
@@ -350,6 +355,10 @@ export interface AppState {
   refresh: () => Promise<void>;
   setMainTab: (tab: MainTab) => void;
   toggleMainTab: () => void;
+  /** Scroll the DDL view by `delta` lines (negative = up), clamped to content. */
+  scrollStructure: (delta: number) => void;
+  /** The DDL view reports its scroll range so the offset clamps to real lines. */
+  setStructureViewport: (maxScroll: number) => void;
   // ── connections / new-connection form ──
   /** Switch the active connection to a saved profile by id. */
   connect: (id: string) => Promise<void>;
@@ -608,6 +617,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         mainTab: 'data',
         structure: null,
         structureError: null,
+        structureScroll: 0,
         cellView: null,
         queryText: '',
         queryError: null,
@@ -651,6 +661,8 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       structure: null,
       structureLoading: false,
       structureError: null,
+      structureScroll: 0,
+      structureMaxScroll: 0,
       result: null,
       page: firstPage(PAGE_SIZE),
       sort: null,

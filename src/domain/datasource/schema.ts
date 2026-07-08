@@ -19,6 +19,7 @@ export type ObjectKind =
   | 'trigger'
   | 'sequence'
   | 'procedure'
+  | 'enum'
   | 'collection'
   | 'keyspace';
 
@@ -41,6 +42,11 @@ export interface ColumnDef {
   readonly dataType: string;
   readonly nullable: boolean;
   readonly isPrimaryKey: boolean;
+  /** Allowed values when the column's type is an enum, in declared order —
+   *  present only for enum-typed columns (Postgres enum resolved via its type,
+   *  MySQL `ENUM(...)`). Absent otherwise, so the structure view can show what
+   *  the column may hold without a second lookup. */
+  readonly enumValues?: readonly string[];
   /** True when the store normalizes JSON text on write (e.g. Postgres `jsonb`,
    *  MySQL `json`), so reformatting the text can NOT change the stored value —
    *  editors may pretty-print such cells freely. Absent → text layout is data
@@ -80,7 +86,7 @@ export const sectionsFor = (
     ? ['columns', 'source']
     : kind === 'table' || kind === 'collection' || kind === 'keyspace'
       ? ['columns']
-      : ['source']; // index, trigger, sequence, procedure
+      : ['source']; // index, trigger, sequence, procedure, enum
 
 /** The columns of an object's `columns` section, or [] when it has none (an
  *  index/trigger/… exposes only source). Also the test for "has rows to browse". */

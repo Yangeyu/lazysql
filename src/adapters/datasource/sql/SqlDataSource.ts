@@ -187,9 +187,10 @@ export class SqlDataSource
   // ── DdlScriptable ─────────────────────────────────────────────────────────
 
   /** A quoted, schema-qualified DROP for `ref` — the dialect handles reserved
-   *  words, so dropping an object named `window` is correct. */
-  dropStatement(ref: ObjectRef): string {
-    return this.dialect.dropQuery(ref).text;
+   *  words, so dropping an object named `window` is correct. Null when the
+   *  dialect has no standalone DROP for this kind (e.g. an index/sequence). */
+  dropStatement(ref: ObjectRef): string | null {
+    return this.dialect.dropQuery(ref)?.text ?? null;
   }
 
   cascadeRetry(dropSql: string, error: DataSourceError): CascadeDrop | null {

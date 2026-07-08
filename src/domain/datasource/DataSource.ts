@@ -97,8 +97,11 @@ export interface CascadeDrop {
 }
 
 export interface DdlScriptable {
-  /** A `DROP TABLE`/`DROP VIEW` statement for `ref`, quoted and schema-qualified. */
-  dropStatement(ref: ObjectRef): string;
+  /** A quoted, schema-qualified DROP for `ref`, or null when this source can't
+   *  render a correct one for the object's kind (e.g. a dialect that has no
+   *  standalone drop for an index/sequence). Callers gate on null rather than
+   *  keeping their own list of droppable kinds — the source is the authority. */
+  dropStatement(ref: ObjectRef): string | null;
 
   /** Given a DROP that failed, the CASCADE retry (and the objects it will also
    *  drop) — but only when `error` is precisely "can't drop, dependents exist".

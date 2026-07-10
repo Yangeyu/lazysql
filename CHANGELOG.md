@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.16](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.16) - 2026-07-10
+
+### Bug Fixes
+
+- **repo:** Pin the release workflow to npm@11 — npm@12.0.0 is broken ([0d6163c](https://github.com/Yangeyu/lazysql/commit/0d6163c3d15ec6ddded015f957441d788be023b1))
+
 ## [0.1.15](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.15) - 2026-07-10
 
 ### Features

@@ -72,7 +72,7 @@ beforeAll(async () => {
   ]);
   await seed.close();
 
-  source = unwrap(createDataSource(profile));
+  source = unwrap(await createDataSource(profile));
   unwrap(await source.connect());
 });
 

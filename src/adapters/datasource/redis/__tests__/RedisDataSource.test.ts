@@ -76,7 +76,7 @@ beforeAll(async () => {
   await seed.send('HSET', ['user:profile', 'name', 'carol', 'age', '30']);
   seed.close();
 
-  source = unwrap(createDataSource(profile));
+  source = unwrap(await createDataSource(profile));
   unwrap(await source.connect());
 });
 

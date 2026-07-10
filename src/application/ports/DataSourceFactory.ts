@@ -11,4 +11,4 @@ import type { Result } from '../../shared/Result.ts';
 
 export type DataSourceFactory = (
   profile: ConnectionProfile,
-) => Result<DataSource, ConnectionError>;
+) => Promise<Result<DataSource, ConnectionError>>;

@@ -2,9 +2,14 @@
  * DataSourceFactory — maps a ConnectionProfile to a concrete DataSource. This
  * is the single OCP extension point: supporting Postgres/MySQL/Mongo/Redis adds
  * a branch here (plus its adapter), and nothing in domain/application changes.
+ * A profile with an `ssh` block is routed through an SSH local port forward
+ * first; the tunnel lives exactly as long as the returned DataSource.
  */
 
-import type { ConnectionProfile } from '../../domain/connection/ConnectionProfile.ts';
+import type {
+  ConnectionProfile,
+  DriverId,
+} from '../../domain/connection/ConnectionProfile.ts';
 import type { DataSource } from '../../domain/datasource/DataSource.ts';
 import { ConnectionError } from '../../domain/errors/errors.ts';
 import { ok, err, type Result } from '../../shared/Result.ts';
@@ -19,8 +24,91 @@ import { MySqlDriver } from './sql/drivers/MySqlDriver.ts';
 import type { PoolOptions } from 'mysql2';
 import { RedisDataSource } from './redis/RedisDataSource.ts';
 import { MongoDataSource } from './mongo/MongoDataSource.ts';
+import { SshTunnel } from './tunnel/SshTunnel.ts';
 
-export const createDataSource = (
+export const createDataSource = async (
+  profile: ConnectionProfile,
+): Promise<Result<DataSource, ConnectionError>> => {
+  if (!profile.ssh) return buildDataSource(profile);
+
+  const target = tunnelTarget(profile);
+  if (!target.ok) return target;
+  const tunnel = await SshTunnel.open(profile.ssh, target.value);
+  if (!tunnel.ok) return tunnel;
+
+  const created = buildDataSource({
+    ...profile,
+    options: {
+      ...profile.options,
+      host: '127.0.0.1',
+      port: tunnel.value.localPort,
+      // The mongo driver discovers replica-set members and dials their REAL
+      // addresses, which only resolve from the far side of the tunnel — pin
+      // it to the forwarded endpoint instead.
+      ...(profile.driver === 'mongodb' ? { directConnection: true } : {}),
+    },
+  });
+  if (!created.ok) {
+    tunnel.value.close();
+    return created;
+  }
+  return ok(closingTunnelOnDisconnect(created.value, tunnel.value));
+};
+
+const DEFAULT_TARGET_PORT: Record<Exclude<DriverId, 'sqlite'>, number> = {
+  postgres: 5432,
+  mysql: 3306,
+  mongodb: 27017,
+  redis: 6379,
+};
+
+/** The db endpoint the tunnel must forward to, from the profile's discrete
+ *  host/port. URL-form options are rejected: their embedded host can't be
+ *  rewritten to the local forward (mongodb+srv can't even name one). */
+const tunnelTarget = (
+  profile: ConnectionProfile,
+): Result<{ host: string; port: number }, ConnectionError> => {
+  if (profile.driver === 'sqlite') {
+    return err(new ConnectionError('ssh tunnel does not apply to sqlite'));
+  }
+  const o = profile.options;
+  if (o.connectionString !== undefined || o.url !== undefined || o.uri !== undefined) {
+    return err(
+      new ConnectionError(
+        'ssh tunnel requires discrete host/port options, not a connection URL',
+      ),
+    );
+  }
+  return ok({
+    host: String(o.host ?? 'localhost'),
+    port: o.port === undefined ? DEFAULT_TARGET_PORT[profile.driver] : Number(o.port),
+  });
+};
+
+/** Tie the tunnel's lifetime to the source: disconnect closes both. A Proxy —
+ *  not a wrapper object — so the capability guards' duck typing (asQueryable
+ *  and friends) still sees the adapter's own methods. */
+const closingTunnelOnDisconnect = (
+  source: DataSource,
+  tunnel: SshTunnel,
+): DataSource =>
+  new Proxy(source, {
+    get(target, prop) {
+      if (prop === 'disconnect') {
+        return async () => {
+          try {
+            await target.disconnect();
+          } finally {
+            tunnel.close();
+          }
+        };
+      }
+      const v = Reflect.get(target, prop, target);
+      return typeof v === 'function' ? v.bind(target) : v;
+    },
+  });
+
+const buildDataSource = (
   profile: ConnectionProfile,
 ): Result<DataSource, ConnectionError> => {
   switch (profile.driver) {
@@ -95,8 +183,9 @@ const toPoolConfig = (
   };
 };
 
-/** Resolve a mongodb URI + database name from a URI or discrete fields. */
-const toMongoConfig = (
+/** Resolve a mongodb URI + database name from a URI or discrete fields.
+ *  Exported for its unit tests only — not part of the adapter's surface. */
+export const toMongoConfig = (
   options: Readonly<Record<string, unknown>>,
 ): { uri: string; dbName: string } => {
   const explicit = (options.connectionString ?? options.uri) as
@@ -113,7 +202,8 @@ const toMongoConfig = (
     ? encodeURIComponent(String(options.password))
     : '';
   const auth = user ? `${user}:${password}@` : '';
-  return { uri: `mongodb://${auth}${host}:${port}`, dbName: fromField };
+  const direct = options.directConnection ? '/?directConnection=true' : '';
+  return { uri: `mongodb://${auth}${host}:${port}${direct}`, dbName: fromField };
 };
 
 /** Extract the default database name from a mongodb:// URI path, if present. */

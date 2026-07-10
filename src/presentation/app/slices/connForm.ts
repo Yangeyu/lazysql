@@ -73,8 +73,12 @@ const fieldsForDriver = (driver: DriverId): ConnFormField[] => {
     { key: 'user', label: 'User', value: '', ...auth },
     { key: 'password', label: 'Password', value: '', secret: true },
   ];
+  const ssh: ConnFormField[] = [
+    { key: 'ssh', label: 'SSH', value: '', hint: 'user@host[:port], optional' },
+    { key: 'sshKey', label: 'SSH key', value: '', hint: 'key path, optional' },
+  ];
   return driver === 'redis'
-    ? [...common, { key: 'db', label: 'DB', value: '0', numeric: true, hint: 'index 0–15' }]
+    ? [...common, { key: 'db', label: 'DB', value: '0', numeric: true, hint: 'index 0–15' }, ...ssh]
     : [
         ...common,
         {
@@ -83,7 +87,45 @@ const fieldsForDriver = (driver: DriverId): ConnFormField[] => {
           value: '',
           ...(driver === 'mongodb' ? { hint: 'required' } : {}),
         },
+        ...ssh,
       ];
+};
+
+/** Parse the SSH row's `[user@]host[:port]` shorthand into the profile's
+ *  tunnel config; null when the (non-empty) text doesn't name a host. */
+export const parseSshField = (
+  raw: string,
+): { host: string; port?: number; user?: string } | null => {
+  const text = raw.trim();
+  const at = text.lastIndexOf('@');
+  if (at === 0) return null; // a dangling @ is a typo, not an empty user
+  const user = at > 0 ? text.slice(0, at) : '';
+  const rest = at > 0 ? text.slice(at + 1) : text;
+  const m = /^([^:\s]+)(?::(\d+))?$/.exec(rest);
+  if (!m?.[1]) return null;
+  return {
+    host: m[1],
+    ...(m[2] ? { port: Number(m[2]) } : {}),
+    ...(user ? { user } : {}),
+  };
+};
+
+const formatSshField = (ssh: NonNullable<ConnectionProfile['ssh']>): string =>
+  `${ssh.user ? `${ssh.user}@` : ''}${ssh.host}${ssh.port ? `:${ssh.port}` : ''}`;
+
+/** SSH rows that can't map to a valid tunnel config, or null when fine.
+ *  Empty SSH = no tunnel; a key without a host is a mistake, not a tunnel. */
+const sshFieldError = (f: ConnForm): { index: number; message: string } | null => {
+  const at = (key: string) => f.fields.findIndex((x) => x.key === key);
+  const val = (key: string) => (f.fields[at(key)]?.value ?? '').trim();
+  const ssh = val('ssh');
+  if (ssh && !parseSshField(ssh)) {
+    return { index: at('ssh'), message: 'ssh must be user@host[:port]' };
+  }
+  if (!ssh && val('sshKey')) {
+    return { index: at('sshKey'), message: 'ssh key needs an SSH host above' };
+  }
+  return null;
 };
 
 /** Driver for a pasted connection-URL scheme. Deliberately absent: mongodb+srv
@@ -169,6 +211,12 @@ const fieldsForProfile = (profile: ConnectionProfile): ConnFormField[] =>
     // The URL helper never round-trips: prefilling it from a yml-managed
     // options.url would tempt a fill that silently drops that escape hatch.
     if (f.key === 'url') return f;
+    if (f.key === 'ssh') {
+      return profile.ssh ? { ...f, value: formatSshField(profile.ssh) } : f;
+    }
+    if (f.key === 'sshKey') {
+      return profile.ssh?.keyFile ? { ...f, value: profile.ssh.keyFile } : f;
+    }
     const v = profile.options[f.key];
     return v === undefined || v === null ? f : { ...f, value: String(v) };
   });
@@ -200,8 +248,21 @@ const formProfile = (
     else options.database = val('database');
   }
   const name = val('name');
+  // sshFieldError has already vetoed an unparseable value by the time this
+  // runs, so a non-empty field always parses here.
+  const parsedSsh = f.driver === 'sqlite' ? null : parseSshField(val('ssh'));
+  const keyFile = val('sshKey');
+  const ssh = parsedSsh
+    ? { ...parsedSsh, ...(keyFile ? { keyFile: resolveUserPath(keyFile) } : {}) }
+    : undefined;
   return {
-    profile: { id: f.editingId ?? slugify(name), name, driver: f.driver, options },
+    profile: {
+      id: f.editingId ?? slugify(name),
+      name,
+      driver: f.driver,
+      options,
+      ...(ssh ? { ssh } : {}),
+    },
     password,
   };
 };
@@ -432,6 +493,11 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
         });
         return;
       }
+      const badSsh = sshFieldError(f);
+      if (badSsh) {
+        set({ connForm: { ...f, index: badSsh.index, error: badSsh.message } });
+        return;
+      }
       // Editing keeps the original id so the saved secret stays linked; a blank
       // password leaves that secret untouched (saveConnection only writes a
       // secret when one is provided).
@@ -443,6 +509,13 @@ export const createConnFormSlice = (ctx: ConnFormSliceCtx): ConnFormActions => {
     connFormTest: async () => {
       const f = get().connForm;
       if (!f) return;
+      // Vet the SSH rows here too — otherwise a typo'd tunnel silently probes
+      // the database directly and reports a misleading ok/fail.
+      const badSsh = sshFieldError(f);
+      if (badSsh) {
+        set({ connForm: { ...f, index: badSsh.index, error: badSsh.message, probe: null } });
+        return;
+      }
       const { profile, password } = formProfile(f);
       // The probe connects with the typed password inlined (it isn't in the
       // keychain yet); openConnection falls back to the stored secret when the

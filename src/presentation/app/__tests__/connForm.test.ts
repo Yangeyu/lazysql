@@ -6,7 +6,10 @@
  */
 
 import { test, expect } from 'bun:test';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createAppStore, DRIVER_ROW } from '../store.ts';
+import { parseSshField } from '../slices/connForm.ts';
 import { CapabilitySet } from '../../../domain/datasource/capabilities.ts';
 import { ok } from '../../../shared/Result.ts';
 import type { DataSource } from '../../../domain/datasource/DataSource.ts';
@@ -172,6 +175,83 @@ test('⏎ on a BLANK URL row falls through to save (it is not a trap)', async ()
 
   expect(store.getState().connForm).toBeNull();
   expect(saved).toHaveLength(1);
+});
+
+// ── the SSH rows: optional tunnel spec, validated before save/test ──
+
+test('parseSshField reads user@host:port and its shorthands', () => {
+  expect(parseSshField('ops@bastion:2222')).toEqual({
+    host: 'bastion',
+    port: 2222,
+    user: 'ops',
+  });
+  expect(parseSshField('bastion')).toEqual({ host: 'bastion' });
+  expect(parseSshField('ops@bastion')).toEqual({ host: 'bastion', user: 'ops' });
+  expect(parseSshField('')).toBeNull();
+  expect(parseSshField('@bastion')).toBeNull();
+  expect(parseSshField('bastion:abc')).toBeNull();
+});
+
+test('a filled SSH row saves as the profile ssh block (key path expanded)', async () => {
+  const { store, saved } = storeWith();
+  store.getState().beginNewConnection();
+  store.getState().connFormSetField('name', 'pg');
+  store.getState().connFormSetField('ssh', 'ops@bastion:2222');
+  store.getState().connFormSetField('sshKey', '~/.ssh/id_ed25519');
+  store.getState().connFormFocus(1); // off the URL row
+  await store.getState().connFormSubmit();
+
+  expect(saved).toHaveLength(1);
+  expect(saved[0]?.ssh).toEqual({
+    host: 'bastion',
+    port: 2222,
+    user: 'ops',
+    keyFile: join(homedir(), '.ssh/id_ed25519'),
+  });
+});
+
+test('a blank SSH row saves no ssh block at all', async () => {
+  const { store, saved } = storeWith();
+  store.getState().beginNewConnection();
+  store.getState().connFormSetField('name', 'pg');
+  store.getState().connFormFocus(1);
+  await store.getState().connFormSubmit();
+
+  expect(saved).toHaveLength(1);
+  expect('ssh' in saved[0]!).toBe(false);
+});
+
+test('an unparseable SSH row blocks save and test alike, focus jumping to it', async () => {
+  const { store, saved } = storeWith();
+  store.getState().beginNewConnection();
+  store.getState().connFormSetField('name', 'pg');
+  store.getState().connFormSetField('ssh', 'bastion:abc');
+  store.getState().connFormFocus(1);
+  await store.getState().connFormSubmit();
+
+  let f = store.getState().connForm!;
+  expect(f.error).toBe('ssh must be user@host[:port]');
+  expect(f.fields[f.index]?.key).toBe('ssh');
+  expect(saved).toHaveLength(0);
+
+  await store.getState().connFormTest();
+  f = store.getState().connForm!;
+  expect(f.probe).toBeNull(); // the probe never ran against the bare host
+  expect(f.error).toBe('ssh must be user@host[:port]');
+});
+
+test('an SSH key without an SSH host is an error, not a silent no-op', async () => {
+  const { store, saved } = storeWith();
+  store.getState().beginNewConnection();
+  store.getState().connFormSetField('name', 'pg');
+  store.getState().connFormSetField('sshKey', '~/.ssh/id_ed25519');
+  store.getState().connFormFocus(1);
+  await store.getState().connFormSubmit();
+
+  const f = store.getState().connForm!;
+  expect(f.error).toBe('ssh key needs an SSH host above');
+  expect(f.fields[f.index]?.key).toBe('sshKey');
+  expect(saved).toHaveLength(0);
 });
 
 test('the button row is reachable with ↓ and ←/→ cycles within it', () => {

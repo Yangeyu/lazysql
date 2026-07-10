@@ -66,7 +66,7 @@ beforeAll(async () => {
     driver: 'sqlite',
     options: { file: DB },
   };
-  source = unwrap(createDataSource(profile));
+  source = unwrap(await createDataSource(profile));
   unwrap(await source.connect());
 });
 

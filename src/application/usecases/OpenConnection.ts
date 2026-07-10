@@ -27,7 +27,7 @@ export const openConnection = async (
     ? { ...profile, options: { ...profile.options, password: secret } }
     : profile;
 
-  const created = deps.factory(resolved);
+  const created = await deps.factory(resolved);
   if (!created.ok) return created;
 
   const connected = await created.value.connect();

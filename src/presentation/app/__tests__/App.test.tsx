@@ -51,7 +51,7 @@ beforeAll(async () => {
   for (let i = 1; i <= 25; i++) ins.run(`w${i}`, i);
   db.close();
 
-  source = unwrap(createDataSource(profile));
+  source = unwrap(await createDataSource(profile));
   unwrap(await source.connect());
 });
 

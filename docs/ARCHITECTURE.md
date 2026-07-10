@@ -304,7 +304,9 @@ src/
         __tests__/sqlContract.ts # 参数化共享契约套件（三引擎装配运行）
       mongo/                   # 文档源 → 'document' 形态（_id 稳定排序尾键）
       redis/                   # 键值源 → 'keyvalue' 形态
-      registry.ts              # DataSourceFactory：driver → 适配器（OCP 扩展点）
+      tunnel/SshTunnel.ts      # SSH 本地端口转发（系统 ssh，key/agent 认证）
+      registry.ts              # DataSourceFactory：driver → 适配器（OCP 扩展点）；
+                               # profile.ssh 先建隧道再改写 host/port，隧道随源断开而关闭
     llm/
       createSqlGenerator.ts    # provider 工厂：env/config → SqlGenerator
       providers/               # AnthropicSqlGenerator · OpenAiCompatible + presets（OCP）
@@ -388,7 +390,9 @@ src/
   （零依赖）、按 `:` 前缀分组为 keyspace、`'keyvalue'` 形态。**唯一的 `presentation/` 改动**：store 由
   `asQueryable` 派生 `queryable`，`:`/`^G` 对非 `Query` 源自动隐藏——按能力门控、零 `if (db===…)`。
   **领域/用例零改动**，改动全落 `adapters/`。两套契约测试（真实 Mongo/Redis，不可达则跳过）。
-- **Phase 7 · 进阶**：SSH 隧道、导入导出、插件化。
+- **Phase 7 · 进阶**：✅ SSH 隧道（`profile.ssh` → 系统 `ssh -L` 本地转发；`DataSourceFactory` 因此异步化。
+  仅离散 host/port 选项可走隧道——URL 形式的 host 无法改写指向本地转发；BatchMode 强制 key/agent 认证，
+  TUI 独占终端无法应答交互式密码）。导入导出（导出已完成，ADR 0012）、插件化：未动。
 
 ---
 

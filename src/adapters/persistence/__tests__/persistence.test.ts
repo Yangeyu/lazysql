@@ -83,7 +83,7 @@ test('openConnection merges the resolved secret into options', async () => {
     ping: async () => true,
     capabilities: () => new CapabilitySet([]),
   };
-  const factory: DataSourceFactory = (p) => {
+  const factory: DataSourceFactory = async (p) => {
     received = p;
     return ok(fakeSource);
   };

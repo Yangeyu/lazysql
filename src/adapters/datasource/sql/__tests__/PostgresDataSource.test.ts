@@ -40,7 +40,7 @@ const profile: ConnectionProfile = {
 const widget: ObjectRef = { namespace: 'public', name: 'widget', kind: 'table' };
 
 const probe = async (): Promise<boolean> => {
-  const created = createDataSource(profile);
+  const created = await createDataSource(profile);
   if (!created.ok) return false;
   const connected = await created.value.connect();
   await created.value.disconnect();
@@ -57,7 +57,7 @@ let source: DataSource;
 
 beforeAll(async () => {
   if (!available) return;
-  source = unwrap(createDataSource(profile));
+  source = unwrap(await createDataSource(profile));
   unwrap(await source.connect());
 
   // Seed via the adapter's own Queryable path (also exercises execute()).

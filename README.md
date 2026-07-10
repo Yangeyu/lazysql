@@ -22,7 +22,7 @@ Work with databases in your terminal the way lazygit works with git: connect, br
 - 🛡️ **Destructive-operation guard**: a `WHERE`-less `UPDATE/DELETE`, `DROP`, or `TRUNCATE` always pops a **centered confirmation dialog** echoing the full SQL to be run; when a Postgres `DROP` fails due to dependents, it offers a `CASCADE` retry and **names the objects that would be dropped along with it**
 - 🌳 **Object tree**: filter objects by name with `/` or `f` (live-narrows as you type) · auto-refreshes after a successful DDL (`CREATE/DROP/ALTER/…`)
 - 🤖 **NL→SQL**: press `^G`, type natural language, and the LLM generates SQL **placed into the editor for review** (never auto-executed); destructive statements are flagged with a red ⚠
-- 🗂️ **Connection management**: multi-connection config · create / edit / test connections in-TUI · passwords stored separately from config (optional OS Keychain)
+- 🗂️ **Connection management**: multi-connection config · create / edit / test connections in-TUI · passwords stored separately from config (optional OS Keychain) · **SSH tunnel** to databases behind a bastion (key/agent auth, `~/.ssh/config` aliases work)
 - 🖱️ **Modern terminal UX**: mouse / scroll wheel · system-clipboard copy · full-cell inspector (long text wraps by display width, no CJK truncation)
 
 ## 📦 Installation
@@ -198,6 +198,8 @@ Port/DB fields accept digits only; required fields are validated on save (the er
 
 Paste a connection URL (`postgres://`, `mysql://`, `mongodb://`, `redis://`) into the **URL** row and press `⏎` to fill the whole form — driver, host, port, user, password and database are split out automatically; a name you typed is kept. `mongodb+srv` and `rediss` URLs are not supported by the form (use the `url` option in `connections.yml`).
 
+For a database behind a bastion, fill the **SSH** row with `user@host[:port]` (or a `~/.ssh/config` alias) and optionally an **SSH key** path — see [SSH tunnel](#ssh-tunnel) below.
+
 ## ⚙️ Configuration
 
 All under `~/.config/lazysql/`:
@@ -210,6 +212,31 @@ All under `~/.config/lazysql/`:
 | `history.json` | Per-connection SQL history (capped at 100 entries each) |
 
 Passwords default to `secrets.json`; on macOS, set `LAZYSQL_SECRETS=keychain` to use the system keychain instead (zero native dependencies).
+
+### SSH tunnel
+
+Reach a database behind a bastion by adding an `ssh:` block to a connection (or filling the **SSH** rows in the in-TUI form). lazysql runs the system `ssh` for a local port forward, so your `~/.ssh/config`, keys and agent all apply — `host` can simply be a config alias:
+
+```yaml
+connections:
+  - id: prod
+    name: prod
+    driver: postgres
+    options:
+      host: db.internal        # as seen FROM the bastion
+      port: 5432
+      user: app
+      database: app
+    ssh:
+      host: bastion.example.com   # or a ~/.ssh/config Host alias
+      user: ubuntu                # optional
+      port: 22                    # optional
+      keyFile: ~/.ssh/id_ed25519  # optional (-i); agent/config keys work without it
+```
+
+Applies to PostgreSQL / MySQL / MongoDB / Redis, with discrete `host`/`port` options only — a `url`/`connectionString` option can't be tunneled (its embedded host can't be rewritten). Auth is **key/agent only**: the TUI owns the terminal, so an interactive SSH password prompt can't be answered (`BatchMode` is forced — a connection that would prompt fails fast with ssh's error instead of hanging).
+
+A tunneled MongoDB connection is pinned with `directConnection=true` — replica-set member addresses only resolve from the far side of the tunnel. If the SSH link dies, keepalives make ssh give up within ~90s rather than hold a dead forward open; press `r` to reconnect.
 
 ### NL→SQL (LLM)
 

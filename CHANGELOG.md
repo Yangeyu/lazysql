@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.15](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.15) - 2026-07-10
+
+### Features
+
+- **tui:** Support Postgres enums and MySQL ENUM columns in structure view ([3d50f0e](https://github.com/Yangeyu/lazysql/commit/3d50f0e6ac4f2f24b313234e098975573f7d16bb))
+- **datasource:** Tunnel connections over ssh ([67ff637](https://github.com/Yangeyu/lazysql/commit/67ff63728e8c272bf5bd75ad7cb5a5fe9b2454c7))
+
 ## [0.1.14](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.14) - 2026-07-07
 
 ### Features

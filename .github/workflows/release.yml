@@ -63,8 +63,11 @@ jobs:
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
-      # Trusted publishing needs npm >= 11.5.1; the npm bundled with node 22 is older.
-      - run: npm install -g npm@latest
+      # Trusted publishing needs npm >= 11.5.1; the npm bundled with node 22 is
+      # older. Pinned to the v11 line, NOT @latest: a fresh major can be broken
+      # on release day (npm 12.0.0 shipped missing its sigstore dependency and
+      # took this workflow down with it).
+      - run: npm install -g npm@11
       # No NODE_AUTH_TOKEN: npm detects the GitHub OIDC environment and mints a
       # short-lived per-package credential (provenance attached automatically).
       # Restore the executable bit (artifact round-trips drop it) so npm ships a

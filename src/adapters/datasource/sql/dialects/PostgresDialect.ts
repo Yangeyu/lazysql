@@ -21,7 +21,7 @@ import type {
   ObjectKind,
 } from '../../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
-import type { CascadeDrop } from '../../../../domain/datasource/DataSource.ts';
+import type { CascadeDrop, WriteRefusal } from '../../../../domain/datasource/DataSource.ts';
 import type { DataSourceError } from '../../../../domain/errors/errors.ts';
 import { QueryError } from '../../../../domain/errors/errors.ts';
 import type { RawResult } from '../Driver.ts';
@@ -272,6 +272,26 @@ export class PostgresDialect implements Dialect {
       sql: dropSql.replace(/\s*;?\s*$/, ' CASCADE;'),
       dependents: parseDependents(error.detail),
     };
+  }
+
+  explainWriteError(error: DataSourceError): WriteRefusal | null {
+    // SQLSTATE 23503 = foreign_key_violation. Only its delete/update face —
+    // "the row is still referenced" — is classified; the insert face (the
+    // referenced parent is missing) reads fine as the raw message.
+    if (!(error instanceof QueryError) || error.code !== '23503') return null;
+    // detail: `Key (id)=(42) is still referenced from table "child".`
+    const detail = error.detail?.match(
+      /^Key (\(.+\)=\(.+\)) is still referenced from table "([^"]+)"/,
+    );
+    if (detail?.[1] !== undefined && detail[2] !== undefined) {
+      return { kind: 'stillReferenced', table: detail[2], key: detail[1] };
+    }
+    // No detail (some poolers strip it) — the message still names the table:
+    // `update or delete on table "t" violates … constraint "fk" on table "child"`
+    const table = error.message.match(
+      /^update or delete on table ".+" violates foreign key constraint ".+" on table "([^"]+)"/,
+    )?.[1];
+    return table !== undefined ? { kind: 'stillReferenced', table } : null;
   }
 
   insertQuery(ref: ObjectRef, row: RowPatch): Query {

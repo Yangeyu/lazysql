@@ -33,6 +33,7 @@ import { exportTable } from '../../../application/usecases/ExportTable.ts';
 import { exportTablesCombined } from '../../../application/usecases/ExportTablesCombined.ts';
 import { resolveUserPath } from '../../../shared/path.ts';
 import { refKey, type TreeRow } from '../../tree/tree.ts';
+import { appError } from '../appError.ts';
 
 export interface ExportSliceCtx {
   readonly set: StoreApi<AppState>['setState'];
@@ -105,7 +106,7 @@ export const createExportSlice = (ctx: ExportSliceCtx): ExportSlice => {
     // Neutral wording: a cancelled multi-file batch may have written some
     // complete files already, so don't claim "nothing written".
     else if (ctrl.signal.aborted) set({ notice: 'export cancelled', error: null });
-    else set({ error: `export failed: ${r.error.message}`, notice: null });
+    else set({ error: appError(`export failed: ${r.error.message}`), notice: null });
   };
 
   /** Formats offered for a target: SQL needs a dialect (INSERTs) and a table to
@@ -245,15 +246,15 @@ export const createExportSlice = (ctx: ExportSliceCtx): ExportSlice => {
 
   const actions: ExportActions = {
     exportGrid: () => {
-      if (!exporter) return set({ error: 'export is unavailable' });
+      if (!exporter) return set({ error: appError('export is unavailable') });
       const { surface, result, current, sort, filter } = get();
       // A query surface has only its in-memory result; a browse surface exports
       // the WHOLE table behind the view (its filter/sort applied), not one page.
       if (surface === 'query') {
-        if (!result) return set({ error: 'nothing to export' });
+        if (!result) return set({ error: appError('nothing to export') });
         exportReq = { kind: 'result', result };
       } else {
-        if (!source() || !current) return set({ error: 'nothing to export' });
+        if (!source() || !current) return set({ error: appError('nothing to export') });
         exportReq = { kind: 'table', ref: current, sort, filter };
       }
       clampExportFormat();
@@ -261,8 +262,8 @@ export const createExportSlice = (ctx: ExportSliceCtx): ExportSlice => {
     },
 
     exportSelectedTable: () => {
-      if (!exporter) return set({ error: 'export is unavailable' });
-      if (!source()) return set({ error: 'nothing to export' });
+      if (!exporter) return set({ error: appError('export is unavailable') });
+      if (!source()) return set({ error: appError('nothing to export') });
       // Marks win over the cursor when present (a selection overrides position);
       // otherwise the cursor's node decides — a schema/category exports all its
       // tables, an object row just itself.
@@ -273,7 +274,7 @@ export const createExportSlice = (ctx: ExportSliceCtx): ExportSlice => {
           : objectsUnder(rowsNow()[get().treeIndex]);
       const refs = picked.filter((o) => o.kind === 'table' || o.kind === 'view');
       if (refs.length === 0) {
-        return set({ error: 'select a table, a schema, or mark tables (v) to export' });
+        return set({ error: appError('select a table, a schema, or mark tables (v) to export') });
       }
       exportReq =
         refs.length === 1

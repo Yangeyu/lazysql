@@ -11,13 +11,14 @@
 import React from 'react';
 import { TextAttributes } from '@opentui/core';
 import type { Mode } from '../app/store.ts';
+import type { AppError } from '../app/appError.ts';
 import { footerHints, type KeyContext, type KeyFlags } from '../keymap/keymap.ts';
 import { theme, INPUT_CURSOR } from '../theme/theme.ts';
 
 interface Props {
   width: number;
   status: string;
-  error: string | null;
+  error: AppError | null;
   /** Transient info line (e.g. an export result); shown when there's no error. */
   notice: string | null;
   context: KeyContext;
@@ -131,7 +132,7 @@ const StatusBarImpl = ({
     return bar(
       <text wrapMode="none">
         <Badge label="error" bg={theme.red} fg="#ffffff" />
-        <span fg={theme.red}> {error}</span>
+        <span fg={theme.red}> {error.message}</span>
       </text>,
     );
   }

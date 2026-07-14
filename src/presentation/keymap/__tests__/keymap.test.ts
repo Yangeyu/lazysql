@@ -77,6 +77,8 @@ const stub = (over: Partial<AppState> = {}): AppState =>
     generating: false,
     queryable: true,
     nlAvailable: true,
+    error: null,
+    errorDismissed: null,
     cellView: null,
     mode: 'normal',
     nlMode: false,
@@ -152,6 +154,45 @@ test('dispatchKey: the DDL context scrolls the structure and toggles the tab', (
   expect(s.scrollStructure).toHaveBeenCalledWith(1);
   dispatchKey(s, key({ sequence: 'D' }), env());
   expect(s.toggleMainTab).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: a fresh error pops its dialog, which swallows input; esc dismisses', () => {
+  const dismissError = mock(() => {});
+  const s = stub({
+    error: { message: 'boom' }, // not dismissed → the dialog is showing
+    dismissError,
+  } as Partial<AppState>);
+  dispatchKey(s, key({ name: 'j', sequence: 'j' }), env()); // swallowed
+  expect(s.gridDown).not.toHaveBeenCalled();
+  dispatchKey(s, key({ name: 'escape' }), env());
+  expect(dismissError).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: a staged confirm keeps its keys even with an undismissed error behind it', () => {
+  // Render precedence puts the confirm ABOVE the error dialog; the dispatcher
+  // must agree, or y/n would feed an invisible dialog.
+  const confirmPending = mock(async () => {});
+  const dismissError = mock(() => {});
+  const s = stub({
+    error: { message: 'boom' }, // undismissed…
+    mode: 'confirm',
+    pending: { title: 't', tone: 'normal', run: async () => {} }, // …but the confirm owns the screen
+    confirmPending,
+    dismissError,
+  } as Partial<AppState>);
+  dispatchKey(s, key({ name: 'y', sequence: 'y' }), env());
+  expect(confirmPending).toHaveBeenCalledTimes(1);
+  expect(dismissError).not.toHaveBeenCalled();
+});
+
+test('dispatchKey: after a dismissal keys flow to the panes again', () => {
+  const dismissed = { message: 'boom' };
+  const s = stub({
+    error: dismissed,
+    errorDismissed: dismissed, // same object → dialog closed
+  } as Partial<AppState>);
+  dispatchKey(s, key({ name: 'j', sequence: 'j' }), env());
+  expect(s.gridDown).toHaveBeenCalledTimes(1); // not swallowed
 });
 
 test('dispatchKey: X exports the grid view and the selected tree table', () => {

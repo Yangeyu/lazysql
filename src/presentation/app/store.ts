@@ -47,6 +47,7 @@ import type { StatementKind } from '../../domain/query/classify.ts';
 import type { QueryHistoryStore } from '../../application/ports/QueryHistoryStore.ts';
 import type { SchemaCatalog } from '../completion/sqlCompleter.ts';
 import { SIDEBAR_WIDTH, SIDEBAR_STEP, clampSidebarWidth } from './layout.ts';
+import { appError, fromError, type AppError } from './appError.ts';
 
 // Owned by their feature slices; re-exported so consumers keep one import site.
 export { PAGE_SIZE } from './slices/browse.ts';
@@ -190,7 +191,14 @@ export type Region = Focus;
 
 export interface AppState {
   status: Status;
-  error: string | null;
+  /** The last failure: a one-line `message` for the status bar plus the driver
+   *  facts behind it. A new error pops the details dialog (see `errorShowing`);
+   *  null when healthy. */
+  error: AppError | null;
+  /** The error the user dismissed (esc), so its dialog stays closed. Identity-
+   *  based, not a boolean: a NEW error object pops the dialog again without any
+   *  set site having to reset a flag. */
+  errorDismissed: AppError | null;
   /** A transient info line (e.g. an export result) shown in the status bar until
    *  the next navigation replaces it. Distinct from `error` (failure) — success/
    *  info, not overlapping. */
@@ -301,6 +309,8 @@ export interface AppState {
 
   init: () => Promise<void>;
   toggleHelp: () => void;
+  /** Dismiss the showing error dialog (esc). */
+  dismissError: () => void;
   /** Scroll the help overlay's body by `delta` lines, clamped to its content. */
   scrollHelp: (delta: number) => void;
   /** The overlay reports how far its content can scroll (0 when it all fits). */
@@ -569,7 +579,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       if (!active) return;
       const res = await listObjects(active);
       if (!res.ok) {
-        set({ status: 'error', error: res.error.message });
+        set({ status: 'error', error: fromError(res.error) });
         return;
       }
       // Expand the first present category — and, for a schema-tiered driver, its
@@ -641,6 +651,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
     return {
       status: 'ready',
       error: null,
+      errorDismissed: null,
       notice: null,
       exportFormat: 'csv',
       profiles: [],
@@ -711,6 +722,8 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen, helpScroll: 0 })),
 
+      dismissError: () => set((s) => ({ errorDismissed: s.error })),
+
       scrollHelp: (delta) =>
         set((s) => ({
           helpScroll: Math.max(0, Math.min(s.helpMaxScroll, s.helpScroll + delta)),
@@ -743,7 +756,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         set({ status: 'connecting', error: null });
         const r = await connectionService.open(profile);
         if (!r.ok) {
-          set({ status: 'error', error: r.error.message });
+          set({ status: 'error', error: fromError(r.error) });
           return;
         }
         if (!get().profiles.some((p) => p.id === profile.id)) {
@@ -805,7 +818,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         if (target === 'editor') {
           // The editor pane only exists for SQL-speaking sources.
           if (!get().queryable) {
-            set({ error: 'This source does not support SQL queries.' });
+            set({ error: appError('This source does not support SQL queries.') });
             return;
           }
           if (!get().catalog) void editor.buildCatalog();

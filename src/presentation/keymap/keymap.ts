@@ -15,6 +15,7 @@
 
 import type { KeyEvent } from '@opentui/core';
 import type { AppState, Focus, Mode, SurfaceKind, MainTab } from '../app/store.ts';
+import { errorDialogShowing } from '../app/appError.ts';
 import { printableChar } from '../input/keys.ts';
 import { formatCellValue } from '../components/cellFormat.ts';
 
@@ -391,6 +392,14 @@ export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void 
   }
 
   const ch = printableChar(key);
+
+  // The error dialog (auto-popped on failure) swallows input until dismissed —
+  // but only while it is the layer actually on screen: a staged confirm and the
+  // connection form render above it, and they must keep their keys.
+  if (errorDialogShowing(s)) {
+    if (key.name === 'escape' || key.name === 'return') s.dismissError();
+    return;
+  }
 
   // The help overlay floats over any context and swallows input until
   // dismissed; j/k (and ^d/^u) scroll it when the list outgrows the panel.

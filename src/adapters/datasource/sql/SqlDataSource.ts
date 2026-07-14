@@ -14,6 +14,8 @@ import type {
   BrowsePreviewable,
   CascadeDrop,
   RowEditable,
+  WriteErrorExplainable,
+  WriteRefusal,
   Transactional,
   Tx,
   SourceId,
@@ -61,6 +63,7 @@ export class SqlDataSource
     Browsable,
     BrowsePreviewable,
     RowEditable,
+    WriteErrorExplainable,
     Transactional,
     SqlDumpable
 {
@@ -209,8 +212,16 @@ export class SqlDataSource
   transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
     return this.driver.transaction(async (run) => {
       const tx: Tx = {
-        execute: async (query) =>
-          toResultSet(await run(query.text, query.params ?? [])),
+        // Same QueryError boundary as execute()/runQuery — without it a driver
+        // failure inside a transaction (e.g. an FK-refused delete) escapes raw,
+        // losing the code/detail the dialects classify on.
+        execute: async (query) => {
+          try {
+            return toResultSet(await run(query.text, query.params ?? []));
+          } catch (cause) {
+            throw asQueryError(cause);
+          }
+        },
       };
       return fn(tx);
     });
@@ -228,6 +239,10 @@ export class SqlDataSource
 
   delete(ref: ObjectRef, key: RowKey): Promise<EditResult> {
     return this.writeOne(this.dialect.deleteQuery(ref, key), 'delete');
+  }
+
+  explainWriteError(error: DataSourceError): WriteRefusal | null {
+    return this.dialect.explainWriteError(error);
   }
 
   /** Run a single-row write in a transaction; roll back unless it affects 1 row.
@@ -251,16 +266,20 @@ export class SqlDataSource
     try {
       return await this.driver.run(query.text, query.params ?? []);
     } catch (cause) {
-      // Surface the driver's real message: the failing SQL is already echoed,
-      // so restating it (the obvious move) tells the user nothing.
-      throw new QueryError(reasonOf(cause), {
-        cause,
-        code: codeOf(cause),
-        detail: detailOf(cause),
-      });
+      throw asQueryError(cause);
     }
   }
 }
+
+/** Wrap a driver failure as a QueryError carrying the native code + detail.
+ *  Surfaces the driver's real message: the failing SQL is already echoed, so
+ *  restating it (the obvious move) tells the user nothing. */
+const asQueryError = (cause: unknown): QueryError =>
+  new QueryError(reasonOf(cause), {
+    cause,
+    code: codeOf(cause),
+    detail: detailOf(cause),
+  });
 
 /** The first cell of a raw result as text — a `sourceQuery` returns one DDL
  *  string in one row, one column; empty when the object yields nothing. */

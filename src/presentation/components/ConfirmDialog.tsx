@@ -11,7 +11,7 @@ import React from 'react';
 import { TextAttributes } from '@opentui/core';
 import type { PendingChoice } from '../app/store.ts';
 import { theme } from '../theme/theme.ts';
-import { Overlay } from './Overlay.tsx';
+import { Overlay, dialogWidth } from './Overlay.tsx';
 
 interface Props {
   title: string;
@@ -56,7 +56,7 @@ const ConfirmDialogImpl = ({ title, statement, details, tone, choice, termRows, 
   const danger = tone === 'danger';
   const accent = danger ? theme.red : theme.accent;
 
-  const width = Math.max(34, Math.min(termCols - 8, 76));
+  const width = dialogWidth(termCols);
   const innerW = width - 4; // border (2) + paddingX (2)
 
   const deps = details ?? [];

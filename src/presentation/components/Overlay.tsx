@@ -29,6 +29,12 @@ interface Props {
   children: React.ReactNode;
 }
 
+/** Preferred outer width of the message dialogs (confirm / error): generous
+ *  enough for long SQL and driver detail, clamped with a margin on narrow
+ *  terminals. Content-sized overlays (help, cell inspector) size themselves. */
+export const dialogWidth = (termCols: number): number =>
+  Math.max(34, Math.min(termCols - 8, 100));
+
 const OverlayImpl = ({
   termRows,
   termCols,

@@ -13,10 +13,12 @@ import { QueryEditor } from '../components/QueryEditor.tsx';
 import { StatusBar } from '../components/StatusBar.tsx';
 import { Header } from '../components/Header.tsx';
 import { HelpOverlay } from '../components/HelpOverlay.tsx';
+import { ErrorOverlay } from '../components/ErrorOverlay.tsx';
 import { ConnectionForm } from '../components/ConnectionForm.tsx';
 import { CellView } from '../components/CellView.tsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
 import { helpGroups, deriveContext, dispatchKey, type KeyFlags } from '../keymap/keymap.ts';
+import { errorDialogShowing } from './appError.ts';
 import { SIDEBAR_MIN, computeLayout } from './layout.ts';
 import { buildTree, toConnNodes, dialectLabel, shortTag, groupsBySchema } from '../tree/tree.ts';
 import { theme } from '../theme/theme.ts';
@@ -74,6 +76,7 @@ export const App = ({ clipboard }: AppProps) => {
   const loading = useApp((s) => s.loading);
 
   const queryable = useApp((s) => s.queryable);
+  const errorDismissed = useApp((s) => s.errorDismissed);
   const helpOpen = useApp((s) => s.helpOpen);
   const helpScroll = useApp((s) => s.helpScroll);
   const cellView = useApp((s) => s.cellView);
@@ -270,6 +273,8 @@ export const App = ({ clipboard }: AppProps) => {
       onFocusRow={(i) => store.getState().connFormFocus(i)}
       onButton={(i) => store.getState().connFormPressButton(i)}
     />
+  ) : error && errorDialogShowing({ error, errorDismissed, mode, pending, connForm }) ? (
+    <ErrorOverlay error={error} termRows={terminalRows} termCols={terminalCols} />
   ) : helpOpen ? (
     <HelpOverlay
       groups={helpGroups(context, flags)}

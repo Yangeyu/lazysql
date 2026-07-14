@@ -102,9 +102,10 @@ interface Streamable {           // 游标/流式，海量结果不撑爆内存
 
 > 以上为奠基时的核心五个；随功能演进又按同一模式长出了 `Browsable`（分页读窗口，`BrowseSpec`
 > 携带主键 `stableKey` 保证窗口顺序确定）、`BrowsePreviewable` / `EditPreviewable`（把将要执行的
-> 读/写渲染为可回显语句，display-only）、`DdlScriptable`（DROP 草稿 + CASCADE 升级）与
-> `SqlDumpable`（导出 INSERT dump）。完整清单以 `domain/datasource/DataSource.ts` 为准——
-> 每个能力都配 `asXxx` guard，UI 只经 guard 触达。
+> 读/写渲染为可回显语句，display-only）、`DdlScriptable`（DROP 草稿 + CASCADE 升级）、
+> `SqlDumpable`（导出 INSERT dump）与 `WriteErrorExplainable`（把被拒绝的行写入分类为结构化
+> 事实，如外键 "still referenced"，UI 据此措辞；不认识则回落原始报错）。完整清单以
+> `domain/datasource/DataSource.ts` 为准——每个能力都配 `asXxx` guard，UI 只经 guard 触达。
 
 | 数据源 | Queryable | Schema | RowEdit | Transactional | Streamable |
 |--------|:---:|:---:|:---:|:---:|:---:|

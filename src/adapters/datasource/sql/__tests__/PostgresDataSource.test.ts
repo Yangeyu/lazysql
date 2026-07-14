@@ -18,7 +18,10 @@ import {
   asIntrospectable,
   asQueryable,
   asDdlScriptable,
+  asRowEditable,
+  asWriteErrorExplainable,
 } from '../../../../domain/datasource/DataSource.ts';
+import { QueryError } from '../../../../domain/errors/errors.ts';
 import { listObjects } from '../../../../application/usecases/ListObjects.ts';
 import { browseTable } from '../../../../application/usecases/BrowseTable.ts';
 import { unwrap } from '../../../../shared/Result.ts';
@@ -149,6 +152,36 @@ pgTest('describe marks jsonb columns jsonCanonical — json stays verbatim', asy
     expect(cols.find((c) => c.name === 'id')?.jsonCanonical).toBeUndefined();
   } finally {
     await exec('DROP TABLE jsonshapes');
+  }
+});
+
+pgTest('a still-referenced delete throws a coded QueryError the dialect classifies', async () => {
+  // End-to-end through the real driver: the FK error must keep its SQLSTATE +
+  // detail across the transactional write path (tx.execute wraps like execute),
+  // and the dialect must parse the live wire format, not just fixtures.
+  const q = asQueryable(source)!;
+  await q.execute(sql('DROP TABLE IF EXISTS widget_note'));
+  await q.execute(
+    sql('CREATE TABLE widget_note (id int PRIMARY KEY, widget_id int REFERENCES widget(id))'),
+  );
+  await q.execute(sql('INSERT INTO widget_note VALUES (1, 5)'));
+  try {
+    let thrown: unknown;
+    try {
+      await asRowEditable(source)!.delete(widget, [{ column: 'id', value: 5 }]);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(QueryError);
+    expect((thrown as QueryError).code).toBe('23503');
+    expect(
+      asWriteErrorExplainable(source)!.explainWriteError(thrown as QueryError),
+    ).toEqual({ kind: 'stillReferenced', table: 'widget_note', key: '(id)=(5)' });
+    // The refused delete rolled back: the parent row is still there.
+    const kept = await q.execute(sql(`SELECT count(*) FROM widget WHERE id = $1`, [5]));
+    expect(Number(kept.rows[0]?.[0])).toBe(1);
+  } finally {
+    await q.execute(sql('DROP TABLE widget_note'));
   }
 });
 

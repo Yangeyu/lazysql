@@ -12,7 +12,7 @@ import type {
   ColumnDef,
 } from '../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../domain/datasource/edit.ts';
-import type { CascadeDrop } from '../../../domain/datasource/DataSource.ts';
+import type { CascadeDrop, WriteRefusal } from '../../../domain/datasource/DataSource.ts';
 import type { DataSourceError } from '../../../domain/errors/errors.ts';
 import type { RawResult } from './Driver.ts';
 
@@ -49,6 +49,12 @@ export interface Dialect {
    *  failure; null otherwise (wrong error, or no CASCADE in this dialect). Lets
    *  the UI offer the escalation, naming the casualties, only when it applies. */
   cascadeDrop(dropSql: string, error: DataSourceError): CascadeDrop | null;
+
+  /** Structured facts for a row write refused by a constraint this dialect
+   *  recognizes — currently the foreign-key "still referenced" refusal — or
+   *  null (unrecognized error, or no such classification for this dialect).
+   *  Lets the UI word the failure for a human instead of echoing the driver. */
+  explainWriteError(error: DataSourceError): WriteRefusal | null;
 
   /** Parameterized DML — every value bound, never a write without a key. */
   insertQuery(ref: ObjectRef, row: RowPatch): Query;

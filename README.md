@@ -108,6 +108,8 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 | `?` | Toggle help |
 | `q` | Quit |
 
+Failures (a refused write, a lost connection, a failed export…) pop an error dialog with the full message, the driver's error code and its detail; `esc` dismisses it.
+
 **Sidebar (tree)**
 
 | Key | Action |

@@ -22,7 +22,7 @@ import type {
   ObjectKind,
 } from '../../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
-import type { CascadeDrop } from '../../../../domain/datasource/DataSource.ts';
+import type { CascadeDrop, WriteRefusal } from '../../../../domain/datasource/DataSource.ts';
 import type { RawResult } from '../Driver.ts';
 import { buildWhere, buildOrderBy } from '../whereBuilder.ts';
 import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
@@ -185,6 +185,12 @@ export class MySqlDialect implements Dialect {
   // MySQL parses CASCADE on DROP TABLE but ignores it (the fix is dropping the
   // referencing FK first), so there is no safe one-key escalation to offer.
   cascadeDrop(): CascadeDrop | null {
+    return null;
+  }
+
+  // FK refusals (ER_ROW_IS_REFERENCED) aren't classified yet — the raw driver
+  // message shows, and it already names the constraint and referencing table.
+  explainWriteError(): WriteRefusal | null {
     return null;
   }
 

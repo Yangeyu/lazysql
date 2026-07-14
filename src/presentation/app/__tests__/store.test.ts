@@ -14,6 +14,8 @@ import type {
   DataSource,
   DdlScriptable,
   Queryable,
+  RowEditable,
+  WriteErrorExplainable,
 } from '../../../domain/datasource/DataSource.ts';
 import type { ResultSet } from '../../../domain/datasource/ResultSet.ts';
 import type { ConnectionService } from '../../../application/ports/ConnectionService.ts';
@@ -22,6 +24,7 @@ import type { ObjectKind } from '../../../domain/datasource/schema.ts';
 import type { SqlGenerator } from '../../../application/ports/SqlGenerator.ts';
 import type { Exporter } from '../../../application/ports/Exporter.ts';
 import { SIDEBAR_STEP, SIDEBAR_MIN, SIDEBAR_MAX } from '../layout.ts';
+import { errorShowing } from '../appError.ts';
 
 const fakeSource: DataSource = {
   id: 'fake',
@@ -461,7 +464,7 @@ test('submitEdit rejects malformed JSON on a jsonCanonical column, keeping the d
   store.getState().submitEdit('{oops');
   expect(store.getState().mode).toBe('normal'); // no confirm staged
   expect(store.getState().cellView?.mode).toBe('edit'); // still editing
-  expect(store.getState().error).toContain('JSON');
+  expect(store.getState().error?.message).toContain('JSON');
 });
 
 test('submitEdit stages a changed, valid draft as an update confirm', () => {
@@ -565,6 +568,70 @@ test('a dependents-blocked DROP escalates to a CASCADE confirm, then runs it', a
   expect(store.getState().pending).toBeNull();
 });
 
+test('a still-referenced delete fails worded for a human; ! opens its details', async () => {
+  // A Postgres-shaped fake: delete raises SQLSTATE 23503 ("still referenced");
+  // explainWriteError reuses the real dialect so the wiring is exercised
+  // end-to-end (confirm → failure → classified one-liner → details overlay).
+  const dialect = new PostgresDialect();
+  const fkError = new QueryError(
+    'update or delete on table "evidence_cards" violates foreign key constraint "insight_card_evidence_cards_evidence_card_id_fkey" on table "insight_card_evidence_cards"',
+    {
+      code: '23503',
+      detail: 'Key (id)=(1) is still referenced from table "insight_card_evidence_cards".',
+    },
+  );
+  const source: DataSource & RowEditable & WriteErrorExplainable = {
+    id: 'pg-fake',
+    connect: async () => ok(undefined),
+    disconnect: async () => {},
+    ping: async () => true,
+    capabilities: () => new CapabilitySet([Capability.RowEdit]),
+    insert: async () => ({ affected: 1 }),
+    update: async () => ({ affected: 1 }),
+    delete: async () => {
+      throw fkError;
+    },
+    explainWriteError: (e) => dialect.explainWriteError(e),
+  };
+  const profile: ConnectionProfile = { id: 'pg', name: 'PG', driver: 'postgres', options: {} };
+  const store = createAppStore({
+    connectionService: {
+      list: async () => [profile],
+      open: async () => ok(source),
+      save: async () => {},
+      remove: async () => {},
+    },
+    initial: profile,
+  });
+  await store.getState().init();
+  store.setState({
+    current: { name: 'evidence_cards', kind: 'table' },
+    result: { shape: 'tabular', columns: [{ name: 'id' }], rows: [[1]], truncated: false },
+    pkColumns: ['id'],
+    gridRow: 0,
+    surface: 'browse',
+    error: null,
+  });
+
+  store.getState().beginDelete();
+  expect(store.getState().mode).toBe('confirm');
+  await store.getState().confirmPending();
+
+  const failure = store.getState().error;
+  expect(failure?.message).toBe(
+    'cannot delete: row is still referenced by "insight_card_evidence_cards" — key (id)=(1)',
+  );
+  expect(failure?.code).toBe('23503');
+  expect(failure?.detail).toContain('still referenced from table');
+  expect(failure?.raw).toContain('violates foreign key constraint');
+
+  // A fresh failure pops its dialog; esc dismisses it, keeping the error.
+  expect(errorShowing(store.getState())).toBe(true);
+  store.getState().dismissError();
+  expect(errorShowing(store.getState())).toBe(false);
+  expect(store.getState().error).toEqual(failure ?? null);
+});
+
 test('a non-Queryable source gates off the SQL editor and NL→SQL', async () => {
   // fakeSource has no execute() → not Queryable (like Mongo/Redis).
   const generator: SqlGenerator = {
@@ -591,7 +658,7 @@ test('a non-Queryable source gates off the SQL editor and NL→SQL', async () =>
   // for a non-SQL source.
   store.getState().focusPane('editor');
   expect(store.getState().focus).not.toBe('editor');
-  expect(store.getState().error).toContain('does not support SQL');
+  expect(store.getState().error?.message).toContain('does not support SQL');
 });
 
 // ── remove connection ──

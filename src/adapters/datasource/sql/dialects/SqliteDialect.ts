@@ -19,7 +19,7 @@ import type {
   ObjectKind,
 } from '../../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
-import type { CascadeDrop } from '../../../../domain/datasource/DataSource.ts';
+import type { CascadeDrop, WriteRefusal } from '../../../../domain/datasource/DataSource.ts';
 import type { RawResult } from '../Driver.ts';
 import { buildWhere, buildOrderBy } from '../whereBuilder.ts';
 import { buildInsert, buildUpdate, buildDelete } from '../dml.ts';
@@ -118,6 +118,12 @@ export class SqliteDialect implements Dialect {
   // SQLite does not enforce cross-object dependencies on DROP, so the "dependents
   // exist" failure never arises and there is nothing to escalate.
   cascadeDrop(): CascadeDrop | null {
+    return null;
+  }
+
+  // SQLite's FK error ("FOREIGN KEY constraint failed") names neither the
+  // constraint nor the table — there are no facts to structure.
+  explainWriteError(): WriteRefusal | null {
     return null;
   }
 

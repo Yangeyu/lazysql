@@ -12,8 +12,11 @@ import {
   asBrowsePreviewable,
   asEditPreviewable,
   asIntrospectable,
+  asWriteErrorExplainable,
   type DataSource,
 } from '../../../domain/datasource/DataSource.ts';
+import type { DataSourceError } from '../../../domain/errors/errors.ts';
+import { appError, fromError, type AppError } from '../appError.ts';
 import type { ObjectRef, ObjectSchema } from '../../../domain/datasource/schema.ts';
 import { columnsOf, objectRefKey } from '../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch, FieldValue } from '../../../domain/datasource/edit.ts';
@@ -30,6 +33,21 @@ import { updateRow, deleteRow } from '../../../application/usecases/EditRow.ts';
 import { cellEditText, isJsonText, prettyJson } from '../../components/cellFormat.ts';
 
 export const PAGE_SIZE = 100;
+
+/** A failed row write as the status bar's one line: worded for a human when the
+ *  source can explain the refusal (FK "still referenced"), else the raw driver
+ *  message — the full driver facts ride along for the `!` overlay either way. */
+const editFailure = (
+  live: DataSource,
+  verb: 'update' | 'delete',
+  e: DataSourceError,
+): AppError => {
+  const why = asWriteErrorExplainable(live)?.explainWriteError(e);
+  if (why?.kind !== 'stillReferenced') return fromError(e);
+  const where = why.table ? `by "${why.table}"` : 'by other rows';
+  const key = why.key ? ` — key ${why.key}` : '';
+  return fromError(e, `cannot ${verb}: row is still referenced ${where}${key}`);
+};
 
 /** Pop an inspector back to its read-only view, keeping the scroll position —
  *  the one projection both esc and a no-op save must agree on. */
@@ -115,7 +133,7 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
     const res = await browseTable(active, ref, { ...spec, stableKey: get().pkColumns }, nav.signal);
     if (stale(nav)) return; // a newer navigation owns the UI (this one was aborted)
     if (!res.ok) {
-      set({ loading: false, status: 'error', error: res.error.message });
+      set({ loading: false, status: 'error', error: fromError(res.error) });
       return;
     }
     set({
@@ -370,21 +388,21 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
       const column = result?.columns[gridCol]?.name;
       if (!result || !column) return;
       if (pkColumns.length === 0) {
-        set({ error: 'table has no primary key — editing disabled' });
+        set({ error: appError('table has no primary key — editing disabled') });
         return;
       }
       // Freeze the row locator NOW: submitEdit must target the cell the draft
       // was seeded from, whatever the grid cursor does while the overlay is up.
       const rowKey = currentRowKey();
       if (!rowKey) {
-        set({ error: 'cannot locate this row by primary key — editing disabled' });
+        set({ error: appError('cannot locate this row by primary key — editing disabled') });
         return;
       }
       const value = result.rows[gridRow]?.[gridCol] ?? null;
       // Editing happens in the cell inspector overlay (ADR 0011): open it in
       // edit mode seeded with THIS cell. Binary blobs aren't text-editable.
       if (value instanceof Uint8Array) {
-        set({ error: 'binary value — not editable here' });
+        set({ error: appError('binary value — not editable here') });
         return;
       }
       // The <textarea> holds the draft (seeded from `seedText`); the store keeps
@@ -443,7 +461,7 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
         // A jsonCanonical column would reject malformed JSON anyway — fail
         // here, next to the draft, instead of at the database.
         if (!isJsonText(value)) {
-          set({ error: 'not valid JSON — fix the draft or esc to discard' });
+          set({ error: appError('not valid JSON — fix the draft or esc to discard') });
           return;
         }
       }
@@ -466,7 +484,7 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
             const live = source();
             if (!live) return;
             const r = await updateRow(live, current, key, patch);
-            if (!r.ok) set({ status: 'error', error: r.error.message });
+            if (!r.ok) set({ status: 'error', error: editFailure(live, 'update', r.error) });
             else await reloadKeepingCursor();
           },
         },
@@ -478,7 +496,7 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
       const { current } = get();
       const key = currentRowKey();
       if (!current || !key) {
-        set({ error: 'table has no primary key — cannot delete' });
+        set({ error: appError('table has no primary key — cannot delete') });
         return;
       }
       const preview = active ? asEditPreviewable(active) : null;
@@ -494,7 +512,7 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
             const live = source();
             if (!live) return;
             const r = await deleteRow(live, current, key);
-            if (!r.ok) set({ status: 'error', error: r.error.message });
+            if (!r.ok) set({ status: 'error', error: editFailure(live, 'delete', r.error) });
             else await reloadKeepingCursor();
           },
         },

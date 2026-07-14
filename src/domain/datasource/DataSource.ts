@@ -117,6 +117,28 @@ export interface RowEditable {
   delete(ref: ObjectRef, key: RowKey): Promise<EditResult>;
 }
 
+/** A refused row write, explained: the target row is still referenced by rows
+ *  in another table (a restricting foreign key), so deleting or re-keying it
+ *  fails until those rows are dealt with. Fields are best-effort parses of the
+ *  driver error — absent when it doesn't name them. */
+export interface WriteRefusal {
+  readonly kind: 'stillReferenced';
+  /** The table holding the referencing rows. */
+  readonly table?: string;
+  /** The referenced key as the driver prints it, e.g. `(id)=(42)`. */
+  readonly key?: string;
+}
+
+/**
+ * Turn a failed RowEditable write's error into structured facts the UI can
+ * word for a human — but only when the source recognizes the failure; null
+ * means "show the raw message". Optional (ISP), like EditPreviewable: a source
+ * that can't classify its driver errors simply doesn't implement it.
+ */
+export interface WriteErrorExplainable {
+  explainWriteError(error: DataSourceError): WriteRefusal | null;
+}
+
 /**
  * Render rows as runnable `INSERT` statements for a data dump — dialect-correct
  * identifiers and value literals. No `CREATE`/`ON CONFLICT`: the dump appends to
@@ -185,6 +207,13 @@ export const asRowEditable = (
 ): (DataSource & RowEditable) | null =>
   typeof (s as Partial<RowEditable>).update === 'function'
     ? (s as DataSource & RowEditable)
+    : null;
+
+export const asWriteErrorExplainable = (
+  s: DataSource,
+): (DataSource & WriteErrorExplainable) | null =>
+  typeof (s as Partial<WriteErrorExplainable>).explainWriteError === 'function'
+    ? (s as DataSource & WriteErrorExplainable)
     : null;
 
 export const asTransactional = (

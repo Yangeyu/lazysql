@@ -114,6 +114,12 @@ export const dialectLabel = (driver: DriverId): string =>
  *  and view both read — `buildTree` itself never names a driver. */
 export const groupsBySchema = (driver: DriverId): boolean => driver === 'postgres';
 
+/** The namespace a fresh connection should land on, when the driver has a
+ *  conventional default (Postgres: `public`). Sibling policy of
+ *  `groupsBySchema` — the store reads it so `buildTree` never names a driver. */
+export const defaultNamespace = (driver: DriverId): string | null =>
+  driver === 'postgres' ? 'public' : null;
+
 /** Short, human driver tag for the connection root (presentation only). */
 export const shortTag = (label: string): string =>
   ({
@@ -252,13 +258,18 @@ export const firstCategoryKind = (
   return null;
 };
 
-/** Expansion key of the first schema under category `kind`, so the store can
- *  auto-open it on connect and land the cursor on the first object (parity with
- *  the flat case). Null when that category has no namespaced object. */
+/** Expansion key of the schema to auto-open under category `kind` on connect,
+ *  landing the cursor on its first object (parity with the flat case): the
+ *  driver's `preferred` namespace when it actually has objects there, else the
+ *  first namespaced one. Null when that category has no namespaced object. */
 export const firstSchemaKey = (
   objects: ReadonlyArray<ObjectRef>,
   kind: ObjectKind,
+  preferred?: string | null,
 ): string | null => {
-  const first = objects.find((o) => o.kind === kind && o.namespace);
-  return first?.namespace ? schemaKey(kind, first.namespace) : null;
+  const candidates = objects.filter((o) => o.kind === kind && o.namespace);
+  const pick =
+    (preferred != null && candidates.find((o) => o.namespace === preferred)) ||
+    candidates[0];
+  return pick?.namespace ? schemaKey(kind, pick.namespace) : null;
 };

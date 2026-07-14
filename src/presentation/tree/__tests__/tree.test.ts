@@ -10,6 +10,7 @@ import {
   firstCategoryKind,
   firstObjectIndex,
   firstSchemaKey,
+  defaultNamespace,
   groupsBySchema,
   schemaKey,
   shortTag,
@@ -174,6 +175,22 @@ test('groupsBySchema gates on the driver: only Postgres grows the tier', () => {
 test('firstSchemaKey points at the first namespace of a category, else null', () => {
   expect(firstSchemaKey(pgObjects, 'table')).toBe(schemaKey('table', 'public'));
   expect(firstSchemaKey(objects, 'table')).toBeNull(); // no namespace
+});
+
+test('firstSchemaKey prefers the driver default namespace over query order', () => {
+  // A migration schema sorting before `public` must not steal the landing spot…
+  const withMigrations = [
+    { namespace: 'drizzle', name: 'migrations', kind: 'table' },
+    ...pgObjects,
+  ] as const;
+  expect(firstSchemaKey(withMigrations, 'table', defaultNamespace('postgres'))).toBe(
+    schemaKey('table', 'public'),
+  );
+  // …but a preference with no objects behind it falls back to the first schema.
+  expect(firstSchemaKey(withMigrations, 'table', 'missing')).toBe(
+    schemaKey('table', 'drizzle'),
+  );
+  expect(defaultNamespace('mysql')).toBeNull();
 });
 
 test('shortTag maps known dialects and passes others through', () => {

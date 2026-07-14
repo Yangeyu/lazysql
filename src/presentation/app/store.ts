@@ -15,6 +15,7 @@ import type {
 import type { RowKey } from '../../domain/datasource/edit.ts';
 import {
   buildTree,
+  defaultNamespace,
   firstCategoryKind,
   firstObjectIndex,
   firstSchemaKey,
@@ -588,7 +589,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       const first = firstCategoryKind(res.value);
       const profile = activeProfile();
       const grouped = profile ? groupsBySchema(profile.driver) : false;
-      const schema = first && grouped ? firstSchemaKey(res.value, first) : null;
+      const schema =
+        first && grouped && profile
+          ? firstSchemaKey(res.value, first, defaultNamespace(profile.driver))
+          : null;
       set({
         status: 'ready',
         objects: res.value,

@@ -10,7 +10,7 @@
 
 在终端里像用 lazygit 操作 git 一样操作数据库:连接、浏览、编辑、查询、管理 schema。
 
-![lazysql 演示](docs/assets/demo.gif)
+![lazysql 演示](docs/assets/demo.gif?v=0.1.21)
 
 ## ✨ 功能
 

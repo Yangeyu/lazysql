@@ -10,7 +10,7 @@
 
 Work with databases in your terminal the way lazygit works with git: connect, browse, edit, query, manage schema.
 
-<!-- Demo: record a GIF, drop it at docs/assets/demo.gif, then replace this comment with: ![lazysql demo](docs/assets/demo.gif) -->
+![lazysql demo](docs/assets/demo.gif)
 
 ## ✨ Features
 

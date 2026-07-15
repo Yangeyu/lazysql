@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.17](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.17) - 2026-07-15
+
+### Features
+
+- **tui:** Pop an error dialog on failures, wording FK-refused deletes ([0b2cd60](https://github.com/Yangeyu/lazysql/commit/0b2cd60d30beacad0bc3c66e253852a7324b12d8))
+- **tui:** Prefer driver default namespace when auto-opening schema ([07d9359](https://github.com/Yangeyu/lazysql/commit/07d9359e799ff668d0525067d3435ee1f7049f6c))
+
+### Bug Fixes
+
+- **tui:** Paint overlays with the terminal-default background ([6dabb14](https://github.com/Yangeyu/lazysql/commit/6dabb14a15d66f93a890cdc25415193710662264))
+
 ## [0.1.16](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.16) - 2026-07-10
 
 ### Bug Fixes

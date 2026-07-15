@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.20](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.20) - 2026-07-15
+
+### Features
+
+- **tui:** Copy focused cell value to clipboard with y ([c0c0602](https://github.com/Yangeyu/lazysql/commit/c0c060217b83425c2e09875b8cde1707bcf81da9))
+
+### Bug Fixes
+
+- **browse:** Restore pre-filter grid state on escape ([d113276](https://github.com/Yangeyu/lazysql/commit/d113276d67704e38274955ad797882b482f709ef))
+
+### Documentation
+
+- **repo:** Rename CLAUDE.md to AGENTS.md ([662553d](https://github.com/Yangeyu/lazysql/commit/662553de52caa92ea1a5a6d42230f561eee7830a))
+
 ## [0.1.19](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.19) - 2026-07-15
 
 ### Features

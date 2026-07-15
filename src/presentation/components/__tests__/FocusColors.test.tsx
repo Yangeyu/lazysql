@@ -32,14 +32,20 @@ const contrastRatio = (foreground: string, background: string): number => {
 const expectFocused = (span: CapturedSpan | undefined): void => {
   if (!span) throw new Error('focused text was not rendered');
   expect(span.fg.intent).toBe('rgb');
-  expect(span.fg.toInts().slice(0, 3)).toEqual(rgb(theme.onAccent));
+  expect(span.fg.toInts().slice(0, 3)).toEqual(rgb(theme.focusFg));
   expect(span.bg.intent).toBe('rgb');
-  expect(span.bg.toInts().slice(0, 3)).toEqual(rgb(theme.accent));
+  expect(span.bg.toInts().slice(0, 3)).toEqual(rgb(theme.focusBg));
 };
 
-test('focus fills keep text contrast above the readable-text threshold', () => {
-  expect(contrastRatio(theme.onAccent, theme.accent)).toBeGreaterThanOrEqual(4.5);
-  expect(contrastRatio(theme.onAccent, theme.red)).toBeGreaterThanOrEqual(4.5);
+const expectFocusMarker = (span: CapturedSpan | undefined): void => {
+  if (!span) throw new Error('focus marker was not rendered');
+  expect(span.fg.toInts().slice(0, 3)).toEqual(rgb(theme.accent));
+  expect(span.bg.toInts().slice(0, 3)).toEqual(rgb(theme.focusBg));
+};
+
+test('focus palette keeps text and marker contrast comfortably readable', () => {
+  expect(contrastRatio(theme.focusFg, theme.focusBg)).toBeGreaterThanOrEqual(7);
+  expect(contrastRatio(theme.accent, theme.focusBg)).toBeGreaterThanOrEqual(3);
 });
 
 test('focused grid cell uses explicit readable theme colors', async () => {
@@ -98,7 +104,7 @@ test('unfocused grid selection keeps a quiet accent foreground', async () => {
   if (!selected) throw new Error('selected text was not rendered');
   expect(selected.fg.intent).toBe('rgb');
   expect(selected.fg.toInts().slice(0, 3)).toEqual(rgb(theme.accent));
-  expect(selected.bg.toInts().slice(0, 3)).not.toEqual(rgb(theme.accent));
+  expect(selected.bg.toInts().slice(0, 3)).not.toEqual(rgb(theme.focusBg));
   t.renderer.destroy();
 });
 
@@ -128,6 +134,7 @@ test('focused query-result row uses explicit readable theme colors', async () =>
   const spans = t.captureSpans().lines.flatMap((line) => line.spans);
   expectFocused(spans.find((span) => span.text.includes('Alice')));
   expectFocused(spans.find((span) => span.text.includes('alice@example.com')));
+  expectFocusMarker(spans.find((span) => span.text.includes('▶')));
   t.renderer.destroy();
 });
 
@@ -159,6 +166,39 @@ test('focused sidebar row uses explicit readable theme colors', async () => {
   await t.flush();
   const spans = t.captureSpans().lines.flatMap((line) => line.spans);
   expectFocused(spans.find((span) => span.text.includes('users')));
+  expectFocusMarker(spans.find((span) => span.text.includes('›')));
+  expect(spans.map((span) => span.text).join('')).not.toMatch(/[▌▎]/);
+  t.renderer.destroy();
+});
+
+test('unfocused sidebar selection has no vertical gutter bar', async () => {
+  const t = await testRender(
+    <Sidebar
+      rows={[{
+        type: 'object',
+        ref: { kind: 'table', name: 'users' },
+        label: 'users',
+        depth: 0,
+      }]}
+      selectedIndex={0}
+      focused={false}
+      width={30}
+      marks={new Set()}
+      viewportRows={4}
+      filter=""
+      editing={false}
+      onRowClick={() => {}}
+      onPaneClick={() => {}}
+      onScroll={() => {}}
+      onFilterInput={() => {}}
+      onFilterSubmit={() => {}}
+    />,
+    { width: 30, height: 6 },
+  );
+
+  await t.flush();
+  const spans = t.captureSpans().lines.flatMap((line) => line.spans);
+  expect(spans.map((span) => span.text).join('')).not.toMatch(/[▌▎]/);
   t.renderer.destroy();
 });
 
@@ -176,6 +216,24 @@ test('selected confirmation choice uses explicit readable theme colors', async (
 
   await t.flush();
   const spans = t.captureSpans().lines.flatMap((line) => line.spans);
-  expectFocused(spans.find((span) => span.text.includes('JSON')));
+  expectFocused(spans.find((span) => span.text.includes('› JSON')));
+  t.renderer.destroy();
+});
+
+test('danger dialog keeps keyboard focus distinct from the danger tone', async () => {
+  const t = await testRender(
+    <ConfirmDialog
+      title="Delete every row?"
+      tone="danger"
+      choice={{ label: 'scope', options: ['ONE', 'ALL'], selected: 'ALL' }}
+      termRows={20}
+      termCols={70}
+    />,
+    { width: 70, height: 20 },
+  );
+
+  await t.flush();
+  const spans = t.captureSpans().lines.flatMap((line) => line.spans);
+  expectFocused(spans.find((span) => span.text.includes('› ALL')));
   t.renderer.destroy();
 });

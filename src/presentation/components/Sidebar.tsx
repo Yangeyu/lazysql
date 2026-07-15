@@ -3,7 +3,7 @@
  * object categories (Tables, Views, …) and the objects themselves. It is a pure
  * projection of the flattened `TreeRow[]` the store computes; all folding and
  * cursor logic lives in the store, so this component only draws rows. A selected
- * row gets an accent gutter (and an explicit accent fill when focused) so the
+ * row gets an accent pointer (and a calm focus surface when focused) so the
  * cursor is always obvious. Clicking a row (or the pane) is reported up via
  * `onRowClick` / `onPaneClick` — no coordinate math, the index is known here.
  *
@@ -200,14 +200,16 @@ const SidebarImpl = ({
               key={i}
               wrapMode="none"
               selectable
-              bg={selected && focused ? theme.accent : undefined}
-              fg={selected ? (focused ? theme.onAccent : theme.accent) : undefined}
+              bg={selected && focused ? theme.focusBg : undefined}
+              fg={selected ? (focused ? theme.focusFg : theme.accent) : undefined}
               onMouseDown={(e) => {
                 e.stopPropagation();
                 onRowClick(i);
               }}
             >
-              {selected && !focused ? <span fg={theme.accent}>▎</span> : ' '}
+              {selected && focused ? (
+                <span fg={theme.accent}>›</span>
+              ) : ' '}
               {rowContent(row, selected, marked)}
             </text>
           );

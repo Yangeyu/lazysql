@@ -6,12 +6,12 @@ Require bun
 
 Set Shell "zsh"
 Set FontFamily "FiraCode Nerd Font Mono"
-Set FontSize 16
-Set Width 1200
-Set Height 720
+Set FontSize 24
+Set Width 1800
+Set Height 1080
 Set Theme "TokyoNight"
-Set Padding 12
-Set Framerate 12
+Set Padding 18
+Set Framerate 15
 Set TypingSpeed 30ms
 
 Hide

@@ -196,38 +196,27 @@ const line = (
     key={key}
     wrapMode="none"
     selectable
-    fg={rowFocused ? theme.onAccent : undefined}
-    bg={rowFocused ? theme.accent : undefined}
+    fg={rowFocused ? theme.focusFg : undefined}
+    bg={rowFocused ? theme.focusBg : undefined}
     onMouseDown={onMouseDown}
   >
     <span
-      fg={rowFocused ? theme.onAccent : gutterColor}
-      bg={rowFocused ? theme.accent : undefined}
+      fg={rowFocused ? theme.accent : gutterColor}
     >
       {gutter}
     </span>
-    {cells.map((c, i) => {
-      const highlighted = rowFocused || c.focused === true;
-      return (
-        <React.Fragment key={i}>
-          {i > 0 ? (
-            <span
-              fg={rowFocused ? theme.onAccent : theme.border}
-              bg={rowFocused ? theme.accent : undefined}
-            >
-              {SEP}
-            </span>
-          ) : null}
-          <span
-            fg={highlighted ? theme.onAccent : c.color}
-            bg={highlighted ? theme.accent : undefined}
-            attributes={c.bold ? TextAttributes.BOLD : undefined}
-          >
-            {c.text}
-          </span>
-        </React.Fragment>
-      );
-    })}
+    {cells.map((c, i) => (
+      <React.Fragment key={i}>
+        {i > 0 ? <span fg={rowFocused ? undefined : theme.border}>{SEP}</span> : null}
+        <span
+          fg={c.focused ? theme.focusFg : rowFocused ? undefined : c.color}
+          bg={c.focused ? theme.focusBg : undefined}
+          attributes={c.bold || c.focused ? TextAttributes.BOLD : undefined}
+        >
+          {c.text}
+        </span>
+      </React.Fragment>
+    ))}
   </text>
 );
 

@@ -7,11 +7,14 @@
  */
 
 export const theme = {
-  /** Primary brand/focus accent. */
+  /** Primary brand colour and high-contrast focus marker. */
   accent: '#7aa2f7',
-  /** Readable text colour to lay on top of an accent-filled background. Also the
-   *  selection foreground (paired with `accent` as the selection background). */
+  /** Readable text colour to lay on top of a bright accent-filled chip. */
   onAccent: '#16161e',
+  /** Calm keyboard-focus surface: explicit on both sides so terminal defaults
+   *  never decide whether selected text is readable. */
+  focusBg: '#283457',
+  focusFg: '#c0caf5',
   magenta: '#bb9af7',
   green: '#9ece6a',
   yellow: '#e0af68',

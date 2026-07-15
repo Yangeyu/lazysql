@@ -103,16 +103,20 @@ const ConfirmDialogImpl = ({ title, statement, details, tone, choice, termRows, 
       {choice ? (
         <text wrapMode="none">
           <span fg={theme.border}>{`${choice.label}   `}</span>
-          {choice.options.map((o) => (
-            <span key={o}>
-              {o === choice.selected ? (
-                <span bg={accent} fg={theme.onAccent}>{` ${o} `}</span>
-              ) : (
-                <span fg={theme.border}>{` ${o} `}</span>
-              )}
-              {'  '}
-            </span>
-          ))}
+          {choice.options.map((o) => {
+            const selected = o === choice.selected;
+            return (
+              <React.Fragment key={o}>
+                <span
+                  bg={selected ? theme.focusBg : undefined}
+                  fg={selected ? theme.focusFg : theme.border}
+                >
+                  {`${selected ? '›' : ' '} ${o} `}
+                </span>
+                {'  '}
+              </React.Fragment>
+            );
+          })}
         </text>
       ) : null}
 

@@ -28,11 +28,11 @@ test('the collapsed editor is the 3-row echo bar; expanded it is the fixed 10-ro
   expect(expanded.gridBodyRows).toBeLessThan(collapsed.gridBodyRows);
 });
 
-test('computeLayout deducts an extra row for the editor gap when queryable', () => {
+test('computeLayout deducts exactly the visible chrome — no phantom gap row', () => {
   const q = computeLayout(100, 40, true);
   const noEditor = computeLayout(100, 40, false);
-  // queryable loses the editor block, the 1-row gap, and one more border row.
-  expect(q.gridBodyRows).toBe(40 - q.editorRows - 8);
+  // Chrome: header (1) + status (1) + panel border (2) + tab (1) + grid chrome (2).
+  expect(q.gridBodyRows).toBe(40 - q.editorRows - 7);
   expect(noEditor.gridBodyRows).toBe(40 - 7);
 });
 

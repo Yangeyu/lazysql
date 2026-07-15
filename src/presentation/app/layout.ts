@@ -39,15 +39,15 @@ export interface Layout {
 
 /**
  * Pane dimensions for a `cols`×`rows` terminal. The right column stacks the SQL
- * editor (only for query-capable sources) over the results panel; a 1-row gap
- * separates them, mirroring the 1-cell gap that sets off the sidebar.
+ * editor (only for query-capable sources) directly over the results panel —
+ * flush, no gap.
  *
  * The deductions are the visible chrome: viewportCols removes the sidebar, its
  * gap, and a panel's border + horizontal padding (4); resultsBodyRows removes the
- * app header (1), status (1), the editor and its gap, and the results panel's own
- * frame — border (2) + tab row (1). That body is view-agnostic; the grid alone
- * spends GRID_CHROME_ROWS more on its header + divider (gridBodyRows), while the
- * DDL view fills resultsBodyRows outright.
+ * app header (1), status (1), the editor, and the results panel's own frame —
+ * border (2) + tab row (1). That body is view-agnostic; the grid alone spends
+ * GRID_CHROME_ROWS more on its header + divider (gridBodyRows), while the DDL
+ * view fills resultsBodyRows outright.
  *
  * sidebarRows is the full left column (terminal minus header + status = 2) less
  * the sidebar's own chrome: border (2) + the CONNECTIONS title row (1).
@@ -71,7 +71,7 @@ export const computeLayout = (
   // then carves out its own header + divider. Floor keeps the grid at ≥3 rows.
   const resultsBodyRows = Math.max(
     3 + GRID_CHROME_ROWS,
-    rows - editorRows - (queryable ? 6 : 5),
+    rows - editorRows - 5,
   );
   const gridBodyRows = resultsBodyRows - GRID_CHROME_ROWS;
   const sidebarRows = Math.max(1, rows - 5);

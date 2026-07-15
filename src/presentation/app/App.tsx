@@ -4,7 +4,7 @@
  * that arrives in Phase 3); rendering is pure projection of store state.
  */
 
-import React, { useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useKeyboard, useRenderer, useTerminalDimensions } from '@opentui/react';
 import { useApp, useStoreApi } from './context.ts';
 import { Sidebar } from '../components/Sidebar.tsx';

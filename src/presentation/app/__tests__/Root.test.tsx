@@ -6,7 +6,6 @@
  * OpenTUI renderer.
  */
 
-import React from 'react';
 import { test, expect, beforeAll, afterAll } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { tmpdir } from 'node:os';

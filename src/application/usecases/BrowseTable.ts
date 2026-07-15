@@ -13,7 +13,7 @@ import {
 import type { ObjectRef } from '../../domain/datasource/schema.ts';
 import type { BrowseSpec } from '../../domain/query/Query.ts';
 import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
-import { ok, err, type Result } from '../../shared/Result.ts';
+import { err, type Result } from '../../shared/Result.ts';
 import {
   UnsupportedCapabilityError,
   attempt,

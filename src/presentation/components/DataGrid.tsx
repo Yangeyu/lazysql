@@ -263,7 +263,7 @@ const DataGridImpl = ({
 
   const sepWidth =
     GUTTER_W +
-    win.reduce((a, c, i) => a + widths[start + i]!, 0) +
+    widths.slice(start, end).reduce((a, w) => a + w, 0) +
     Math.max(0, win.length - 1) * SEP_W;
 
   // The "more columns to the right" indicator sits at the END of the divider rule,

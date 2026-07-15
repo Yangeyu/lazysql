@@ -42,7 +42,7 @@ const fakeHistory = (seed: Record<string, string[]> = {}): QueryHistoryStore & {
 };
 
 /** Poll the store until `pred` holds (the history load on attach is async). */
-const until = async (store: ReturnType<typeof createAppStore>, pred: () => boolean) => {
+const until = async (pred: () => boolean) => {
   for (let i = 0; i < 200 && !pred(); i++) await Bun.sleep(5);
   if (!pred()) throw new Error('condition not met in time');
 };
@@ -51,7 +51,7 @@ test('connecting restores the saved history', async () => {
   const history = fakeHistory({ h: ['SELECT 42'] });
   const store = createAppStore({ connectionService: svc, initial: profile, historyStore: history });
   await store.getState().init();
-  await until(store, () => store.getState().history.length > 0);
+  await until(() => store.getState().history.length > 0);
   expect(store.getState().history).toEqual(['SELECT 42']);
 });
 
@@ -59,7 +59,7 @@ test('running a query appends and persists it', async () => {
   const history = fakeHistory();
   const store = createAppStore({ connectionService: svc, initial: profile, historyStore: history });
   await store.getState().init();
-  await until(store, () => store.getState().queryable);
+  await until(() => store.getState().queryable);
 
   store.getState().setQuery('SELECT 1');
   await store.getState().executeQuery();
@@ -73,7 +73,7 @@ test('history is capped to HISTORY_LIMIT, dropping the oldest', async () => {
   const history = fakeHistory({ h: seed });
   const store = createAppStore({ connectionService: svc, initial: profile, historyStore: history });
   await store.getState().init();
-  await until(store, () => store.getState().history.length === HISTORY_LIMIT);
+  await until(() => store.getState().history.length === HISTORY_LIMIT);
 
   store.getState().setQuery('SELECT 9999');
   await store.getState().executeQuery();

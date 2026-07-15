@@ -4,7 +4,6 @@
  * the rows-affected badge, and the unqualified-write confirm guard.
  */
 
-import React from 'react';
 import { test, beforeEach, afterAll, expect } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { tmpdir } from 'node:os';

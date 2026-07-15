@@ -9,7 +9,6 @@
  * 0–27), making "is the background still there?" observable.
  */
 
-import React from 'react';
 import { test, beforeAll, afterAll, expect } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { tmpdir } from 'node:os';

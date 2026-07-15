@@ -11,7 +11,6 @@ import type { Dialect } from '../Dialect.ts';
 import type {
   Query,
   BrowseSpec,
-  Sort,
   Filter,
 } from '../../../../domain/query/Query.ts';
 import { sql } from '../../../../domain/query/Query.ts';

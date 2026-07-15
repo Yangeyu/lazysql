@@ -4,7 +4,6 @@
  * (seeded via the textarea's initialValue) is visible.
  */
 
-import React from 'react';
 import { test, expect } from 'bun:test';
 import { renderTest } from '../../testing/renderTest.ts';
 import { QueryEditor } from '../QueryEditor.tsx';

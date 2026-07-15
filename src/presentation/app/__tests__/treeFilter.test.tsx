@@ -6,7 +6,6 @@
  * sidebar all run end-to-end (not just the pure projection).
  */
 
-import React from 'react';
 import { test, expect } from 'bun:test';
 import { renderTest } from '../../testing/renderTest.ts';
 import { StoreContext } from '../context.ts';

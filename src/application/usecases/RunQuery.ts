@@ -10,7 +10,7 @@ import {
 } from '../../domain/datasource/DataSource.ts';
 import type { ResultSet } from '../../domain/datasource/ResultSet.ts';
 import { sql } from '../../domain/query/Query.ts';
-import { ok, err, type Result } from '../../shared/Result.ts';
+import { err, type Result } from '../../shared/Result.ts';
 import {
   UnsupportedCapabilityError,
   attempt,

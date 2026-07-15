@@ -5,8 +5,7 @@
  * `Tables N` count is the refresh signal.
  */
 
-import React from 'react';
-import { test, beforeEach, afterAll, expect } from 'bun:test';
+import { test, beforeEach, afterAll } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

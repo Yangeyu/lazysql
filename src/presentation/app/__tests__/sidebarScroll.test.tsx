@@ -5,7 +5,6 @@
  * where the sidebar rendered every row and overflowed its pane.
  */
 
-import React from 'react';
 import { test, expect } from 'bun:test';
 import { renderTest } from '../../testing/renderTest.ts';
 import { StoreContext } from '../context.ts';

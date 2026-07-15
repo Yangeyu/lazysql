@@ -30,7 +30,7 @@ import type {
 import type { ConnectionService } from '../../application/ports/ConnectionService.ts';
 import { createConnFormSlice } from './slices/connForm.ts';
 import { createBrowseSlice, PAGE_SIZE } from './slices/browse.ts';
-import { createEditorSlice, HISTORY_LIMIT } from './slices/editor.ts';
+import { createEditorSlice } from './slices/editor.ts';
 import { createTreeSlice } from './slices/tree.ts';
 import type { ResultSet, CellValue } from '../../domain/datasource/ResultSet.ts';
 import {

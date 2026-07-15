@@ -6,7 +6,6 @@
  * dialect.browseQuery → inlineParams → QueryEditor.
  */
 
-import React from 'react';
 import { test, beforeAll, afterAll, expect } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { tmpdir } from 'node:os';

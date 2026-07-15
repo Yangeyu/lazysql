@@ -4,7 +4,6 @@
  * sight of the blast radius. Rendered through the OpenTUI test renderer.
  */
 
-import React from 'react';
 import { test, expect } from 'bun:test';
 import { renderTest } from '../../testing/renderTest.ts';
 import { ConfirmDialog } from '../ConfirmDialog.tsx';

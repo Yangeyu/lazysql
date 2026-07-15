@@ -14,7 +14,7 @@ import type {
   RowPatch,
   EditResult,
 } from '../../domain/datasource/edit.ts';
-import { ok, err, type Result } from '../../shared/Result.ts';
+import { err, type Result } from '../../shared/Result.ts';
 import {
   UnsupportedCapabilityError,
   attempt,

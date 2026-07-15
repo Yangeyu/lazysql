@@ -6,7 +6,6 @@
  * else ^N (historyNext) could never advance.
  */
 
-import React from 'react';
 import { test, expect } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { tmpdir } from 'node:os';

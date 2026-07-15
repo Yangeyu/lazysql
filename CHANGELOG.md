@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.19](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.19) - 2026-07-15
+
+### Features
+
+- **llm:** Add Moonshot (Kimi) provider and table-focus hint ([db49276](https://github.com/Yangeyu/lazysql/commit/db492764129aa245fa256b70c3c7454fb0993d98))
+
+### Bug Fixes
+
+- Keep TUI error details and status actions accessible ([8edfece](https://github.com/Yangeyu/lazysql/commit/8edfece80be9afb9b1ad27ead60763083c624fc0))
+- **tui:** Keep SQL completion aligned with wide-character carets ([3eead25](https://github.com/Yangeyu/lazysql/commit/3eead2573d7b39205012c4b2300359b417040394))
+
 ## [0.1.18](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.18) - 2026-07-15
 
 ### Features

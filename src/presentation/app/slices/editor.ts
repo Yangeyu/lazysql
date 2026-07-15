@@ -340,7 +340,8 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
         set({ generating: false, queryError: r.error.message });
         return;
       }
-      // Fill the editor for review — NEVER auto-execute (§5.2).
+      // Fill the editor for review — NEVER auto-execute (§5.2). Reviewing needs
+      // the full pane, so expand it even if the user collapsed it mid-generation.
       set({
         generating: false,
         queryText: r.value.sql,
@@ -349,6 +350,7 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
         nlKind: r.value.kind,
         completions: [],
         focus: 'editor',
+        editorExpanded: true,
       });
     },
   };

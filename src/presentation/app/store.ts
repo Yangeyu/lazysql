@@ -235,6 +235,11 @@ export interface AppState {
   focus: Focus;
   /** User-adjustable connections sidebar width (cells); resized with ^⇧-/^⇧+. */
   sidebarWidth: number;
+  /** SQL editor gear (ADR 0013): expanded = the full editing pane; collapsed =
+   *  a one-line echo of the statement behind the grid. Sticky UI preference —
+   *  focus changes and query runs never flip it. ^O toggles it; entering the
+   *  editor (`:`/click/NL fill) expands it, since the echo bar can't compose. */
+  editorExpanded: boolean;
   current: ObjectRef | null;
   // ── results grid (the single bottom-right surface) ──
   /** Whether the grid is showing a browsed table or a read-only query result. */
@@ -408,8 +413,12 @@ export interface AppState {
    *  shows in the form until the next edit. */
   connFormTest: () => Promise<void>;
   connFormCancel: () => void;
-  /** Move focus to a pane (`:`/Esc/click); gates the editor on `queryable`. */
+  /** Move focus to a pane (`:`/Esc/click); gates the editor on `queryable`.
+   *  Focusing the editor also expands it — you can't compose in the echo bar. */
   focusPane: (target: Focus) => void;
+  /** ^O: toggle the editor between the echo bar and the full editing pane.
+   *  Collapsing moves focus off the editor (the bar is not focusable). */
+  toggleEditorExpanded: () => void;
   /** Tab: cycle focus across the available panes. */
   cycleFocus: () => void;
   gridUp: () => void;
@@ -670,6 +679,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       marks: new Set<string>(),
       focus: 'sidebar',
       sidebarWidth: SIDEBAR_WIDTH,
+      editorExpanded: false,
       current: null,
       surface: 'browse',
       mainTab: 'data',
@@ -826,10 +836,22 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             return;
           }
           if (!get().catalog) void editor.buildCatalog();
-          set({ focus: 'editor', error: null });
+          set({ focus: 'editor', editorExpanded: true, error: null });
           return;
         }
         set({ focus: target });
+      },
+
+      toggleEditorExpanded: () => {
+        if (!get().queryable) return;
+        // Collapsing kills the pane's interactive rows — whatever they were
+        // capturing must let go, or keys would flow into invisible widgets.
+        set((s) => ({
+          editorExpanded: !s.editorExpanded,
+          ...(s.editorExpanded
+            ? { nlMode: false, ...(s.focus === 'editor' ? { focus: 'grid' as const } : {}) }
+            : {}),
+        }));
       },
 
       cycleFocus: () =>

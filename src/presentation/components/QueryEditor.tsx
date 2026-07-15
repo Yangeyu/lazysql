@@ -1,8 +1,12 @@
 /**
- * QueryEditor — the SQL editor pane (top-right of the workbench): ONE bordered
- * panel whose `✦ ask` row, divider and feedback line are PINNED while the SQL
- * editor between them is a multi-line <textarea> that soft-wraps and scrolls
- * within the fixed panel height (ADR 0010):
+ * QueryEditor — the SQL editor pane (top-right of the workbench). Two gears
+ * (ADR 0013): collapsed (default) it is a one-line ECHO BAR — a read-only
+ * readout of the statement behind the grid, not focusable, so the grid keeps
+ * the screen; expanded (`:` / ^O / click) it is the full editing pane below.
+ *
+ * Expanded: ONE bordered panel whose `✦ ask` row, divider and feedback line are
+ * PINNED while the SQL editor between them is a multi-line <textarea> that
+ * soft-wraps and scrolls within the fixed panel height (ADR 0010):
  *
  *   ╭─────────────────────────────────╮
  *   │ ✦ ask   how many active users?  │   ← NL→SQL input (active on ^G) · pinned
@@ -42,6 +46,8 @@ const SQL_KEYBINDINGS: NonNullable<TextareaOptions['keyBindings']> = [
 ];
 
 interface Props {
+  /** Expanded = the full editing pane; collapsed = the one-line echo bar. */
+  expanded: boolean;
   /** The store's mirror of the editor text (the <textarea> owns the real buffer). */
   queryText: string;
   /** The store's mirror of the caret offset — used to reconcile the widget on a
@@ -83,6 +89,7 @@ interface Props {
 const oneLine = (s: string): string => s.replace(/\s*\n\s*/g, ' ');
 
 const QueryEditorImpl = ({
+  expanded,
   queryText,
   editorCaret,
   statement,
@@ -137,8 +144,23 @@ const QueryEditorImpl = ({
       paddingX={1}
       onMouseDown={onPaneClick}
     >
+      {/* ── collapsed: the echo bar. The editing rows below stay MOUNTED but
+          display:none (`visible`) — a remounting textarea boots a fresh cursor
+          and echoes it into the mirror, losing the draft's caret (ADR 0013). ── */}
+      {!expanded ? (
+        <text wrapMode="none" selectable flexShrink={0}>
+          <b fg={theme.magenta}>{'SQL> '}</b>
+          {statement ? (
+            <span fg={theme.muted}>{oneLine(statement)}</span>
+          ) : (
+            <span fg={theme.border}>: compose SQL · ^O expand</span>
+          )}
+          {queryText.trim() ? <span fg={theme.yellow}>{'  (draft)'}</span> : null}
+        </text>
+      ) : null}
+
       {/* ── ask row (NL→SQL): a native input while asking, else the hint/echo ── */}
-      {nlMode ? (
+      {!expanded ? null : nlMode ? (
         <box flexDirection="row" flexShrink={0}>
           <text wrapMode="none">
             <b fg={theme.magenta}>✦ ask </b>
@@ -172,10 +194,12 @@ const QueryEditorImpl = ({
 
       {/* ── divider, doubling as the SQL editor label (a header, not a per-line
           gutter — the textarea below is full-width) ── */}
-      <text wrapMode="none" flexShrink={0}>
-        <b fg={theme.magenta}>{'SQL> '}</b>
-        <span fg={theme.border}>{'─'.repeat(Math.max(0, innerWidth - 5))}</span>
-      </text>
+      {expanded ? (
+        <text wrapMode="none" flexShrink={0}>
+          <b fg={theme.magenta}>{'SQL> '}</b>
+          <span fg={theme.border}>{'─'.repeat(Math.max(0, innerWidth - 5))}</span>
+        </text>
+      ) : null}
 
       {/* ── SQL editor: a multi-line textarea bound to the committed query text;
           the ONLY scroll region — soft-wraps + scrolls within the fixed panel
@@ -183,8 +207,9 @@ const QueryEditorImpl = ({
           placeholder. ── */}
       <textarea
         ref={ref}
+        visible={expanded}
         initialValue={queryText}
-        focused={focused && !nlMode}
+        focused={expanded && focused && !nlMode}
         keyBindings={SQL_KEYBINDINGS}
         wrapMode="word"
         onContentChange={sync}
@@ -199,7 +224,7 @@ const QueryEditorImpl = ({
       />
 
       {/* ── feedback: completions / generating / error / hint ── */}
-      {error ? (
+      {!expanded ? null : error ? (
         <text fg={theme.red} wrapMode="none" flexShrink={0}>
           error: {oneLine(error)}
         </text>
@@ -220,8 +245,8 @@ const QueryEditorImpl = ({
           {nlMode
             ? '⏎ generate SQL (review before running) · esc cancel'
             : focused
-              ? `⏎ run · ⇧⏎ newline · ^P/^N hist · ^T compl:${completionsOn ? 'on' : 'off'} · ^G ask · esc grid`
-              : ': focus editor · ⏎ run'}
+              ? `⏎ run · ⇧⏎ newline · ^P/^N hist · ^T compl:${completionsOn ? 'on' : 'off'} · ^G ask · ^O hide · esc grid`
+              : ': focus editor · ⏎ run · ^O hide'}
         </text>
       )}
     </box>

@@ -39,8 +39,8 @@ export interface Layout {
 
 /**
  * Pane dimensions for a `cols`×`rows` terminal. The right column stacks the SQL
- * editor (~1/4, only for query-capable sources) over the results panel; a 1-row
- * gap separates them, mirroring the 1-cell gap that sets off the sidebar.
+ * editor (only for query-capable sources) over the results panel; a 1-row gap
+ * separates them, mirroring the 1-cell gap that sets off the sidebar.
  *
  * The deductions are the visible chrome: viewportCols removes the sidebar, its
  * gap, and a panel's border + horizontal padding (4); resultsBodyRows removes the
@@ -57,13 +57,16 @@ export const computeLayout = (
   rows: number,
   queryable: boolean,
   sidebarWidth: number = SIDEBAR_WIDTH,
+  editorExpanded: boolean = false,
 ): Layout => {
   const viewportCols = Math.max(24, cols - sidebarWidth - 1 - 4);
-  // The editor is a fixed 10 rows: border (2) + ask + divider + feedback (3) leave
-  // ~5 visible SQL rows. The SQL input is a multi-line <textarea> (ADR 0010) that
-  // soft-wraps and scrolls WITHIN this fixed height, so the panel never grows with
-  // the query — the grid's share of the column stays predictable.
-  const editorRows = queryable ? 10 : 0;
+  // The editor pane has two gears (ADR 0013), both fixed-height so the grid's
+  // share of the column only changes on an explicit toggle, never per keystroke:
+  // collapsed (default) it is a 3-row echo bar — border (2) + the one-line SQL
+  // readout; expanded it is 10 rows — border (2) + ask + divider + feedback (3)
+  // leave ~5 visible SQL rows, within which the <textarea> soft-wraps and
+  // scrolls (ADR 0010).
+  const editorRows = !queryable ? 0 : editorExpanded ? 10 : 3;
   // The panel body (below the tab, inside the border) is the base truth; the grid
   // then carves out its own header + divider. Floor keeps the grid at ≥3 rows.
   const resultsBodyRows = Math.max(

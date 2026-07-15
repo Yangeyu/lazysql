@@ -129,6 +129,8 @@ export interface KeyGroup {
 const GLOBAL: readonly KeyBinding[] = [
   { keys: '`', hint: 'conn', desc: 'Switch connection (back to picker)', match: ['`'], run: (s) => s.disconnect() },
   { keys: ':', hint: 'sql', desc: 'Open the SQL query editor', match: [':'], enabled: (f) => f.queryable, primary: true, run: (s) => s.focusPane('editor') },
+  { keys: '^O', hint: 'sql pane', desc: 'Expand / collapse the SQL editor (collapsed: a one-line echo of the current SQL)', match: ['^o'], enabled: (f) => f.queryable, run: (s) => s.toggleEditorExpanded() },
+  { keys: '^G', hint: 'ask AI', desc: 'Ask in natural language (opens the SQL editor)', match: ['^g'], enabled: (f) => f.queryable && f.nlAvailable, run: (s) => { s.focusPane('editor'); s.beginNl(); } },
   { keys: 'tab', hint: 'pane', desc: 'Toggle focus: tree ↔ results', match: ['tab'], run: (s) => s.cycleFocus() },
   { keys: '?', hint: 'help', desc: 'Toggle this help', match: ['?'], run: (s) => s.toggleHelp() },
   { keys: 'q', hint: 'quit', desc: 'Quit lazysql', match: ['q'], run: (_s, env) => env.quit() },
@@ -211,7 +213,8 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '^G', hint: 'ask AI', desc: 'Generate SQL from natural language', match: ['^g'], enabled: (f) => f.nlAvailable, run: (s) => s.beginNl() },
       // ^C is intercepted ahead of the context loop (dispatchKey) — doc-only here.
       { keys: '^C', hint: 'clear', desc: 'Clear the editor draft' },
-      { keys: 'esc', hint: 'grid', desc: 'Focus the results grid', match: ['escape'], run: (s) => s.focusPane('grid') },
+      { keys: '^O', hint: 'hide', desc: 'Collapse the editor to its one-line echo bar (draft kept)', match: ['^o'], run: (s) => s.toggleEditorExpanded() },
+      { keys: 'esc', hint: 'grid', desc: 'Focus the results grid (the editor stays open)', match: ['escape'], run: (s) => s.focusPane('grid') },
     ],
   },
   filter: {

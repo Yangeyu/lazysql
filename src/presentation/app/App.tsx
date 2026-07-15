@@ -76,6 +76,7 @@ export const App = ({ clipboard }: AppProps) => {
   const loading = useApp((s) => s.loading);
 
   const queryable = useApp((s) => s.queryable);
+  const editorExpanded = useApp((s) => s.editorExpanded);
   const errorDismissed = useApp((s) => s.errorDismissed);
   const helpOpen = useApp((s) => s.helpOpen);
   const helpScroll = useApp((s) => s.helpScroll);
@@ -119,6 +120,7 @@ export const App = ({ clipboard }: AppProps) => {
     terminalRows,
     queryable,
     sidebarWidth,
+    editorExpanded,
   );
   const gridFocused = focus === 'grid';
 
@@ -188,11 +190,10 @@ export const App = ({ clipboard }: AppProps) => {
         onFilterInput={(v) => store.getState().setTreeFilter(v)}
         onFilterSubmit={() => store.getState().commitTreeFilter()}
       />
-      {/* Right column: the SQL editor (top, ~1/4) directly over the results panel
-          (~3/4), stacked flush with no gap. Both stretch to the full column width. */}
       <box flexDirection="column" flexGrow={1} gap={0}>
         {queryable ? (
           <QueryEditor
+            expanded={editorExpanded}
             queryText={queryText}
             editorCaret={editorCaret}
             statement={statement}

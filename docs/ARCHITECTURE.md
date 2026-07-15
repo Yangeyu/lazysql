@@ -239,9 +239,10 @@ interface KeyBinding {
 footer、帮助、真实行为永不漂移。`deriveContext(state)` 是「在哪个上下文」的唯一纯函数。
 `App` 的输入处理器退为一行 `useKeyboard(k => dispatchKey(store.getState(), k, { quit }))`。
 
-文本输入用 OpenTUI **原生 `<input>`**（过滤 / 单元格编辑 / NL ask / SQL 编辑器，详见 ADR 0008）：widget
-自己持有文本 + 光标（光标是终端的，不跳），`onInput` 报告编辑、`onSubmit` 提交。store 只留**已提交值**
-（SQL 编辑器经 `value` 受控 + `onInput` 同步），不再存草稿。聚焦的 widget 自吃文本键与 `⏎`，`dispatchKey`
+文本输入用 OpenTUI **原生 widget**（过滤 / 单元格编辑 / NL ask 用 `<input>`，SQL 编辑器用多行
+`<textarea>`，详见 ADR 0008/0010）：widget 自己持有文本 + 光标（光标是终端的，不跳），编辑经事件报告、
+`onSubmit` 提交。store 只留**已提交值**（SQL 编辑器为 widget→store 的文本 + 光标镜像，ADR 0010；
+编辑器面板默认收起为一行回显条，`^O`/`:` 展开，ADR 0013）。聚焦的 widget 自吃文本键与 `⏎`，`dispatchKey`
 只处理它不消费的应用级键（`Esc`/`^G`/`Tab`/`^C`）；这些 widget 自管的键在表里留作展示行
 （`KeyBinding.match/run` 可选）。连接表单仍用 append-only 渲染。
 

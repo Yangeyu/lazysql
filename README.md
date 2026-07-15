@@ -16,7 +16,7 @@ Work with databases in your terminal the way lazygit works with git: connect, br
 
 - 🔌 **Multiple data sources**: PostgreSQL · MySQL/MariaDB · SQLite · MongoDB · Redis
 - 📊 **Browse / edit**: pagination · column sort · column filter · row-level edit and delete (parameterized, run inside a real transaction, auto-rollback when `affected≠1`)
-- ⌨️ **SQL editor**: **multi-line editing** · execute · per-connection persistent history (`^P/^N`) · **schema-aware completion** (table names / column names scoped by FROM / keywords, toggle with `^T`)
+- ⌨️ **SQL editor**: **multi-line editing** · execute · per-connection persistent history (`^P/^N`) · **schema-aware completion** (table names / column names scoped by FROM / keywords, toggle with `^T`) · collapses to a **one-line echo bar** (`^O`) so the grid keeps the screen
 - 📤 **Data export**: to **CSV · JSON · SQL** — the current grid view, a whole table, an entire schema/category, or a multi-select of tables (`v` to mark); streamed to disk at constant memory, cancellable (`esc`), with a live row count. CSV writes one file per table; JSON and SQL each combine into a single file
 - 🧬 **Schema introspection**: tables / views / indexes / sequences / triggers / stored procedures / Postgres enums; inspect an object's columns (enum columns show their allowed values) and DDL definition
 - 🛡️ **Destructive-operation guard**: a `WHERE`-less `UPDATE/DELETE`, `DROP`, or `TRUNCATE` always pops a **centered confirmation dialog** echoing the full SQL to be run; when a Postgres `DROP` fails due to dependents, it offers a `CASCADE` retry and **names the objects that would be dropped along with it**
@@ -101,7 +101,9 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 | Key | Action |
 |----|------|
 | `` ` `` | Switch connection (back to the picker) |
-| `:` | Open the SQL editor |
+| `:` | Open the SQL editor (expands it if collapsed) |
+| `^O` | Expand / collapse the SQL editor — collapsed it is a one-line echo of the SQL behind the grid |
+| `^G` | Ask in natural language (opens the SQL editor) |
 | `tab` | Toggle focus between tree ↔ results |
 | `^⇧-` / `^⇧+` | Shrink / widen the connections sidebar |
 | `F12` | Toggle the debug console (captured logs & errors) |
@@ -166,7 +168,8 @@ Failures (a refused write, a lost connection, a failed export…) pop an error d
 | `^T` | Toggle schema-aware completion |
 | `^G` | Generate SQL from natural language |
 | `^C` | Clear the draft |
-| `esc` | Back to the results grid |
+| `^O` | Collapse the editor to its one-line echo bar (the draft is kept, flagged `(draft)`) |
+| `esc` | Back to the results grid (the editor stays open) |
 
 **Confirmation dialog**
 

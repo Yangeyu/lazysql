@@ -17,7 +17,15 @@ test('computeLayout honors a resized sidebar width', () => {
 
 test('computeLayout sizes the editor only for query-capable sources', () => {
   expect(computeLayout(100, 40, false).editorRows).toBe(0);
-  expect(computeLayout(100, 40, true).editorRows).toBeGreaterThanOrEqual(6);
+  expect(computeLayout(100, 40, false, SIDEBAR_WIDTH, true).editorRows).toBe(0);
+});
+
+test('the collapsed editor is the 3-row echo bar; expanded it is the fixed 10-row pane', () => {
+  const collapsed = computeLayout(100, 40, true);
+  const expanded = computeLayout(100, 40, true, SIDEBAR_WIDTH, true);
+  expect(collapsed.editorRows).toBe(3);
+  expect(expanded.editorRows).toBe(10);
+  expect(expanded.gridBodyRows).toBeLessThan(collapsed.gridBodyRows);
 });
 
 test('computeLayout deducts an extra row for the editor gap when queryable', () => {

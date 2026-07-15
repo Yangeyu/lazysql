@@ -311,6 +311,22 @@ test('schema-aware completion completes a table name on Tab', async () => {
   h.cleanup();
 });
 
+test('y in the results grid copies the focused cell directly', async () => {
+  const copied: string[] = [];
+  const h = await renderApp({ write: (t) => copied.push(t) });
+  await h.until((f) => f.includes('widget'));
+  h.enter(); // open widget → grid, cursor on row 0 col 0 (id)
+  await h.until((f) => f.includes('label'));
+  h.press('l'); // focus the label cell without opening the inspector
+  h.press('y');
+  await h.flush();
+
+  expect(copied.length).toBe(1);
+  expect(copied[0]).toMatch(/^w\d+$/);
+  expect(h.frame()).not.toContain('⊞ cell');
+  h.cleanup();
+});
+
 test('y in the cell inspector copies the full value to the clipboard', async () => {
   const copied: string[] = [];
   const h = await renderApp({ write: (t) => copied.push(t) });

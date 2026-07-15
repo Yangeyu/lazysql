@@ -173,6 +173,34 @@ test('dispatchKey: in the editor, glyphs are left to the native input', () => {
   expect(e.quit).not.toHaveBeenCalled();
 });
 
+test('dispatchKey: y in the grid copies the focused cell\'s full formatted value', () => {
+  const s = stub({
+    surface: 'query',
+    result: {
+      shape: 'tabular',
+      columns: [{ name: 'id' }, { name: 'payload' }],
+      rows: [[1, '{"active":true}']],
+      truncated: false,
+    },
+    gridRow: 0,
+    gridCol: 1,
+  } as Partial<AppState>);
+  const e = env();
+
+  dispatchKey(s, key({ name: 'y', sequence: 'y' }), e);
+
+  expect(e.copy).toHaveBeenCalledTimes(1);
+  expect(e.copy).toHaveBeenCalledWith('{\n  "active": true\n}');
+});
+
+test('dispatchKey: y in an empty grid has nothing to copy', () => {
+  const e = env();
+
+  dispatchKey(stub({ result: null }), key({ name: 'y', sequence: 'y' }), e);
+
+  expect(e.copy).not.toHaveBeenCalled();
+});
+
 test('dispatchKey: y in the cell inspector copies the full value', () => {
   // The inspector owns input (cellView set → 'cell' context); y yanks the whole
   // formatted value to the injected clipboard, not the truncated on-screen slice.

@@ -192,6 +192,20 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '←/→ h/l', hint: 'col', desc: 'Move the column cursor · scroll wide tables', match: ['left', 'h'], run: (s) => s.gridLeft() },
       { keys: '←/→ h/l', hint: 'col', desc: 'Move the column cursor · scroll wide tables', match: ['right', 'l'], run: (s) => s.gridRight() },
       { keys: '⏎', hint: 'inspect', desc: 'Inspect the full cell value', match: ['return'], primary: true, run: (s) => s.openCell() },
+      {
+        keys: 'y',
+        hint: 'copy',
+        desc: 'Copy the focused cell\'s full value to the clipboard',
+        match: ['y'],
+        primary: true,
+        run: (s, env) => {
+          const row = s.result?.rows[s.gridRow];
+          const column = s.result?.columns[s.gridCol];
+          if (row && column) {
+            env.copy(formatCellValue(row[s.gridCol] ?? null).lines.join('\n'));
+          }
+        },
+      },
       { keys: 'a', hint: 'all', desc: 'Browse the selected table — clean SELECT *', match: ['a'], run: (s) => s.browseSelected() },
       { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last loaded row', match: ['g'], run: (s) => s.gridTop() },
       { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last loaded row', match: ['G'], run: (s) => s.gridBottom() },

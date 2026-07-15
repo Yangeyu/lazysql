@@ -143,6 +143,7 @@ Failures (a refused write, a lost connection, a failed export…) pop an error d
 | `g` / `G` | Jump to first / last row |
 | `^U` / `^D` | Half page up / down |
 | `⏎` | Inspect the full cell value |
+| `y` | Copy the focused cell's full value to the clipboard |
 | `a` | Browse the selected table (`SELECT *`) |
 | `s` | Cycle sort (asc → desc → none) |
 | `/` | Filter by column substring |

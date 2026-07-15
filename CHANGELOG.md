@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.21](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.21) - 2026-07-15
+
+### Documentation
+
+- **repo:** Add application demo ([d012973](https://github.com/Yangeyu/lazysql/commit/d0129736cfe2aaaee9d60abbd9b831653f1dfa57))
+
 ## [0.1.20](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.20) - 2026-07-15
 
 ### Features

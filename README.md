@@ -105,6 +105,7 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 | `^O` | Expand / collapse the SQL editor — collapsed it is a one-line echo of the SQL behind the grid |
 | `^G` | Ask in natural language (opens the SQL editor) |
 | `tab` | Toggle focus between tree ↔ results |
+| `^H` / `^L` | Focus the tree / the results grid directly |
 | `^⇧-` / `^⇧+` | Shrink / widen the connections sidebar |
 | `F12` | Toggle the debug console (captured logs & errors) |
 | `?` | Toggle help |
@@ -139,7 +140,7 @@ Failures (a refused write, a lost connection, a failed export…) pop an error d
 | `k` / `j` | Move row cursor |
 | `h` / `l` · `←` / `→` | Move column cursor · horizontal scroll for wide tables |
 | `g` / `G` | Jump to first / last row |
-| `^u` / `^d` | Half page up / down |
+| `^U` / `^D` | Half page up / down |
 | `⏎` | Inspect the full cell value |
 | `a` | Browse the selected table (`SELECT *`) |
 | `s` | Cycle sort (asc → desc → none) |

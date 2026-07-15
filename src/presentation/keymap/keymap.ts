@@ -132,6 +132,10 @@ const GLOBAL: readonly KeyBinding[] = [
   { keys: '^O', hint: 'sql pane', desc: 'Expand / collapse the SQL editor (collapsed: a one-line echo of the current SQL)', match: ['^o'], enabled: (f) => f.queryable, run: (s) => s.toggleEditorExpanded() },
   { keys: '^G', hint: 'ask AI', desc: 'Ask in natural language (opens the SQL editor)', match: ['^g'], enabled: (f) => f.queryable && f.nlAvailable, run: (s) => { s.focusPane('editor'); s.beginNl(); } },
   { keys: 'tab', hint: 'pane', desc: 'Toggle focus: tree ↔ results', match: ['tab'], run: (s) => s.cycleFocus() },
+  // Direct pane jumps (vim-style). ^H needs the kitty keyboard protocol — legacy
+  // terminals send it as backspace; degrades silently there (ADR 0007).
+  { keys: '^H', hint: 'tree', desc: 'Focus the connections tree', match: ['^h'], run: (s) => s.focusPane('sidebar') },
+  { keys: '^L', hint: 'results', desc: 'Focus the results grid', match: ['^l'], run: (s) => s.focusPane('grid') },
   { keys: '?', hint: 'help', desc: 'Toggle this help', match: ['?'], run: (s) => s.toggleHelp() },
   { keys: 'q', hint: 'quit', desc: 'Quit lazysql', match: ['q'], run: (_s, env) => env.quit() },
   // Sidebar resize — ctrl+shift+-/+. Needs the kitty keyboard protocol to be
@@ -176,8 +180,8 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: 'a', hint: 'all', desc: 'Browse the selected table — clean SELECT *', match: ['a'], run: (s) => s.browseSelected() },
       { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last loaded row', match: ['g'], run: (s) => s.gridTop() },
       { keys: 'g/G', hint: 'top/end', desc: 'Jump to the first / last loaded row', match: ['G'], run: (s) => s.gridBottom() },
-      { keys: '^u/^d', hint: 'half-pg', desc: 'Move the cursor half a page up / down', match: ['^u'], run: (s) => s.gridHalfUp() },
-      { keys: '^u/^d', hint: 'half-pg', desc: 'Move the cursor half a page up / down', match: ['^d'], run: (s) => s.gridHalfDown() },
+      { keys: '^U/^D', hint: 'half-pg', desc: 'Move the cursor half a page up / down', match: ['^u'], run: (s) => s.gridHalfUp() },
+      { keys: '^U/^D', hint: 'half-pg', desc: 'Move the cursor half a page up / down', match: ['^d'], run: (s) => s.gridHalfDown() },
       { keys: 's', hint: 'sort', desc: 'Cycle sort on the column', match: ['s'], primary: true, run: (s) => { if (s.surface === 'browse') void s.applySort(); } },
       { keys: '/', hint: 'filter', desc: 'Filter the column by a substring', match: ['/'], primary: true, run: (s) => { if (s.surface === 'browse') s.beginFilter(); } },
       // Editing lives in the cell inspector (ADR 0011): ⏎ to inspect, then `e`.

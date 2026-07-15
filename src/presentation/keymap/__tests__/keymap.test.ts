@@ -35,7 +35,7 @@ test('deriveContext falls back to plain pane focus', () => {
 });
 
 test('footerHints and helpGroups read the same registry for a context', () => {
-  const flags = { queryable: true, nlAvailable: true, errorAvailable: false };
+  const flags = { queryable: true, nlAvailable: true, errorAvailable: false, filterReturnAvailable: false };
   expect(footerHints('grid', flags)).toContain('sort');
   expect(footerHints('grid', flags)).toContain('export'); // X export the view (ADR 0012)
   expect(footerHints('sidebar', flags)).toContain('export'); // X export the selected table
@@ -43,7 +43,7 @@ test('footerHints and helpGroups read the same registry for a context', () => {
 });
 
 test('footerHints curates to the primary actions; the ? panel keeps the full list', () => {
-  const flags = { queryable: true, nlAvailable: true, errorAvailable: false };
+  const flags = { queryable: true, nlAvailable: true, errorAvailable: false, filterReturnAvailable: false };
   // Movement (hint 'row') is muscle memory — omitted from the curated footer…
   expect(footerHints('grid', flags)).not.toContain('row');
   // …but the `?` overlay still lists it, deduped (up AND k → one 'row' entry).
@@ -57,7 +57,7 @@ test('footerHints curates to the primary actions; the ? panel keeps the full lis
 });
 
 test('footerHints pins q quit · ? help at the end of a nav context', () => {
-  const flags = { queryable: true, nlAvailable: true, errorAvailable: false };
+  const flags = { queryable: true, nlAvailable: true, errorAvailable: false, filterReturnAvailable: false };
   const bar = footerHints('sidebar', flags);
   expect(bar).toContain('quit');
   expect(bar).toContain('help');
@@ -67,7 +67,7 @@ test('footerHints pins q quit · ? help at the end of a nav context', () => {
 });
 
 test('footerHints leads with the action that reopens dismissed error details', () => {
-  const flags = { queryable: true, nlAvailable: true, errorAvailable: true };
+  const flags = { queryable: true, nlAvailable: true, errorAvailable: true, filterReturnAvailable: false };
   expect(footerHints('grid', flags).startsWith('! details')).toBe(true);
   expect(helpGroups('grid', flags)[1]?.bindings.some((b) => b.hint === 'details')).toBe(true);
 });
@@ -129,6 +129,36 @@ test('dispatchKey: a grid key runs its bound action', () => {
   const s = stub();
   dispatchKey(s, key({ name: 'j', sequence: 'j' }), env());
   expect(s.gridDown).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: esc in the grid restores the view from before the latest filter', () => {
+  const restoreFilter = mock(async () => {});
+  const s = stub({
+    restoreFilter,
+    filterReturnPoint: {
+      ref: { name: 'items', kind: 'table' },
+      page: { offset: 0, limit: 100 },
+      sort: null,
+      filter: null,
+      gridRow: 1,
+      gridCol: 1,
+    },
+  } as Partial<AppState>);
+
+  dispatchKey(s, key({ name: 'escape' }), env());
+
+  expect(restoreFilter).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: esc in the filter input only cancels the draft', () => {
+  const cancelFilter = mock(() => {});
+  const restoreFilter = mock(async () => {});
+  const s = stub({ mode: 'filter', cancelFilter, restoreFilter } as Partial<AppState>);
+
+  dispatchKey(s, key({ name: 'escape' }), env());
+
+  expect(cancelFilter).toHaveBeenCalledTimes(1);
+  expect(restoreFilter).not.toHaveBeenCalled();
 });
 
 test('dispatchKey: in the editor, glyphs are left to the native input', () => {

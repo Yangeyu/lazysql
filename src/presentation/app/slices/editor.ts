@@ -139,6 +139,7 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
       statement: text,
       queryText: '',
       result: r.value.result,
+      filterReturnPoint: null,
       total: r.value.result.rows.length,
       queryElapsedMs: r.value.elapsedMs,
       queryError: null,

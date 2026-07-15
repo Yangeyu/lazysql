@@ -144,6 +144,27 @@ test('filtering a column narrows the grid via the input mode', async () => {
   h.cleanup();
 });
 
+test('esc after filtering restores the previous result and focused cell', async () => {
+  const h = await renderApp();
+  await h.until((f) => f.includes('widget'));
+  h.enter(); // open table → grid focus
+  await h.until((f) => f.includes('w1'));
+  h.press('j'); // remember row 2…
+  h.press('l'); // …and the label column
+  await h.until((f) => f.includes('↕2'));
+
+  h.press('/');
+  await h.until((f) => f.includes('contains'));
+  await h.type('25');
+  h.enter();
+  await h.until((f) => f.includes('label~25'));
+
+  h.esc();
+  await h.until((f) => f.includes('of 25 rows') && f.includes('↕2') && !f.includes('label~25'));
+  expect(h.frame()).toContain('w2');
+  h.cleanup();
+});
+
 test('editing a cell updates it after confirmation', async () => {
   const h = await renderApp();
   await h.until((f) => f.includes('widget'));

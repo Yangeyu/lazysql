@@ -131,6 +131,17 @@ export type SurfaceKind = 'browse' | 'query';
 /** Which face of the main pane is showing for an open object. */
 export type MainTab = 'data' | 'ddl';
 
+/** One-level return point created when a grid filter is committed. `esc` reloads
+ *  this browse window and restores its cell cursor; a newer filter replaces it. */
+export interface FilterReturnPoint {
+  readonly ref: ObjectRef;
+  readonly page: Page;
+  readonly sort: Sort | null;
+  readonly filter: Filter | null;
+  readonly gridRow: number;
+  readonly gridCol: number;
+}
+
 /**
  * A confirmed, ready-to-run action awaiting the user's y/n, rendered in the
  * confirm dialog. `title` is the one-line headline; `statement` is the exact SQL
@@ -258,6 +269,8 @@ export interface AppState {
   page: Page;
   sort: Sort | null;
   filter: Filter | null;
+  /** View and cell to restore when `esc` undoes the latest committed filter. */
+  filterReturnPoint: FilterReturnPoint | null;
   total: number;
   /** The statement behind whatever the grid currently shows — the value-inlined
    *  browse SQL while browsing, or the executed query/write after a run. Echoed as
@@ -441,6 +454,8 @@ export interface AppState {
   cancelFilter: () => void;
   /** Apply the filter typed in the native input (empty clears it). */
   commitFilter: (value: string) => Promise<void>;
+  /** Undo the latest committed filter and restore its prior page/cell. */
+  restoreFilter: () => Promise<void>;
   beginEdit: () => void;
   cancelEdit: () => void;
   /** Stage the cell edit typed in the native input as a pending confirm. */
@@ -635,6 +650,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         surface: 'browse',
         result: null,
         statement: null,
+        filterReturnPoint: null,
         gridRow: 0,
         gridCol: 0,
         mainTab: 'data',
@@ -692,6 +708,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       page: firstPage(PAGE_SIZE),
       sort: null,
       filter: null,
+      filterReturnPoint: null,
       total: 0,
       statement: null,
       gridRow: 0,
@@ -793,6 +810,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           surface: 'browse',
           result: null,
           statement: null,
+          filterReturnPoint: null,
           cellView: null,
           rootExpanded: true,
           treeIndex: 0,

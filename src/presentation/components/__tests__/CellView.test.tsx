@@ -13,7 +13,12 @@ import { renderTest } from '../../testing/renderTest.ts';
 import { CellView } from '../CellView.tsx';
 import { footerHints, type KeyFlags } from '../../keymap/keymap.ts';
 
-const flags: KeyFlags = { queryable: true, nlAvailable: false, errorAvailable: false };
+const flags: KeyFlags = {
+  queryable: true,
+  nlAvailable: false,
+  errorAvailable: false,
+  filterReturnAvailable: false,
+};
 const viewHints = footerHints('cell', flags);
 const editHints = footerHints('cellEdit', flags);
 

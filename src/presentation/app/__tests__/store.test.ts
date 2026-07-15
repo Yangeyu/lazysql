@@ -21,6 +21,7 @@ import type { ResultSet } from '../../../domain/datasource/ResultSet.ts';
 import type { ConnectionService } from '../../../application/ports/ConnectionService.ts';
 import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
 import type { ObjectKind } from '../../../domain/datasource/schema.ts';
+import type { BrowseSpec } from '../../../domain/query/Query.ts';
 import type { SqlGenerator } from '../../../application/ports/SqlGenerator.ts';
 import type { Exporter } from '../../../application/ports/Exporter.ts';
 import { SIDEBAR_STEP, SIDEBAR_MIN, SIDEBAR_MAX } from '../layout.ts';
@@ -803,6 +804,69 @@ test('acceptCompletion replaces the partial word AT the caret, keeping the tail'
 
   expect(store.getState().queryText).toBe('SELECT name FROM t');
   expect(store.getState().editorCaret).toBe(11); // just past the inserted word
+});
+
+test('restoring a committed filter returns to its prior page, sort, and focused cell', async () => {
+  const rows = Array.from({ length: 150 }, (_, i) => [i + 1, `row-${i + 1}`]);
+  const browsable = {
+    ...fakeSource,
+    browse: async (_ref: unknown, spec: BrowseSpec): Promise<ResultSet> => {
+      const needle = spec.filter?.conditions[0]?.value ?? '';
+      const matching = needle
+        ? rows.filter((row) => String(row[1]).includes(needle))
+        : rows;
+      return {
+        shape: 'tabular',
+        columns: [{ name: 'id' }, { name: 'label' }],
+        rows: matching.slice(spec.page.offset, spec.page.offset + spec.page.limit),
+        truncated: false,
+      };
+    },
+    count: async (_ref: unknown, filter?: BrowseSpec['filter']): Promise<number> => {
+      const needle = filter?.conditions[0]?.value ?? '';
+      return needle ? rows.filter((row) => String(row[1]).includes(needle)).length : rows.length;
+    },
+  } as unknown as DataSource;
+  const profile: ConnectionProfile = { id: 'x', name: 'X', driver: 'sqlite', options: {} };
+  const store = createAppStore({
+    connectionService: { ...serviceFor(profile), open: async () => ok(browsable) },
+  });
+  await store.getState().connectProfile(profile);
+
+  const priorPage = { offset: 100, limit: 20 };
+  const priorSort = { column: 'label', direction: 'asc' } as const;
+  store.setState({
+    current: { name: 'items', kind: 'table' },
+    focus: 'grid',
+    surface: 'browse',
+    page: priorPage,
+    sort: priorSort,
+    filter: null,
+    result: {
+      shape: 'tabular',
+      columns: [{ name: 'id' }, { name: 'label' }],
+      rows: rows.slice(priorPage.offset, priorPage.offset + priorPage.limit),
+      truncated: false,
+    },
+    total: rows.length,
+    gridRow: 7,
+    gridCol: 1,
+  });
+
+  await store.getState().commitFilter('148');
+  expect(store.getState().filter?.conditions[0]?.value).toBe('148');
+  expect(store.getState().gridRow).toBe(0);
+
+  await store.getState().restoreFilter();
+
+  const restored = store.getState();
+  expect(restored.filter).toBeNull();
+  expect(restored.page).toEqual(priorPage);
+  expect(restored.sort).toEqual(priorSort);
+  expect(restored.gridRow).toBe(7);
+  expect(restored.gridCol).toBe(1);
+  expect(restored.result?.rows[7]).toEqual([108, 'row-108']);
+  expect(restored.filterReturnPoint).toBeNull();
 });
 
 test('a stale slow browse cannot overwrite a newer navigation (nav epoch)', async () => {

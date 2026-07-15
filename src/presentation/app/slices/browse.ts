@@ -7,7 +7,7 @@
  */
 
 import type { StoreApi } from 'zustand/vanilla';
-import type { AppState, CellInspect } from '../store.ts';
+import type { AppState, CellInspect, FilterReturnPoint } from '../store.ts';
 import {
   asBrowsePreviewable,
   asEditPreviewable,
@@ -90,6 +90,7 @@ export type BrowseActions = Pick<
   | 'beginFilter'
   | 'cancelFilter'
   | 'commitFilter'
+  | 'restoreFilter'
   | 'beginEdit'
   | 'cancelEdit'
   | 'submitEdit'
@@ -123,18 +124,22 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
   };
   const stale = (nav: Nav): boolean => nav.epoch !== navEpoch;
 
-  const load = async (ref: ObjectRef, spec: BrowseSpec, nav: Nav = beginNav()): Promise<void> => {
+  const load = async (
+    ref: ObjectRef,
+    spec: BrowseSpec,
+    nav: Nav = beginNav(),
+  ): Promise<boolean> => {
     const active = source();
-    if (!active) return;
+    if (!active) return false;
     set({ loading: true, error: null, notice: null });
     // The primary key rides along as the ordering tiebreaker: without it an
     // unsorted browse has no deterministic order, so a row can jump to another
     // position after every write-then-reload (openObject sets pkColumns first).
     const res = await browseTable(active, ref, { ...spec, stableKey: get().pkColumns }, nav.signal);
-    if (stale(nav)) return; // a newer navigation owns the UI (this one was aborted)
+    if (stale(nav)) return false; // a newer navigation owns the UI (this one was aborted)
     if (!res.ok) {
       set({ loading: false, status: 'error', error: fromError(res.error) });
-      return;
+      return false;
     }
     set({
       loading: false,
@@ -149,6 +154,7 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
       statement: asBrowsePreviewable(active)?.previewBrowse(ref, res.value.spec) ?? null,
       gridRow: 0,
     });
+    return true;
   };
 
   const openObject = async (ref: ObjectRef): Promise<void> => {
@@ -161,6 +167,7 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
       gridCol: 0,
       sort: null,
       filter: null,
+      filterReturnPoint: null,
       pkColumns: [],
       structure: null,
       structureError: null,
@@ -372,15 +379,73 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
     cancelFilter: () => set({ mode: 'normal' }),
 
     commitFilter: async (value) => {
-      const { current, sort, result, gridCol } = get();
+      const { current, page, sort, filter, result, gridRow, gridCol } = get();
       const column = result?.columns[gridCol]?.name;
       set({ mode: 'normal' });
       if (!current || !column) return;
       const v = value.trim();
-      const filter: Filter | null = v
+      const nextFilter: Filter | null = v
         ? { conditions: [{ column, op: 'contains', value: v }] }
         : null;
-      await load(current, { page: firstPage(PAGE_SIZE), sort, filter });
+      const returnPoint: FilterReturnPoint = {
+        ref: current,
+        page,
+        sort,
+        filter,
+        gridRow,
+        gridCol,
+      };
+      set({ filterReturnPoint: returnPoint });
+      const nav = beginNav();
+      const applied = await load(
+        current,
+        { page: firstPage(PAGE_SIZE), sort, filter: nextFilter },
+        nav,
+      );
+      // A real failure leaves the old result on screen, so there is nothing to
+      // undo. A stale request must not clear the return point owned by the newer
+      // navigation (including an esc restore already in flight).
+      if (!applied && !stale(nav) && get().filterReturnPoint === returnPoint) {
+        set({ filterReturnPoint: null });
+      }
+    },
+
+    restoreFilter: async () => {
+      const { filterReturnPoint, current, surface } = get();
+      if (!filterReturnPoint) return;
+      if (
+        surface !== 'browse' ||
+        !current ||
+        objectRefKey(current) !== objectRefKey(filterReturnPoint.ref)
+      ) {
+        set({ filterReturnPoint: null });
+        return;
+      }
+
+      const nav = beginNav();
+      const restored = await load(
+        filterReturnPoint.ref,
+        {
+          page: filterReturnPoint.page,
+          sort: filterReturnPoint.sort,
+          filter: filterReturnPoint.filter,
+        },
+        nav,
+      );
+      if (!restored || stale(nav)) return;
+
+      const restoredResult = get().result;
+      set({
+        filterReturnPoint: null,
+        gridRow: Math.min(
+          filterReturnPoint.gridRow,
+          Math.max(0, (restoredResult?.rows.length ?? 1) - 1),
+        ),
+        gridCol: Math.min(
+          filterReturnPoint.gridCol,
+          Math.max(0, (restoredResult?.columns.length ?? 1) - 1),
+        ),
+      });
     },
 
     beginEdit: () => {

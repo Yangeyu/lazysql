@@ -75,6 +75,9 @@ export const App = ({ clipboard }: AppProps) => {
   const gridCol = useApp((s) => s.gridCol);
   const sort = useApp((s) => s.sort);
   const filter = useApp((s) => s.filter);
+  const filterReturnAvailable = useApp(
+    (s) => s.surface === 'browse' && s.filterReturnPoint !== null,
+  );
   const mode = useApp((s) => s.mode);
   const treeFilter = useApp((s) => s.treeFilter);
   const connForm = useApp((s) => s.connForm);
@@ -158,7 +161,12 @@ export const App = ({ clipboard }: AppProps) => {
     [profiles, activeId, objects, rootExpanded, expandedCats, expandedSchemas, treeFilter, activeProfile],
   );
 
-  const flags: KeyFlags = { queryable, nlAvailable, errorAvailable: error !== null };
+  const flags: KeyFlags = {
+    queryable,
+    nlAvailable,
+    errorAvailable: error !== null,
+    filterReturnAvailable,
+  };
   const context = deriveContext({ cellView, mode, nlMode, focus, surface, mainTab });
 
   const rowsInPage = result?.rows.length ?? 0;

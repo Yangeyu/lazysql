@@ -40,6 +40,8 @@ export interface KeyFlags {
   readonly nlAvailable: boolean;
   /** A retained error can be reopened after its automatic dialog was closed. */
   readonly errorAvailable: boolean;
+  /** A committed grid filter has a one-level browse/cell return point. */
+  readonly filterReturnAvailable: boolean;
 }
 
 /** The effects a binding may need that the store doesn't own: leaving the
@@ -197,6 +199,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: '^U/^D', hint: 'half-pg', desc: 'Move the cursor half a page up / down', match: ['^d'], run: (s) => s.gridHalfDown() },
       { keys: 's', hint: 'sort', desc: 'Cycle sort on the column', match: ['s'], primary: true, run: (s) => { if (s.surface === 'browse') void s.applySort(); } },
       { keys: '/', hint: 'filter', desc: 'Filter the column by a substring', match: ['/'], primary: true, run: (s) => { if (s.surface === 'browse') s.beginFilter(); } },
+      { keys: 'esc', hint: 'undo filter', desc: 'Restore the view and focused cell from before the latest filter', match: ['escape'], enabled: (f) => f.filterReturnAvailable, primary: true, run: (s) => void s.restoreFilter() },
       // Editing lives in the cell inspector (ADR 0011): ⏎ to inspect, then `e`.
       // No `e` here — a single entry (view → edit) keeps esc a clean pop back.
       { keys: 'd', hint: 'del', desc: 'Delete the row under the cursor', match: ['d'], run: (s) => { if (s.surface === 'browse') s.beginDelete(); } },
@@ -441,6 +444,7 @@ export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void 
     queryable: s.queryable,
     nlAvailable: s.nlAvailable,
     errorAvailable: s.error !== null,
+    filterReturnAvailable: s.surface === 'browse' && s.filterReturnPoint !== null,
   };
   const context = deriveContext(s);
   const group = GROUPS[context];

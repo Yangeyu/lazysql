@@ -146,6 +146,7 @@ Failures (a refused write, a lost connection, a failed export…) pop an error d
 | `a` | Browse the selected table (`SELECT *`) |
 | `s` | Cycle sort (asc → desc → none) |
 | `/` | Filter by column substring |
+| `esc` | Undo the latest applied filter — restore its previous page, sort and focused cell |
 | `d` | Delete row (`⏎` inspect, then `e` edits the cell) |
 | `X` | Export the view — a browsed table to CSV / JSON / SQL (filtered & sorted), a query result to CSV / JSON |
 | `n` / `p` | Next / previous page |

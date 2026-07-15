@@ -14,7 +14,7 @@ test('a long error is truncated before the reserved key-hint region', async () =
       )}
       notice={null}
       context="grid"
-      flags={{ queryable: true, nlAvailable: false, errorAvailable: true }}
+      flags={{ queryable: true, nlAvailable: false, errorAvailable: true, filterReturnAvailable: false }}
       mode="normal"
       markCount={0}
       filterInitial=""
@@ -42,7 +42,7 @@ test('filter mode keeps a usable input and its primary action at 60 columns', as
       error={null}
       notice={null}
       context="filter"
-      flags={{ queryable: true, nlAvailable: false, errorAvailable: false }}
+      flags={{ queryable: true, nlAvailable: false, errorAvailable: false, filterReturnAvailable: false }}
       mode="filter"
       markCount={0}
       filterInitial="abcdefghijkl"

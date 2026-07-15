@@ -77,9 +77,17 @@ test('explicit LAZYSQL_LLM_PROVIDER=deepseek routes to the DeepSeek endpoint', (
   expect(diag(g).baseURL).toBe('https://api.deepseek.com/v1');
 });
 
-test('auto-detect picks OpenAI / DeepSeek when only that key is present', () => {
+test('explicit LAZYSQL_LLM_PROVIDER=moonshot routes to Kimi on the China endpoint', () => {
+  const g = createSqlGenerator({ LAZYSQL_LLM_PROVIDER: 'moonshot', MOONSHOT_API_KEY: 'sk-m' });
+  expect(diag(g).provider).toBe('moonshot');
+  expect(diag(g).model).toBe('kimi-k2.6');
+  expect(diag(g).baseURL).toBe('https://api.moonshot.cn/v1');
+});
+
+test('auto-detect picks OpenAI / DeepSeek / Moonshot when only that key is present', () => {
   expect(diag(createSqlGenerator({ OPENAI_API_KEY: 'sk-o' })).provider).toBe('openai');
   expect(diag(createSqlGenerator({ DEEPSEEK_API_KEY: 'sk-ds' })).provider).toBe('deepseek');
+  expect(diag(createSqlGenerator({ MOONSHOT_API_KEY: 'sk-m' })).provider).toBe('moonshot');
 });
 
 test('auto-detect precedence keeps Qwen ahead of OpenAI and DeepSeek', () => {

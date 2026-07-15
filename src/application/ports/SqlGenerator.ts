@@ -17,6 +17,13 @@ export interface GenerateInput {
   readonly schema: SchemaContext;
   /** Human-readable dialect label, e.g. "PostgreSQL". */
   readonly dialect: string;
+  /**
+   * The table the user is currently viewing, qualified when a namespace is
+   * known (e.g. "public.orders"). A hint, not a constraint: the model should
+   * favour it when the request is ambiguous about which table, but may use any
+   * table in `schema`. Absent when the user isn't on a table.
+   */
+  readonly focus?: string;
 }
 
 export interface GeneratedSql {

@@ -13,7 +13,7 @@ import {
   asIntrospectable,
   type DataSource,
 } from '../../../domain/datasource/DataSource.ts';
-import { columnsOf, sectionsFor } from '../../../domain/datasource/schema.ts';
+import { columnsOf, objectRefKey, sectionsFor } from '../../../domain/datasource/schema.ts';
 import type { ObjectRef } from '../../../domain/datasource/schema.ts';
 import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
 import { runQuery } from '../../../application/usecases/RunQuery.ts';
@@ -318,7 +318,7 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
     cancelNl: () => set({ nlMode: false }),
 
     generateFromNl: async (prompt) => {
-      const { catalog } = get();
+      const { catalog, current } = get();
       const nl = prompt.trim();
       if (!generator || !nl) {
         set({ nlMode: false });
@@ -333,9 +333,10 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
             }))
           : [],
       };
+      const focus = current ? objectRefKey(current) : undefined;
       const profile = activeProfile();
       const dialect = profile ? dialectLabel(profile.driver) : 'SQL';
-      const r = await generateSql(generator, { nl, schema, dialect });
+      const r = await generateSql(generator, { nl, schema, dialect, focus });
       if (!r.ok) {
         set({ generating: false, queryError: r.error.message });
         return;

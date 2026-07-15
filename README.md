@@ -253,7 +253,7 @@ The provider is isolated behind the `SqlGenerator` port; **without an API key, `
 
 ```yaml
 llm:
-  provider: alibaba        # anthropic | alibaba | openai | deepseek
+  provider: alibaba        # anthropic | alibaba | openai | deepseek | moonshot
   model: qwen3.7-plus      # optional, overrides the default model
   # baseUrl: https://...   # optional, overrides the default base URL (e.g. an overseas endpoint)
 ```
@@ -263,7 +263,10 @@ llm:
 | Alibaba Cloud (Qwen) | `alibaba` | `DASHSCOPE_API_KEY` | `qwen3.7-plus` |
 | OpenAI | `openai` | `OPENAI_API_KEY` | `gpt-4o` |
 | DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | `deepseek-chat` |
+| Moonshot AI (Kimi) | `moonshot` | `MOONSHOT_API_KEY` | `kimi-k2.6` |
 | Anthropic (Claude) | `anthropic` | `ANTHROPIC_API_KEY` | `claude-opus-4-8` |
+
+Moonshot defaults to the mainland-China host (`api.moonshot.cn`); from outside China set `baseUrl`/`LAZYSQL_LLM_BASE_URL` to `https://api.moonshot.ai/v1`.
 
 When no `provider` is set explicitly, it's auto-detected by "which API key exists" (Qwen first, Anthropic last). Each run can also override with `LAZYSQL_LLM_PROVIDER` / `LAZYSQL_LLM_MODEL` / `LAZYSQL_LLM_BASE_URL`.
 
@@ -274,7 +277,7 @@ ANTHROPIC_API_KEY=sk-ant-xxx LAZYSQL_LLM_PROVIDER=anthropic lazysql  # temporari
 
 ## 🏗️ Architecture
 
-**Tech stack**: `TypeScript (strict)` · `Bun` · `OpenTUI` (`@opentui/react` + React 19) · `Zustand` · `yaml`. LLM via `@anthropic-ai/sdk` + any OpenAI-compatible backend (Qwen / OpenAI / DeepSeek).
+**Tech stack**: `TypeScript (strict)` · `Bun` · `OpenTUI` (`@opentui/react` + React 19) · `Zustand` · `yaml`. LLM via `@anthropic-ai/sdk` + any OpenAI-compatible backend (Qwen / OpenAI / DeepSeek / Kimi).
 
 **Clean / Hexagonal** layering, built around a **capability-segmented `DataSource` port** — the UI asks a data source "which capabilities do you support" (`Queryable` / `Browsable` / `RowEditable` / `Transactional` / …) rather than "what type are you", so adding a database = adding one adapter, with zero changes to the core. Every layer boundary is crossed via a `Result<T,E>` + port handshake; inner layers never depend on outer ones.
 

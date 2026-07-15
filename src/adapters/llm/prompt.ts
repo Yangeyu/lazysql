@@ -20,5 +20,9 @@ const renderSchema = (input: GenerateInput): string =>
     .map((t) => `${t.name}(${t.columns.join(', ')})`)
     .join('\n') || '(no tables)';
 
-export const buildUserPrompt = (input: GenerateInput): string =>
-  `Schema:\n${renderSchema(input)}\n\nRequest: ${input.nl}`;
+export const buildUserPrompt = (input: GenerateInput): string => {
+  const focus = input.focus
+    ? `\n\nThe user is currently viewing table: ${input.focus}. Favour it when the request is ambiguous about which table, unless the request names another.`
+    : '';
+  return `Schema:\n${renderSchema(input)}${focus}\n\nRequest: ${input.nl}`;
+};

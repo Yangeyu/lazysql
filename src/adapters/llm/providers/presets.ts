@@ -52,6 +52,19 @@ export const DEEPSEEK: OpenAiCompatiblePreset = {
   defaultModel: 'deepseek-chat',
 };
 
+/**
+ * Moonshot AI (Kimi) — OpenAI-compatible. Default host is the mainland-China
+ * endpoint; use `https://api.moonshot.ai/v1` (LAZYSQL_LLM_BASE_URL) from outside
+ * China. `kimi-k2.6` is the current general-purpose model.
+ */
+export const MOONSHOT: OpenAiCompatiblePreset = {
+  id: 'moonshot',
+  label: 'Moonshot AI (Kimi)',
+  baseURL: 'https://api.moonshot.cn/v1',
+  apiKeyEnv: 'MOONSHOT_API_KEY',
+  defaultModel: 'kimi-k2.6',
+};
+
 /** Registry keyed by provider id — the lookup used by createSqlGenerator. */
 export const OPENAI_COMPATIBLE_PRESETS: Readonly<
   Record<string, OpenAiCompatiblePreset>
@@ -59,4 +72,5 @@ export const OPENAI_COMPATIBLE_PRESETS: Readonly<
   [ALIBABA.id]: ALIBABA,
   [OPENAI.id]: OPENAI,
   [DEEPSEEK.id]: DEEPSEEK,
+  [MOONSHOT.id]: MOONSHOT,
 };

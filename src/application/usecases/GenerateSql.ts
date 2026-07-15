@@ -7,7 +7,7 @@
 
 import type {
   SqlGenerator,
-  SchemaContext,
+  GenerateInput,
 } from '../ports/SqlGenerator.ts';
 import {
   classifyStatement,
@@ -23,7 +23,7 @@ export interface GeneratedQuery {
 
 export const generateSql = async (
   generator: SqlGenerator,
-  input: { nl: string; schema: SchemaContext; dialect: string },
+  input: GenerateInput,
 ): Promise<Result<GeneratedQuery, Error>> => {
   try {
     const out = await generator.generate(input);

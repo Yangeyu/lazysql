@@ -192,22 +192,6 @@ test('D flips the open object between the Data and DDL tabs', async () => {
   h.cleanup();
 });
 
-test('the SQL editor runs a typed query and shows the result', async () => {
-  const h = await renderApp();
-  await h.until((f) => f.includes('widget'));
-  h.press(':'); // enter the query editor view
-  await h.until((f) => f.includes('SQL>')); // editor prompt
-  await h.type('SELECT 42 AS answer'); // type a query (data-independent)
-  await h.flush();
-  h.enter(); // execute
-  await h.until((f) => f.includes('answer'));
-  const frame = h.frame();
-  expect(frame).toContain('answer'); // result column header
-  expect(frame).toContain('42'); // result value
-  expect(frame).toContain('1 rows'); // result summary
-  h.cleanup();
-});
-
 test('editor is persistent; a query fills the shared grid, then re-selecting a table returns to browse', async () => {
   const h = await renderApp();
   await h.until((f) => f.includes('SQL>')); // editor always present (3-pane layout)

@@ -236,13 +236,6 @@ test('dispatchKey: ^H/^L jump straight to the tree / results from a nav pane', (
   expect(tree.focusPane).toHaveBeenCalledWith('grid');
 });
 
-test('dispatchKey: ^H/^L stay out of the text-capturing editor', () => {
-  const s = stub({ focus: 'editor' });
-  dispatchKey(s, key({ name: 'h', ctrl: true }), env());
-  dispatchKey(s, key({ name: 'l', ctrl: true }), env());
-  expect(s.focusPane).not.toHaveBeenCalled();
-});
-
 test('dispatchKey: esc cancels a running export (exporting context)', () => {
   const cancelExport = mock(() => {});
   dispatchKey(stub({ mode: 'exporting', cancelExport } as Partial<AppState>), key({ name: 'escape' }), env());

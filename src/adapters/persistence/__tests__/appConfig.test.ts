@@ -1,8 +1,7 @@
 /**
  * config.yml → LLM env mapping. Covers the pure mapper and the file loader's
- * missing-file / missing-section fallbacks. The "env overrides config" rule is a
- * spread at the composition root; it's asserted here against the documented
- * shape (config is the base, process.env wins).
+ * missing-file / missing-section fallbacks. (The "env overrides config" rule is
+ * a plain spread at the composition root — nothing here to test.)
  */
 
 import { test, expect, afterEach } from 'bun:test';
@@ -40,11 +39,4 @@ test('loadLlmEnv reads the llm block into env shape', async () => {
     LAZYSQL_LLM_PROVIDER: 'openai',
     LAZYSQL_LLM_MODEL: 'gpt-4o',
   });
-});
-
-test('process.env overrides the config base (env wins on merge)', () => {
-  const config = { LAZYSQL_LLM_PROVIDER: 'openai', LAZYSQL_LLM_MODEL: 'gpt-4o' };
-  const merged = { ...config, LAZYSQL_LLM_PROVIDER: 'deepseek' }; // env layer
-  expect(merged.LAZYSQL_LLM_PROVIDER).toBe('deepseek'); // overridden
-  expect(merged.LAZYSQL_LLM_MODEL).toBe('gpt-4o'); // untouched where env is silent
 });

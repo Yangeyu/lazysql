@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.18](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.18) - 2026-07-15
+
+### Features
+
+- **tui:** Two-gear SQL editor — a one-line echo bar that expands on demand ([3858ddb](https://github.com/Yangeyu/lazysql/commit/3858ddbcc5a282c2541b6bd3f28aa1b33c2cb901))
+- **tui:** Ctrl-h/ctrl-l jump straight to the tree / results pane ([8e45f22](https://github.com/Yangeyu/lazysql/commit/8e45f221ecdf10efbeef62eb6c84827394937b39))
+
+### Bug Fixes
+
+- **tui:** Stop over-deducting a phantom 'gap' row from the results grid ([001735d](https://github.com/Yangeyu/lazysql/commit/001735da0fb69e712c81b5dddffc67fbc1bc3cf9))
+
 ## [0.1.17](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.17) - 2026-07-15
 
 ### Features

@@ -106,7 +106,7 @@ const ConfirmDialogImpl = ({ title, statement, details, tone, choice, termRows, 
           {choice.options.map((o) => (
             <span key={o}>
               {o === choice.selected ? (
-                <span attributes={TextAttributes.INVERSE}>{` ${o} `}</span>
+                <span bg={accent} fg={theme.onAccent}>{` ${o} `}</span>
               ) : (
                 <span fg={theme.border}>{` ${o} `}</span>
               )}

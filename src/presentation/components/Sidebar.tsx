@@ -3,7 +3,7 @@
  * object categories (Tables, Views, …) and the objects themselves. It is a pure
  * projection of the flattened `TreeRow[]` the store computes; all folding and
  * cursor logic lives in the store, so this component only draws rows. A selected
- * row gets an accent gutter (and inverse when the panel is focused) so the
+ * row gets an accent gutter (and an explicit accent fill when focused) so the
  * cursor is always obvious. Clicking a row (or the pane) is reported up via
  * `onRowClick` / `onPaneClick` — no coordinate math, the index is known here.
  *
@@ -79,14 +79,14 @@ const rowContent = (row: TreeRow, selected: boolean, marked: boolean): React.Rea
   if (row.type === 'connection') {
     return (
       <>
-        <span fg={theme.border}>{fold(row.expanded)} </span>
-        <span fg={row.active ? theme.green : theme.border}>
+        <span fg={selected ? undefined : theme.border}>{fold(row.expanded)} </span>
+        <span fg={selected ? undefined : row.active ? theme.green : theme.border}>
           {row.active ? '●' : '○'}{' '}
         </span>
         <span attributes={row.active ? TextAttributes.BOLD : undefined}>
           {row.label}{' '}
         </span>
-        <span fg={driverColor(row.tag)}>[{row.tag}]</span>
+        <span fg={selected ? undefined : driverColor(row.tag)}>[{row.tag}]</span>
       </>
     );
   }
@@ -94,9 +94,9 @@ const rowContent = (row: TreeRow, selected: boolean, marked: boolean): React.Rea
     return (
       <>
         {indent}
-        <span fg={theme.border}>{fold(row.expanded)} </span>
+        <span fg={selected ? undefined : theme.border}>{fold(row.expanded)} </span>
         <span fg={selected ? undefined : theme.cyan}>{row.label}</span>
-        <span fg={theme.border}> {row.count}</span>
+        <span fg={selected ? undefined : theme.border}> {row.count}</span>
       </>
     );
   }
@@ -104,9 +104,9 @@ const rowContent = (row: TreeRow, selected: boolean, marked: boolean): React.Rea
     return (
       <>
         {indent}
-        <span fg={theme.border}>{fold(row.expanded)} </span>
+        <span fg={selected ? undefined : theme.border}>{fold(row.expanded)} </span>
         <span fg={selected ? undefined : theme.muted}>[{row.label}]</span>
-        <span fg={theme.border}> {row.count}</span>
+        <span fg={selected ? undefined : theme.border}> {row.count}</span>
       </>
     );
   }
@@ -114,11 +114,11 @@ const rowContent = (row: TreeRow, selected: boolean, marked: boolean): React.Rea
     <>
       {indent}
       {marked ? (
-        <span fg={theme.green}>✓ </span>
+        <span fg={selected ? undefined : theme.green}>✓ </span>
       ) : (
-        <span fg={theme.border}>{objectIcon(row.ref.kind)} </span>
+        <span fg={selected ? undefined : theme.border}>{objectIcon(row.ref.kind)} </span>
       )}
-      <span fg={marked ? theme.green : undefined}>{row.label}</span>
+      <span fg={selected ? undefined : marked ? theme.green : undefined}>{row.label}</span>
     </>
   );
 };
@@ -200,8 +200,8 @@ const SidebarImpl = ({
               key={i}
               wrapMode="none"
               selectable
-              attributes={selected && focused ? TextAttributes.INVERSE : undefined}
-              fg={selected && !focused ? theme.accent : undefined}
+              bg={selected && focused ? theme.accent : undefined}
+              fg={selected ? (focused ? theme.onAccent : theme.accent) : undefined}
               onMouseDown={(e) => {
                 e.stopPropagation();
                 onRowClick(i);

@@ -122,10 +122,10 @@ export const columnWindow = (
  * Visual selection state of a grid cell — the SINGLE decision the renderer maps
  * to styling, kept pure so the highlight logic is unit-tested directly:
  *
- *   • 'cell'     — the active cell, grid focused → strong inverse
+ *   • 'cell'     — the active cell, grid focused → explicit theme fill
  *   • 'cell-dim' — the active cell, grid unfocused → accent tint (still locatable)
  *   • 'row'      — the cursor row when there is NO column cursor (query results,
- *                  selectedCol < 0) → whole-row inverse
+ *                  selectedCol < 0) → whole-row theme fill
  *   • 'none'     — everything else
  */
 export type CellHighlight = 'none' | 'cell' | 'cell-dim' | 'row';
@@ -149,7 +149,7 @@ interface Cell {
   color?: string;
   bold?: boolean;
   /** Per-cell highlight — the active grid cell (row ∩ column cursor). */
-  inverse?: boolean;
+  focused?: boolean;
 }
 
 /**
@@ -178,17 +178,10 @@ export const columnAtX = (
   return null;
 };
 
-/** Combine a cell's bold/inverse flags into an OpenTUI attributes bitmask. */
-const cellAttributes = (c: Cell): number | undefined => {
-  const a =
-    (c.bold ? TextAttributes.BOLD : 0) | (c.inverse ? TextAttributes.INVERSE : 0);
-  return a || undefined;
-};
-
 /**
  * Render a gutter + windowed cells as a single, non-wrapping line. Highlight is
  * applied PER CELL (so the column cursor lands on one cell, not the whole row);
- * `rowInverse` is the fallback for grids with no column cursor (query results).
+ * `rowFocused` is the fallback for grids with no column cursor (query results).
  * `onMouseDown`, when given, makes the line clickable (data rows).
  */
 const line = (
@@ -196,25 +189,45 @@ const line = (
   gutter: string,
   gutterColor: string,
   cells: Cell[],
-  rowInverse: boolean,
+  rowFocused: boolean,
   onMouseDown?: (this: { x: number }, event: MouseEvent) => void,
 ): React.ReactNode => (
   <text
     key={key}
     wrapMode="none"
     selectable
-    attributes={rowInverse ? TextAttributes.INVERSE : undefined}
+    fg={rowFocused ? theme.onAccent : undefined}
+    bg={rowFocused ? theme.accent : undefined}
     onMouseDown={onMouseDown}
   >
-    <span fg={gutterColor}>{gutter}</span>
-    {cells.map((c, i) => (
-      <React.Fragment key={i}>
-        {i > 0 ? <span fg={theme.border}>{SEP}</span> : null}
-        <span fg={c.color} attributes={cellAttributes(c)}>
-          {c.text}
-        </span>
-      </React.Fragment>
-    ))}
+    <span
+      fg={rowFocused ? theme.onAccent : gutterColor}
+      bg={rowFocused ? theme.accent : undefined}
+    >
+      {gutter}
+    </span>
+    {cells.map((c, i) => {
+      const highlighted = rowFocused || c.focused === true;
+      return (
+        <React.Fragment key={i}>
+          {i > 0 ? (
+            <span
+              fg={rowFocused ? theme.onAccent : theme.border}
+              bg={rowFocused ? theme.accent : undefined}
+            >
+              {SEP}
+            </span>
+          ) : null}
+          <span
+            fg={highlighted ? theme.onAccent : c.color}
+            bg={highlighted ? theme.accent : undefined}
+            attributes={c.bold ? TextAttributes.BOLD : undefined}
+          >
+            {c.text}
+          </span>
+        </React.Fragment>
+      );
+    })}
   </text>
 );
 
@@ -293,7 +306,7 @@ const DataGridImpl = ({
       {visible.map((row, i) => {
         const absolute = top + i;
         const onCursor = absolute === cursor;
-        const rowInverse =
+        const rowFocused =
           cellHighlight(absolute, 0, cursor, selectedCol, focused) === 'row';
         return line(
           absolute,
@@ -305,19 +318,19 @@ const DataGridImpl = ({
             const hi = cellHighlight(absolute, ci, cursor, selectedCol, focused);
             return {
               text: fit(formatCell(raw), widths[ci]!),
-              // 'cell' inverts; 'cell-dim' keeps an accent tint so the cursor is
-              // still visible when the grid loses focus.
-              inverse: hi === 'cell',
+              // 'cell' uses a theme fill; 'cell-dim' keeps an accent tint so the
+              // cursor is still visible when the grid loses focus.
+              focused: hi === 'cell',
               color:
                 hi === 'cell-dim'
                   ? theme.accent
-                  : raw === null && !rowInverse
+                  : raw === null && !rowFocused
                     ? theme.border
                     : undefined,
               bold: hi === 'cell-dim',
             };
           }),
-          rowInverse,
+          rowFocused,
           // A regular function so `this` is the row's <text> renderable: its `.x`
           // is the row's absolute left, so `event.x - this.x` is the local cell
           // offset → the exact column clicked (null on the gutter = row only).

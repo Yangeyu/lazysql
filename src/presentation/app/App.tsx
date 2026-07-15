@@ -17,7 +17,13 @@ import { ErrorOverlay } from '../components/ErrorOverlay.tsx';
 import { ConnectionForm } from '../components/ConnectionForm.tsx';
 import { CellView } from '../components/CellView.tsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
-import { helpGroups, deriveContext, dispatchKey, type KeyFlags } from '../keymap/keymap.ts';
+import {
+  helpGroups,
+  footerHints,
+  deriveContext,
+  dispatchKey,
+  type KeyFlags,
+} from '../keymap/keymap.ts';
 import { errorDialogShowing } from './appError.ts';
 import { SIDEBAR_MIN, computeLayout } from './layout.ts';
 import { buildTree, toConnNodes, dialectLabel, shortTag, groupsBySchema } from '../tree/tree.ts';
@@ -152,7 +158,7 @@ export const App = ({ clipboard }: AppProps) => {
     [profiles, activeId, objects, rootExpanded, expandedCats, expandedSchemas, treeFilter, activeProfile],
   );
 
-  const flags: KeyFlags = { queryable, nlAvailable };
+  const flags: KeyFlags = { queryable, nlAvailable, errorAvailable: error !== null };
   const context = deriveContext({ cellView, mode, nlMode, focus, surface, mainTab });
 
   const rowsInPage = result?.rows.length ?? 0;
@@ -290,8 +296,10 @@ export const App = ({ clipboard }: AppProps) => {
       column={cellView.column}
       value={cellView.value}
       offset={cellView.offset}
-      mode={cellView.mode}
-      seedText={cellView.mode === 'edit' ? cellView.seedText : undefined}
+      {...(cellView.mode === 'edit'
+        ? { mode: 'edit' as const, seedText: cellView.seedText }
+        : { mode: 'view' as const })}
+      hints={footerHints(context, flags)}
       termRows={terminalRows}
       termCols={terminalCols}
       onScroll={(delta) => store.getState().scrollCell(delta)}

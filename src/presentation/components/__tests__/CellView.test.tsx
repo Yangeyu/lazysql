@@ -11,6 +11,11 @@ import React from 'react';
 import { test, expect } from 'bun:test';
 import { renderTest } from '../../testing/renderTest.ts';
 import { CellView } from '../CellView.tsx';
+import { footerHints, type KeyFlags } from '../../keymap/keymap.ts';
+
+const flags: KeyFlags = { queryable: true, nlAvailable: false, errorAvailable: false };
+const viewHints = footerHints('cell', flags);
+const editHints = footerHints('cellEdit', flags);
 
 const mount = (rows: number, cols: number, node: React.ReactNode) =>
   renderTest(
@@ -32,6 +37,7 @@ test('pretty-prints a JSON cell with column + type header', async () => {
       value={'{"k":"v","items":[1,2,3]}'}
       offset={0}
       mode="view"
+      hints={viewHints}
       termRows={24}
       termCols={80}
       onScroll={() => {}}
@@ -44,6 +50,7 @@ test('pretty-prints a JSON cell with column + type header', async () => {
   expect(frame).toContain('meta'); // column
   expect(frame).toContain('json'); // detected type
   expect(frame).toContain('"k": "v"'); // structured formatting
+  expect(frame).toContain('q/esc/⏎ close'); // keymap-generated view footer
   h.cleanup();
 });
 
@@ -52,7 +59,7 @@ test('windows a tall value and shows a "more" indicator', async () => {
   const h = await mount(
     14,
     44,
-    <CellView column="body" value={value} offset={0} mode="view" termRows={14} termCols={44} onScroll={() => {}} onEditSubmit={() => {}} />,
+    <CellView column="body" value={value} offset={0} mode="view" hints={viewHints} termRows={14} termCols={44} onScroll={() => {}} onEditSubmit={() => {}} />,
   );
   await h.flush();
   const frame = h.frame();
@@ -65,7 +72,7 @@ test('windows a tall value and shows a "more" indicator', async () => {
 test('the panel is a FIXED size — scrolling does not change its geometry', async () => {
   const value = Array.from({ length: 50 }, (_, i) => `line-${i}`).join('\n');
   const cell = (offset: number) => (
-    <CellView column="body" value={value} offset={offset} mode="view" termRows={20} termCols={50} onScroll={() => {}} onEditSubmit={() => {}} />
+    <CellView column="body" value={value} offset={offset} mode="view" hints={viewHints} termRows={20} termCols={50} onScroll={() => {}} onEditSubmit={() => {}} />
   );
   const dims = async (offset: number): Promise<[number, number]> => {
     const h = await mount(20, 50, cell(offset));
@@ -87,6 +94,8 @@ test('edit mode seeds the textarea with the RAW value (not pretty-printed)', asy
       value={'{"k":"v"}'}
       offset={0}
       mode="edit"
+      seedText={'{"k":"v"}'}
+      hints={editHints}
       termRows={16}
       termCols={60}
       onScroll={() => {}}
@@ -97,6 +106,6 @@ test('edit mode seeds the textarea with the RAW value (not pretty-printed)', asy
   const frame = h.frame();
   expect(frame).toContain('{"k":"v"}'); // raw, verbatim
   expect(frame).not.toContain('"k": "v"'); // NOT the view-mode pretty form
-  expect(frame).toContain('save'); // edit footer
+  expect(frame).toContain(editHints); // keymap-generated edit footer
   h.cleanup();
 });

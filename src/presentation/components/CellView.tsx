@@ -1,20 +1,18 @@
 /**
  * CellView — the full-cell inspector, which both READS and EDITS a cell in the
- * same floating panel (ADR 0011). Opened with ⏎ on the focused grid cell, then
- * `e` to edit — a single entry, so esc pops edit → view → closed. It floats a
- * centered panel OVER the grid:
+ * same floating panel (ADR 0011). It floats a centered panel OVER the grid:
  *
  *   • view mode: the cell's complete value, structurally formatted (pretty JSON),
- *     scrolling with j/k for values taller than the panel; `y` copies, `e` edits.
+ *     scrollable when the value is taller than the panel.
  *   • edit mode: a focused <textarea> seeded with the store-computed `seedText` —
  *     the raw value, pretty-printed only on a jsonCanonical column (where the
  *     store normalizes JSON, so saving can't silently reformat a text column).
- *     Enter inserts a newline — so multi-line JSON is editable — `^S` saves
- *     (stages the same update confirm), Esc discards back to the value view.
+ *     Enter remains a newline, so multi-line JSON is editable.
  *
  * The panel is a FIXED size (derived once from the terminal, not from the value).
  * Pure projection of the store's `cellView` slice; the store keeps no edit draft
- * — submitEdit reads the widget's text on save.
+ * — submitEdit reads the widget's text on save. Shortcut behaviour and the
+ * rendered footer both come from the keymap; App passes the current `hints`.
  */
 
 import React, { useEffect, useMemo, useRef } from 'react';
@@ -25,7 +23,7 @@ import {
   type TextareaRenderable,
 } from '@opentui/core';
 import type { CellValue } from '../../domain/datasource/ResultSet.ts';
-import { formatCellValue, cellEditText } from './cellFormat.ts';
+import { formatCellValue } from './cellFormat.ts';
 import { wrapByWidth } from './wrapText.ts';
 import { theme, INPUT_CURSOR } from '../theme/theme.ts';
 import { Overlay } from './Overlay.tsx';
@@ -36,15 +34,12 @@ const CELL_EDIT_KEYBINDINGS: NonNullable<TextareaOptions['keyBindings']> = [
   { name: 's', ctrl: true, action: 'submit' },
 ];
 
-interface Props {
+interface CommonProps {
   column: string;
   value: CellValue;
   offset: number;
-  /** view = read/scroll/copy; edit = the value is being edited in place. */
-  mode: 'view' | 'edit';
-  /** Edit mode only: the text seeding the <textarea> (raw, or pretty-printed on
-   *  a jsonCanonical column — the store decides). */
-  seedText?: string;
+  /** Keymap-generated shortcuts for the active cell context. */
+  hints: string;
   termRows: number;
   termCols: number;
   /** Wheel/trackpad scrolled the value (+1 down / −1 up) — view mode only. */
@@ -53,12 +48,23 @@ interface Props {
   onEditSubmit: (value: string) => void;
 }
 
+type Props = CommonProps &
+  (
+    | { mode: 'view'; seedText?: never }
+    | {
+        mode: 'edit';
+        /** Raw edit seed, or pretty-printed text for a jsonCanonical column. */
+        seedText: string;
+      }
+  );
+
 const CellViewImpl = ({
   column,
   value,
   offset,
   mode,
   seedText,
+  hints,
   termRows,
   termCols,
   onScroll,
@@ -109,7 +115,7 @@ const CellViewImpl = ({
         )}
         <textarea
           ref={editRef}
-          initialValue={seedText ?? cellEditText(value)}
+          initialValue={seedText}
           focused
           keyBindings={CELL_EDIT_KEYBINDINGS}
           wrapMode="word"
@@ -120,7 +126,7 @@ const CellViewImpl = ({
           flexGrow={1}
         />
         <text fg={theme.border} wrapMode="none">
-          ^S save · esc back · ⏎ newline
+          {hints}
         </text>
       </Overlay>
     );
@@ -161,7 +167,7 @@ const CellViewImpl = ({
         </text>
       ))}
       <text fg={theme.border} wrapMode="none">
-        {top < maxOffset ? '↓ more  ·  ' : ''}esc/⏎ close · j/k scroll · y copy · e edit
+        {top < maxOffset ? '↓ more  ·  ' : ''}{hints}
       </text>
     </Overlay>
   );

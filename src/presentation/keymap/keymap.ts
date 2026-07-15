@@ -38,6 +38,8 @@ export type KeyContext =
 export interface KeyFlags {
   readonly queryable: boolean;
   readonly nlAvailable: boolean;
+  /** A retained error can be reopened after its automatic dialog was closed. */
+  readonly errorAvailable: boolean;
 }
 
 /** The effects a binding may need that the store doesn't own: leaving the
@@ -46,8 +48,8 @@ export interface KeyFlags {
 export interface DispatchEnv {
   readonly quit: () => void;
   readonly copy: (text: string) => void;
-  /** Show/hide OpenTUI's debug console overlay (captured logs & errors — it no
-   *  longer opens itself on error, so this is the way in). */
+  /** Show/hide OpenTUI's runtime console for logs and unhandled errors. Expected
+   *  operation failures stay in the app-owned error dialog instead. */
   readonly toggleConsole: () => void;
 }
 
@@ -126,7 +128,18 @@ export interface KeyGroup {
 /** Keys available whenever the UI isn't capturing text — i.e. the navigational
  *  contexts (tree / grid / ddl). They never apply while typing, so `:` and `q`
  *  stay literal in the editor and the prompts. */
+const ERROR_DETAILS: KeyBinding = {
+  keys: '!',
+  hint: 'details',
+  desc: 'Show the last error details',
+  match: ['!'],
+  enabled: (f) => f.errorAvailable,
+  primary: true,
+  run: (s) => s.setErrorDetails(true),
+};
+
 const GLOBAL: readonly KeyBinding[] = [
+  ERROR_DETAILS,
   { keys: '`', hint: 'conn', desc: 'Switch connection (back to picker)', match: ['`'], run: (s) => s.disconnect() },
   { keys: ':', hint: 'sql', desc: 'Open the SQL query editor', match: [':'], enabled: (f) => f.queryable, primary: true, run: (s) => s.focusPane('editor') },
   { keys: '^O', hint: 'sql pane', desc: 'Expand / collapse the SQL editor (collapsed: a one-line echo of the current SQL)', match: ['^o'], enabled: (f) => f.queryable, run: (s) => s.toggleEditorExpanded() },
@@ -142,7 +155,7 @@ const GLOBAL: readonly KeyBinding[] = [
   // distinguishable; degrades silently on legacy terminals (ADR 0007).
   { keys: '^⇧-', hint: 'shrink', desc: 'Shrink the connections sidebar', match: ['^⇧-', '^⇧_'], run: (s) => s.narrowSidebar() },
   { keys: '^⇧+', hint: 'widen', desc: 'Widen the connections sidebar', match: ['^⇧=', '^⇧+'], run: (s) => s.widenSidebar() },
-  { keys: 'F12', hint: 'console', desc: 'Toggle the debug console (captured logs & errors)', match: ['f12'], run: (_s, env) => env.toggleConsole() },
+  { keys: 'F12', hint: 'console', desc: 'Toggle the runtime debug console (logs and unhandled errors)', match: ['f12'], run: (_s, env) => env.toggleConsole() },
 ];
 
 const GROUPS: Record<KeyContext, KeyGroup> = {
@@ -267,7 +280,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: 'j/k ↑/↓', hint: 'scroll', desc: 'Scroll the value', match: ['up', 'k'], run: (s) => s.scrollCell(-1) },
       { keys: 'e', hint: 'edit', desc: 'Edit this cell in place', match: ['e'], run: (s) => s.beginEdit() },
       { keys: 'y', hint: 'copy', desc: 'Copy the full value to the clipboard', match: ['y'], run: (s, env) => { if (s.cellView) env.copy(formatCellValue(s.cellView.value).lines.join('\n')); } },
-      { keys: 'esc/⏎', hint: 'close', desc: 'Close the inspector', match: ['escape', 'return'], run: (s) => s.closeCell() },
+      { keys: 'q/esc/⏎', hint: 'close', desc: 'Close the inspector', match: ['q', 'escape', 'return'], run: (s) => s.closeCell() },
     ],
   },
   cellEdit: {
@@ -350,13 +363,17 @@ const FOOTER_EXITS: readonly string[] = ['quit', 'help'];
  * (the common few), or ALL of them when a context declares no primaries (keeps
  * the short contexts — filter/cell/exporting — unchanged). Nav contexts append
  * the quit/help exits. The full list always lives in the `?` overlay, and the
- * status bar scrolls to reveal anything a narrow width clips.
+ * status bar clips from the right after keeping any leading status action.
  */
 export const footerHints = (context: KeyContext, flags: KeyFlags): string => {
   const nav = NAV.has(context);
+  const details = nav && usable(ERROR_DETAILS, flags) ? [ERROR_DETAILS] : [];
   const candidates = [
+    ...details,
     ...shown(context, flags),
-    ...(nav ? GLOBAL.filter((b) => usable(b, flags)) : []),
+    ...(nav
+      ? GLOBAL.filter((b) => b !== ERROR_DETAILS && usable(b, flags))
+      : []),
   ];
   const primaries = candidates.filter((b) => b.primary);
   const pick = primaries.length > 0 ? primaries : candidates;
@@ -404,7 +421,7 @@ export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void 
   // but only while it is the layer actually on screen: a staged confirm and the
   // connection form render above it, and they must keep their keys.
   if (errorDialogShowing(s)) {
-    if (key.name === 'escape' || key.name === 'return') s.dismissError();
+    if (key.name === 'escape' || key.name === 'return') s.setErrorDetails(false);
     return;
   }
 
@@ -420,7 +437,11 @@ export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void 
   }
   if (s.generating) return; // ignore input while the model works
 
-  const flags: KeyFlags = { queryable: s.queryable, nlAvailable: s.nlAvailable };
+  const flags: KeyFlags = {
+    queryable: s.queryable,
+    nlAvailable: s.nlAvailable,
+    errorAvailable: s.error !== null,
+  };
   const context = deriveContext(s);
   const group = GROUPS[context];
 

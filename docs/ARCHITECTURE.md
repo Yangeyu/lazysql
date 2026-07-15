@@ -380,7 +380,7 @@ src/
   - ✅ 连接管理：`ConnectionRepository`/`SecretStore`/`DataSourceFactory` 三个出站端口；`YamlConnectionRepository`(`connections.yml`，无密码，可手编) + `FileSecretStore`(`secrets.json`，`chmod 600`)。`OpenConnection` 用例解析密钥并合并进 options 后连接。**in-TUI 连接选择器**(`Root` 组件管理 选择器↔浏览 阶段机) + 会话内切换(``` ` ``` 键经 `ShellContext`)；组合根无 arg 进选择器、带名称/文件直连、首次运行写起始配置。
   - ✅ `KeychainSecretStore`：`SecretStore` 的第二实现(macOS `security` CLI，零 native 依赖)，`LAZYSQL_SECRETS=keychain` 开启。**新增引擎/密钥后端只动 `adapters/`，端口之上零改动**——三度兑现 OCP/DIP。
   - ⬜ in-TUI「新增连接」表单(当前经编辑 `connections.yml`) · Linux/Windows Keychain 后端。
-- **Phase 2 · 数据编辑** ✅：启用 `RowEditable`/`Transactional` 能力。参数化 DML（`dml.ts`，**拒绝无 WHERE 的写**）；每次写入跑在真事务里，`affected≠1 → 回滚`（防误改多行）；TUI `e` 编辑单元格、`d` 删除行，均经**二次确认**展示精确语句后执行。三引擎适配器测试覆盖写入与回滚守卫。Insert 已在适配器层（无 UI 表单，留作后续）。
+- **Phase 2 · 数据编辑** ✅：启用 `RowEditable`/`Transactional` 能力。参数化 DML（`dml.ts`，**拒绝无 WHERE 的写**）；每次写入跑在真事务里，`affected≠1 → 回滚`（防误改多行）；TUI 在 cell inspector 内用 `e` 编辑单元格、网格用 `d` 删除行，均经**二次确认**展示精确语句后执行。三引擎适配器测试覆盖写入与回滚守卫。Insert 已在适配器层（无 UI 表单，留作后续）。
 - **Phase 3 · 查询编辑器** ✅：第二个主视图(`view: browse | query`)。经 `Queryable` 执行自由 SQL、复用 `DataGrid` 渲染结果、会话内历史(`↑/↓`)。**schema 感知补全**——纯 tokenizer 引擎(`sqlCompleter.ts`，无解析器、对半成品 SQL 鲁棒):按前置关键字给 表名/列名(按 FROM 子句作用域)/关键字,`Tab` 接受。`:` 进入、`esc` 返回。
 - **Phase 4 · Schema 管理** ⬜：内省视图 + DDL。
 - **Phase 5 · NL→SQL (LLM)** ✅：`SqlGenerator` 出站端口（**端口即 provider 抽象**）。`GenerateSql` 用例：生成→`classify`(read/write/ddl)→`Result`；**绝不执行**。TUI `^G` 进入 NL 提示，生成的 SQL **填入编辑器供审查**，破坏性语句红色 ⚠ 警告，用户自行回车运行。store 级测试验证"填入而不执行"。

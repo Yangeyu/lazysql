@@ -315,8 +315,8 @@ export interface AppState {
 
   init: () => Promise<void>;
   toggleHelp: () => void;
-  /** Dismiss the showing error dialog (esc). */
-  dismissError: () => void;
+  /** Show or dismiss the retained error's details dialog. */
+  setErrorDetails: (show: boolean) => void;
   /** Scroll the help overlay's body by `delta` lines, clamped to its content. */
   scrollHelp: (delta: number) => void;
   /** The overlay reports how far its content can scroll (0 when it all fits). */
@@ -736,7 +736,8 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
 
       toggleHelp: () => set((s) => ({ helpOpen: !s.helpOpen, helpScroll: 0 })),
 
-      dismissError: () => set((s) => ({ errorDismissed: s.error })),
+      setErrorDetails: (show) =>
+        set((s) => (s.error === null ? {} : { errorDismissed: show ? null : s.error })),
 
       scrollHelp: (delta) =>
         set((s) => ({

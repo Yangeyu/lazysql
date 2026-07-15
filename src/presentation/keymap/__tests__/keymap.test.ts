@@ -35,7 +35,7 @@ test('deriveContext falls back to plain pane focus', () => {
 });
 
 test('footerHints and helpGroups read the same registry for a context', () => {
-  const flags = { queryable: true, nlAvailable: true };
+  const flags = { queryable: true, nlAvailable: true, errorAvailable: false };
   expect(footerHints('grid', flags)).toContain('sort');
   expect(footerHints('grid', flags)).toContain('export'); // X export the view (ADR 0012)
   expect(footerHints('sidebar', flags)).toContain('export'); // X export the selected table
@@ -43,7 +43,7 @@ test('footerHints and helpGroups read the same registry for a context', () => {
 });
 
 test('footerHints curates to the primary actions; the ? panel keeps the full list', () => {
-  const flags = { queryable: true, nlAvailable: true };
+  const flags = { queryable: true, nlAvailable: true, errorAvailable: false };
   // Movement (hint 'row') is muscle memory — omitted from the curated footer…
   expect(footerHints('grid', flags)).not.toContain('row');
   // …but the `?` overlay still lists it, deduped (up AND k → one 'row' entry).
@@ -57,13 +57,19 @@ test('footerHints curates to the primary actions; the ? panel keeps the full lis
 });
 
 test('footerHints pins q quit · ? help at the end of a nav context', () => {
-  const flags = { queryable: true, nlAvailable: true };
+  const flags = { queryable: true, nlAvailable: true, errorAvailable: false };
   const bar = footerHints('sidebar', flags);
   expect(bar).toContain('quit');
   expect(bar).toContain('help');
   expect(bar.trimEnd().endsWith('? help')).toBe(true);
   // A short, no-primary context falls back to showing its own keys (unchanged).
   expect(footerHints('exporting', flags)).toContain('cancel');
+});
+
+test('footerHints leads with the action that reopens dismissed error details', () => {
+  const flags = { queryable: true, nlAvailable: true, errorAvailable: true };
+  expect(footerHints('grid', flags).startsWith('! details')).toBe(true);
+  expect(helpGroups('grid', flags)[1]?.bindings.some((b) => b.hint === 'details')).toBe(true);
 });
 
 // ── dispatchKey: behaviour now comes from the same table ──
@@ -147,6 +153,19 @@ test('dispatchKey: y in the cell inspector copies the full value', () => {
   expect(e.copy).toHaveBeenCalledWith('gamma');
 });
 
+test('dispatchKey: q closes the cell inspector instead of quitting', () => {
+  const closeCell = mock(() => {});
+  const s = stub({
+    cellView: { column: 'name', value: 'gamma', offset: 0, mode: 'view' },
+    closeCell,
+  } as Partial<AppState>);
+  const e = env();
+
+  dispatchKey(s, key({ name: 'q', sequence: 'q' }), e);
+  expect(closeCell).toHaveBeenCalledTimes(1);
+  expect(e.quit).not.toHaveBeenCalled();
+});
+
 test('dispatchKey: the DDL context scrolls the structure and toggles the tab', () => {
   const s = stub({ mainTab: 'ddl' });
   dispatchKey(s, key({ name: 'j', sequence: 'j' }), env()); // scrolls, not grid nav
@@ -157,32 +176,32 @@ test('dispatchKey: the DDL context scrolls the structure and toggles the tab', (
 });
 
 test('dispatchKey: a fresh error pops its dialog, which swallows input; esc dismisses', () => {
-  const dismissError = mock(() => {});
+  const setErrorDetails = mock((_show: boolean) => {});
   const s = stub({
     error: { message: 'boom' }, // not dismissed → the dialog is showing
-    dismissError,
+    setErrorDetails,
   } as Partial<AppState>);
   dispatchKey(s, key({ name: 'j', sequence: 'j' }), env()); // swallowed
   expect(s.gridDown).not.toHaveBeenCalled();
   dispatchKey(s, key({ name: 'escape' }), env());
-  expect(dismissError).toHaveBeenCalledTimes(1);
+  expect(setErrorDetails).toHaveBeenCalledWith(false);
 });
 
 test('dispatchKey: a staged confirm keeps its keys even with an undismissed error behind it', () => {
   // Render precedence puts the confirm ABOVE the error dialog; the dispatcher
   // must agree, or y/n would feed an invisible dialog.
   const confirmPending = mock(async () => {});
-  const dismissError = mock(() => {});
+  const setErrorDetails = mock((_show: boolean) => {});
   const s = stub({
     error: { message: 'boom' }, // undismissed…
     mode: 'confirm',
     pending: { title: 't', tone: 'normal', run: async () => {} }, // …but the confirm owns the screen
     confirmPending,
-    dismissError,
+    setErrorDetails,
   } as Partial<AppState>);
   dispatchKey(s, key({ name: 'y', sequence: 'y' }), env());
   expect(confirmPending).toHaveBeenCalledTimes(1);
-  expect(dismissError).not.toHaveBeenCalled();
+  expect(setErrorDetails).not.toHaveBeenCalled();
 });
 
 test('dispatchKey: after a dismissal keys flow to the panes again', () => {
@@ -193,6 +212,19 @@ test('dispatchKey: after a dismissal keys flow to the panes again', () => {
   } as Partial<AppState>);
   dispatchKey(s, key({ name: 'j', sequence: 'j' }), env());
   expect(s.gridDown).toHaveBeenCalledTimes(1); // not swallowed
+});
+
+test('dispatchKey: ! reopens the retained error details after dismissal', () => {
+  const dismissed = { message: 'boom' };
+  const setErrorDetails = mock((_show: boolean) => {});
+  const s = stub({
+    error: dismissed,
+    errorDismissed: dismissed,
+    setErrorDetails,
+  } as Partial<AppState>);
+
+  dispatchKey(s, key({ sequence: '!' }), env());
+  expect(setErrorDetails).toHaveBeenCalledWith(true);
 });
 
 test('dispatchKey: X exports the grid view and the selected tree table', () => {

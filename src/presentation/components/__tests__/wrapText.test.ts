@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
 import stringWidth from 'string-width';
-import { wrapByWidth } from '../wrapText.ts';
+import { truncateByWidth, wrapByWidth } from '../wrapText.ts';
 
 const widest = (rows: string[]) => Math.max(...rows.map((r) => stringWidth(r)));
 
@@ -28,4 +28,16 @@ test('a single glyph wider than the budget still emits (degenerate width)', () =
 test('empty line stays one empty row; non-positive width passes through', () => {
   expect(wrapByWidth('', 10)).toEqual(['']);
   expect(wrapByWidth('anything', 0)).toEqual(['anything']);
+});
+
+test('truncates to a display-width budget and reserves an ellipsis', () => {
+  expect(truncateByWidth('abcdefgh', 5)).toBe('abcd…');
+  expect(truncateByWidth('全球体外', 5)).toBe('全球…');
+  expect(stringWidth(truncateByWidth('全球体外', 5))).toBeLessThanOrEqual(5);
+});
+
+test('truncation keeps short text and handles degenerate widths', () => {
+  expect(truncateByWidth('abc', 5)).toBe('abc');
+  expect(truncateByWidth('abc', 1)).toBe('…');
+  expect(truncateByWidth('abc', 0)).toBe('');
 });

@@ -10,10 +10,12 @@
 
 import React from 'react';
 import { TextAttributes } from '@opentui/core';
+import stringWidth from 'string-width';
 import type { Mode } from '../app/store.ts';
 import type { AppError } from '../app/appError.ts';
 import { footerHints, type KeyContext, type KeyFlags } from '../keymap/keymap.ts';
 import { theme, INPUT_CURSOR } from '../theme/theme.ts';
+import { truncateByWidth } from './wrapText.ts';
 
 interface Props {
   width: number;
@@ -80,14 +82,36 @@ const StatusBarImpl = ({
   filterColumn,
   onFilterSubmit,
 }: Props) => {
-  // The hint list stays on ONE line: it truncates from the right, so the active
-  // context's keys (listed first) always survive.
+  const hints = footerHints(context, flags);
+  const innerWidth = Math.max(0, width - 2); // paddingX={1}
+  const desiredGap = innerWidth >= 3 && hints !== '' ? 2 : 0;
+  const filterPrefixWidth = stringWidth(` filter  ${filterColumn ?? '?'} contains `);
+  // A filter reserves sixteen cells for the native input (twelve visible text
+  // cells plus its cursor/chrome) before its hints grow; other modes reserve at
+  // least half the row for the left side. Both sides own explicit paint bounds.
+  const minLeftWidth =
+    mode === 'filter'
+      ? Math.min(innerWidth, filterPrefixWidth + 16)
+      : Math.ceil((innerWidth - desiredGap) / 2);
+  const hintWidth = Math.min(
+    stringWidth(hints),
+    Math.max(0, innerWidth - desiredGap - minLeftWidth),
+  );
+  const gap = hintWidth > 0 ? desiredGap : 0;
+  const leftWidth = Math.max(0, innerWidth - gap - hintWidth);
+  const filterInputWidth = Math.max(1, Math.min(40, leftWidth - filterPrefixWidth));
+
+  // The hint list stays on ONE line and clips from the right, so the
+  // highest-priority keys (listed first) always survive.
   const bar = (left: React.ReactNode): React.ReactNode => (
-    <box flexDirection="row" width={width} justifyContent="space-between" paddingX={1}>
-      <box flexShrink={0}>{left}</box>
-      <box flexShrink={1} marginLeft={2}>
+    <box flexDirection="row" width={width} paddingX={1}>
+      <box width={leftWidth} height={1} overflow="hidden">
+        {left}
+      </box>
+      {gap > 0 ? <box width={gap} height={1} /> : null}
+      <box width={hintWidth} height={1} overflow="hidden">
         <text wrapMode="none" fg={theme.border}>
-          {footerHints(context, flags)}
+          {hints}
         </text>
       </box>
     </box>
@@ -108,7 +132,7 @@ const StatusBarImpl = ({
           // onSubmit is typed as an upstream intersection quirk; at runtime it
           // delivers the input's string value (verified).
           onSubmit={onFilterSubmit as never}
-          width={40}
+          width={filterInputWidth}
           textColor={theme.cyan}
           cursorStyle={INPUT_CURSOR}
           cursorColor={theme.accent}
@@ -129,10 +153,14 @@ const StatusBarImpl = ({
   }
 
   if (error) {
+    // Badge (" error ") + the separating space consume eight cells. The full
+    // message remains available in ErrorOverlay; this one-line summary is the
+    // only content that should be shortened.
+    const message = truncateByWidth(error.message, Math.max(0, leftWidth - 8));
     return bar(
       <text wrapMode="none">
         <Badge label="error" bg={theme.red} fg="#ffffff" />
-        <span fg={theme.red}> {error.message}</span>
+        <span fg={theme.red}> {message}</span>
       </text>,
     );
   }

@@ -627,9 +627,11 @@ test('a still-referenced delete fails worded for a human; ! opens its details', 
 
   // A fresh failure pops its dialog; esc dismisses it, keeping the error.
   expect(errorShowing(store.getState())).toBe(true);
-  store.getState().dismissError();
+  store.getState().setErrorDetails(false);
   expect(errorShowing(store.getState())).toBe(false);
   expect(store.getState().error).toEqual(failure ?? null);
+  store.getState().setErrorDetails(true);
+  expect(errorShowing(store.getState())).toBe(true);
 });
 
 test('a non-Queryable source gates off the SQL editor and NL→SQL', async () => {

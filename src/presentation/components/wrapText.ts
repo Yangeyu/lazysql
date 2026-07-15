@@ -1,11 +1,32 @@
 /**
- * Hard-wrap text to a terminal display width. Unlike a character-count split,
- * this measures each glyph's cell width (CJK is 2-wide), so wide text wraps at
- * the panel edge instead of overflowing or being clipped. Renderer-free and
- * pure, so it is unit-testable.
+ * Terminal display-width text helpers. Unlike character-count slicing, these
+ * measure each glyph's cell width (CJK is 2-wide), so wrapping and truncation
+ * stay inside their visual column budgets. Renderer-free and pure for tests.
  */
 
 import stringWidth from 'string-width';
+
+/**
+ * Truncate one line to at most `width` terminal columns, reserving the final
+ * column for an ellipsis when anything was removed. This is display-width aware
+ * (CJK glyphs count as two), unlike String#slice.
+ */
+export const truncateByWidth = (line: string, width: number): string => {
+  if (width <= 0) return '';
+  if (stringWidth(line) <= width) return line;
+  if (width === 1) return '…';
+
+  const budget = width - 1;
+  let out = '';
+  let used = 0;
+  for (const ch of line) {
+    const w = stringWidth(ch);
+    if (used + w > budget) break;
+    out += ch;
+    used += w;
+  }
+  return `${out}…`;
+};
 
 /**
  * Split one logical line into display rows no wider than `width` columns,

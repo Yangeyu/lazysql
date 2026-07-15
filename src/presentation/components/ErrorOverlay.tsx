@@ -75,7 +75,7 @@ const ErrorOverlayImpl = ({ error, termRows, termCols }: Props) => {
         </text>
       ))}
       <text fg={theme.border} wrapMode="none">
-        esc close
+        esc/⏎ close
       </text>
     </Overlay>
   );

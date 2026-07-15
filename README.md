@@ -107,11 +107,12 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 | `tab` | Toggle focus between tree ↔ results |
 | `^H` / `^L` | Focus the tree / the results grid directly |
 | `^⇧-` / `^⇧+` | Shrink / widen the connections sidebar |
-| `F12` | Toggle the debug console (captured logs & errors) |
+| `!` | Reopen the current error details |
+| `F12` | Toggle the runtime debug console (logs and unhandled errors) |
 | `?` | Toggle help |
 | `q` | Quit |
 
-Failures (a refused write, a lost connection, a failed export…) pop an error dialog with the full message, the driver's error code and its detail; `esc` dismisses it.
+Failures (a refused write, a lost connection, a failed export…) pop an error dialog with the full message, the driver's error code and its detail. `esc` / `⏎` dismisses it; `!` reopens the retained details.
 
 **Sidebar (tree)**
 
@@ -145,7 +146,7 @@ Failures (a refused write, a lost connection, a failed export…) pop an error d
 | `a` | Browse the selected table (`SELECT *`) |
 | `s` | Cycle sort (asc → desc → none) |
 | `/` | Filter by column substring |
-| `e` / `d` | Edit cell / delete row |
+| `d` | Delete row (`⏎` inspect, then `e` edits the cell) |
 | `X` | Export the view — a browsed table to CSV / JSON / SQL (filtered & sorted), a query result to CSV / JSON |
 | `n` / `p` | Next / previous page |
 | `D` | Toggle Data / DDL tab |
@@ -187,7 +188,7 @@ Failures (a refused write, a lost connection, a failed export…) pop an error d
 | `j` / `k` · `↑` / `↓` | Scroll the value |
 | `e` | Edit the cell in place (`^S` save · `esc` back) |
 | `y` | Copy the full value to the clipboard |
-| `esc` / `⏎` | Close |
+| `q` / `esc` / `⏎` | Close |
 
 **New / edit connection form**
 

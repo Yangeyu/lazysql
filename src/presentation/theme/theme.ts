@@ -12,9 +12,6 @@ export const theme = {
   /** Readable text colour to lay on top of an accent-filled background. Also the
    *  selection foreground (paired with `accent` as the selection background). */
   onAccent: '#16161e',
-  /** Opaque panel background (Tokyo-Night base) — fills floating overlays so the
-   *  busy workbench behind them never bleeds through. */
-  bg: '#1a1b26',
   magenta: '#bb9af7',
   green: '#9ece6a',
   yellow: '#e0af68',

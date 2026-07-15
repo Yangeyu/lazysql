@@ -3,18 +3,24 @@
  * workbench, the way lazygit shows its menus (the background stays visible
  * around it instead of being replaced).
  *
- * OpenTUI gives us real compositing: an `position: "absolute"` box is out of
- * flow and, drawn last in the tree, paints over its siblings; its
- * `backgroundColor` fills the panel rect opaquely so the busy background never
- * bleeds through. That replaces the two hand-painted layers (an opaque
- * space-fill behind the bordered content) a clear-and-redraw renderer needed —
- * one box now does both. Fixed size + cell-diff rendering mean scrolling repaints
- * only the changed lines.
+ * OpenTUI gives us real compositing: a `position: "absolute"` box is out of flow
+ * and, drawn last in the tree, paints over its siblings. Like lazygit, the frame
+ * and the cleared panel interior both use the terminal's DEFAULT background.
+ * That matters because a border glyph occupies a whole terminal cell: a custom
+ * panel colour makes the part outside a thin `│` look like a dark shadow, while
+ * a transparent frame exposes the workbench on the inside and looks detached.
+ * One opaque, default-background box keeps the frame joined to its content
+ * without introducing a contrasting halo. Fixed size + cell-diff rendering mean
+ * scrolling repaints only the changed lines.
  */
 
 import React from 'react';
-import type { MouseEvent } from '@opentui/core';
+import { RGBA, type MouseEvent } from '@opentui/core';
 import { theme } from '../theme/theme.ts';
+
+/** Preserve the terminal-default colour intent (rather than assuming black).
+ * OpenTUI resolves it against the active terminal palette when drawing. */
+const panelBackground = RGBA.defaultBackground();
 
 interface Props {
   /** Terminal size — the overlay centers itself within it. */
@@ -61,7 +67,7 @@ const OverlayImpl = ({
       border
       borderStyle="rounded"
       borderColor={borderColor}
-      backgroundColor={theme.bg}
+      backgroundColor={panelBackground}
       paddingX={1}
       onMouseScroll={onMouseScroll}
     >

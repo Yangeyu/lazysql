@@ -55,8 +55,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
-    "@opentui/core": "^0.4.2",
-    "@opentui/react": "^0.4.2",
+    "@opentui/core": "^0.4.3",
+    "@opentui/react": "^0.4.3",
     "mongodb": "^7.3.0",
     "mysql2": "^3.22.5",
     "react": "^19.2.0",

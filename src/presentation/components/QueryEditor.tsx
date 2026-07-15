@@ -50,8 +50,9 @@ interface Props {
   expanded: boolean;
   /** The store's mirror of the editor text (the <textarea> owns the real buffer). */
   queryText: string;
-  /** The store's mirror of the caret offset — used to reconcile the widget on a
-   *  programmatic write so the cursor lands where the action intends. */
+  /** The store's mirror of the caret offset, in JavaScript string indices — used
+   *  to reconcile the widget on a programmatic write so the cursor lands where
+   *  the action intends. */
   editorCaret: number;
   /** Read-only echo of the statement behind the current grid (browse SQL or the
    *  executed query), shown as the input's dim placeholder while it is empty so
@@ -88,6 +89,36 @@ interface Props {
  *  ask row off the top. */
 const oneLine = (s: string): string => s.replace(/\s*\n\s*/g, ' ');
 
+/** OpenTUI 0.4 reports `cursorOffset` in terminal-cell offsets (wide glyphs use
+ *  more than one), while every store consumer (`slice`, the completer,
+ *  completion replacement) uses JavaScript UTF-16 string indices. Ask the
+ *  widget for its prefix instead of duplicating terminal-width rules here. */
+const fromWidgetCaret = (ta: TextareaRenderable): number =>
+  ta.getTextRange(0, ta.cursorOffset).length;
+
+/** Find the first native offset whose text prefix reaches `stringIndex`. This is
+ *  only needed for programmatic writes; ordinary typing already leaves widget
+ *  and store carets aligned and takes the cheap `fromWidgetCaret` path. */
+const toWidgetCaret = (
+  ta: TextareaRenderable,
+  text: string,
+  stringIndex: number,
+): number => {
+  const target = Math.max(0, Math.min(stringIndex, text.length));
+  if (target === 0) return 0;
+
+  let high = Math.max(1, text.length);
+  while (ta.getTextRange(0, high).length < target) high *= 2;
+
+  let low = 0;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (ta.getTextRange(0, mid).length < target) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+};
+
 const QueryEditorImpl = ({
   expanded,
   queryText,
@@ -118,12 +149,17 @@ const QueryEditorImpl = ({
     const ta = ref.current;
     if (!ta) return;
     if (ta.plainText !== queryText) ta.setText(queryText);
-    if (ta.cursorOffset !== editorCaret) ta.cursorOffset = editorCaret;
+    if (fromWidgetCaret(ta) !== editorCaret) {
+      ta.cursorOffset = toWidgetCaret(ta, queryText, editorCaret);
+    }
   }, [queryText, editorCaret]);
 
   const sync = (): void => {
     const ta = ref.current;
-    if (ta) onEditorChange(ta.plainText, ta.cursorOffset);
+    if (ta) {
+      const text = ta.plainText;
+      onEditorChange(text, fromWidgetCaret(ta));
+    }
   };
 
   const borderColor = nlMode

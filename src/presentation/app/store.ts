@@ -293,8 +293,8 @@ export interface AppState {
    *  widget to match (ADR 0010). Running it lands the result in the shared grid
    *  (`result`, surface 'query'); there is no separate query result slice. */
   queryText: string;
-  /** Caret offset (chars) into `queryText`, mirrored from the widget — drives the
-   *  completion context and where a programmatic write seats the cursor. */
+  /** JavaScript string index (UTF-16 code units) into `queryText`, mirrored from
+   *  the widget — drives completion context and programmatic cursor placement. */
   editorCaret: number;
   queryError: string | null;
   queryElapsedMs: number | null;

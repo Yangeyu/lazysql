@@ -111,3 +111,20 @@ test('collapse-expand keeps the caret: typing resumes where the draft was left',
   await h.until((f) => f.includes('SELECT 12x345'));
   h.cleanup();
 });
+
+test('completion follows the caret when editing in the middle of SQL', async () => {
+  const h = await mount();
+  await h.until((f) => f.includes('GearDB'));
+
+  h.press(':');
+  await h.until((f) => f.includes('⏎ run'));
+  await h.type("SELECT '中文'  t");
+  h.arrow('left');
+  h.arrow('left');
+  await h.type('FRO');
+  await h.until((f) => f.includes('⇥ FROM'));
+
+  h.tab();
+  await h.until((f) => f.includes("SELECT '中文' FROM t"));
+  h.cleanup();
+});

@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { test, expect } from 'bun:test';
 import type { TextareaRenderable } from '@opentui/core';
 import { renderTest } from '../../testing/renderTest.ts';
+import { complete } from '../../completion/sqlCompleter.ts';
 import { QueryEditor } from '../QueryEditor.tsx';
 
 const SQL = "SELECT count(*) FROM documents WHERE name = 'x';";
@@ -41,6 +42,50 @@ test('renders the bound query text in the SQL editor', async () => {
   const frame = h.frame();
   expect(frame).toContain('count(*)');
   expect(frame).toContain('FROM documents');
+  h.cleanup();
+});
+
+test('typing after non-ASCII text recomputes completions at the middle caret', async () => {
+  const initial = "SELECT '中文' *  users";
+
+  const Fixture = () => {
+    const [query, setQuery] = useState(initial);
+    const [caret, setCaret] = useState(initial.length);
+    const candidates = complete(query, null, caret).candidates;
+    return (
+      <QueryEditor
+        expanded
+        queryText={query}
+        editorCaret={caret}
+        statement={null}
+        focused
+        completions={candidates}
+        completionsOn
+        nlMode={false}
+        onNlSubmit={() => {}}
+        onEditorChange={(text, nextCaret) => {
+          setQuery(text);
+          setCaret(nextCaret);
+        }}
+        onQuerySubmit={() => {}}
+        generating={false}
+        nlExplanation={null}
+        nlKind={null}
+        error={null}
+        height={8}
+        innerWidth={80}
+        onPaneClick={() => {}}
+      />
+    );
+  };
+
+  const h = await renderTest(<Fixture />, { width: 90, height: 10 });
+  await h.flush();
+  await h.flush();
+  for (let i = 0; i < 6; i += 1) h.arrow('left');
+  await h.type('FRO');
+  await h.until((frame) => frame.includes('⇥ FROM'));
+  expect(h.frame()).toContain("SELECT '中文' * FRO users");
   h.cleanup();
 });
 

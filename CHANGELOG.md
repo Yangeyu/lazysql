@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.22](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.22) - 2026-07-16
+
+### Features
+
+- **tui:** Refresh the results view in place with r ([9efdef6](https://github.com/Yangeyu/lazysql/commit/9efdef699a9bd9d4c50543d972d1b9f36712b226))
+
+### Refactoring
+
+- **repo:** Remove obsolete fallback paths ([a0c0487](https://github.com/Yangeyu/lazysql/commit/a0c048797e3fcb330582fe2f50be74f59ef4f679))
+
+### Documentation
+
+- **repo:** Refresh demo image cache ([5fefacb](https://github.com/Yangeyu/lazysql/commit/5fefacbb802fb9be62250e1be5e903ef7031c093))
+
 ## [0.1.21](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.21) - 2026-07-15
 
 ### Documentation

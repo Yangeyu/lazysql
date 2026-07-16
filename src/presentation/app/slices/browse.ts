@@ -87,6 +87,7 @@ export type BrowseActions = Pick<
   | 'applySort'
   | 'pageNext'
   | 'pagePrev'
+  | 'refreshBrowse'
   | 'beginFilter'
   | 'cancelFilter'
   | 'commitFilter'
@@ -365,6 +366,8 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
       if (!current || page.offset === 0) return;
       await load(current, { page: prevPage(page), sort, filter });
     },
+
+    refreshBrowse: () => reloadKeepingCursor(),
 
     beginFilter: () => {
       const { current, result, gridCol } = get();

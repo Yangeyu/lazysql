@@ -21,7 +21,7 @@ import type { ResultSet } from '../../../domain/datasource/ResultSet.ts';
 import type { ConnectionService } from '../../../application/ports/ConnectionService.ts';
 import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
 import type { ObjectKind } from '../../../domain/datasource/schema.ts';
-import type { BrowseSpec } from '../../../domain/query/Query.ts';
+import type { BrowseSpec, Filter } from '../../../domain/query/Query.ts';
 import type { SqlGenerator } from '../../../application/ports/SqlGenerator.ts';
 import type { Exporter } from '../../../application/ports/Exporter.ts';
 import { SIDEBAR_STEP, SIDEBAR_MIN, SIDEBAR_MAX } from '../layout.ts';
@@ -905,4 +905,125 @@ test('a stale slow browse cannot overwrite a newer navigation (nav epoch)', asyn
   expect(s.filter?.conditions[0]?.value).toBe('fast');
   expect(s.error).toBeNull();
   expect(s.loading).toBe(false);
+});
+
+// ── results refresh (`r` in the grid): re-fetch by the current state ──
+
+test('refreshBrowse re-fetches the same page/sort/filter window and keeps the cursor', async () => {
+  const specs: BrowseSpec[] = [];
+  let label = 'before';
+  const browsable = {
+    ...fakeSource,
+    browse: async (_ref: unknown, spec: BrowseSpec): Promise<ResultSet> => {
+      specs.push(spec);
+      return {
+        shape: 'tabular',
+        columns: [{ name: 'id' }, { name: 'label' }],
+        rows: [[1, label], [2, label]],
+        truncated: false,
+      };
+    },
+    count: async () => 2,
+  } as unknown as DataSource;
+  const profile: ConnectionProfile = { id: 'x', name: 'X', driver: 'sqlite', options: {} };
+  const store = createAppStore({
+    connectionService: { ...serviceFor(profile), open: async () => ok(browsable) },
+  });
+  await store.getState().connectProfile(profile);
+
+  const page = { offset: 100, limit: 100 };
+  const sort = { column: 'label', direction: 'desc' } as const;
+  const filter: Filter = { conditions: [{ column: 'label', op: 'contains', value: 'row' }] };
+  store.setState({
+    current: { name: 'items', kind: 'table' },
+    surface: 'browse',
+    page,
+    sort,
+    filter,
+    pkColumns: ['id'],
+    result: {
+      shape: 'tabular',
+      columns: [{ name: 'id' }, { name: 'label' }],
+      rows: [[1, 'before'], [2, 'before']],
+      truncated: false,
+    },
+    total: 2,
+    gridRow: 1,
+    gridCol: 1,
+  });
+
+  label = 'after';
+  await store.getState().refreshBrowse();
+
+  const s = store.getState();
+  expect(specs.at(-1)).toEqual({ page, sort, filter, stableKey: ['id'] });
+  expect(s.result?.rows).toEqual([[1, 'after'], [2, 'after']]);
+  expect(s.page).toEqual(page);
+  expect(s.sort).toEqual(sort);
+  expect(s.filter).toEqual(filter);
+  expect(s.gridRow).toBe(1); // cursor kept, not reset to 0
+  expect(s.gridCol).toBe(1);
+});
+
+test('refreshQuery re-runs the read statement in place, leaving the editor draft alone', async () => {
+  const executed: string[] = [];
+  let rows: ResultSet['rows'] = [[1], [2], [3]];
+  const source = {
+    ...fakeSource,
+    capabilities: () => new CapabilitySet([Capability.Query]),
+    execute: async (query: { text: string }): Promise<ResultSet> => {
+      executed.push(query.text);
+      return { shape: 'tabular', columns: [{ name: 'n' }], rows, truncated: false };
+    },
+  } as unknown as DataSource;
+  const profile: ConnectionProfile = { id: 'x', name: 'X', driver: 'sqlite', options: {} };
+  const store = createAppStore({
+    connectionService: { ...serviceFor(profile), open: async () => ok(source) },
+  });
+  await store.getState().connectProfile(profile);
+
+  store.getState().setQuery('select n from t');
+  await store.getState().executeQuery();
+  expect(store.getState().surface).toBe('query');
+
+  // The user has moved the cursor and started drafting new SQL — refresh must
+  // touch neither.
+  store.setState({ gridRow: 2 });
+  store.getState().setQuery('select a fresh draft');
+  rows = [[9]];
+  await store.getState().refreshQuery();
+
+  const s = store.getState();
+  expect(executed).toEqual(['select n from t', 'select n from t']);
+  expect(s.result?.rows).toEqual([[9]]);
+  expect(s.total).toBe(1);
+  expect(s.gridRow).toBe(0); // clamped to the shrunk result
+  expect(s.queryText).toBe('select a fresh draft'); // draft untouched
+  expect(s.statement).toBe('select n from t'); // echo unchanged
+});
+
+test('refreshQuery refuses to re-run a write — a notice points back to the editor', async () => {
+  const executed: string[] = [];
+  const source = {
+    ...fakeSource,
+    capabilities: () => new CapabilitySet([Capability.Query]),
+    execute: async (query: { text: string }): Promise<ResultSet> => {
+      executed.push(query.text);
+      return { shape: 'tabular', columns: [], rows: [], affected: 1, truncated: false };
+    },
+  } as unknown as DataSource;
+  const profile: ConnectionProfile = { id: 'x', name: 'X', driver: 'sqlite', options: {} };
+  const store = createAppStore({
+    connectionService: { ...serviceFor(profile), open: async () => ok(source) },
+  });
+  await store.getState().connectProfile(profile);
+
+  store.getState().setQuery('insert into t (n) values (1)'); // qualified → no confirm
+  await store.getState().executeQuery();
+  expect(executed.length).toBe(1);
+
+  await store.getState().refreshQuery();
+
+  expect(executed.length).toBe(1); // the INSERT did NOT run again
+  expect(store.getState().notice).toContain('editor');
 });

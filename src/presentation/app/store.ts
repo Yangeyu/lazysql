@@ -450,6 +450,8 @@ export interface AppState {
   applySort: () => Promise<void>;
   pageNext: () => Promise<void>;
   pagePrev: () => Promise<void>;
+  /** Re-fetch the browsed window (same page/sort/filter), keeping the cursor. */
+  refreshBrowse: () => Promise<void>;
   beginFilter: () => void;
   cancelFilter: () => void;
   /** Apply the filter typed in the native input (empty clears it). */
@@ -488,6 +490,10 @@ export interface AppState {
   /** Toggle schema completion on/off (^T). */
   toggleCompletions: () => void;
   executeQuery: () => Promise<void>;
+  /** Re-run the query surface's statement in place. Read statements only —
+   *  re-running a write/DDL would repeat its side effects, so those get a
+   *  notice pointing back to the editor instead. */
+  refreshQuery: () => Promise<void>;
   historyPrev: () => void;
   historyNext: () => void;
   acceptCompletion: () => void;

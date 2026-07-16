@@ -150,6 +150,7 @@ Failures (a refused write, a lost connection, a failed export…) pop an error d
 | `esc` | Undo the latest applied filter — restore its previous page, sort and focused cell |
 | `d` | Delete row (`⏎` inspect, then `e` edits the cell) |
 | `X` | Export the view — a browsed table to CSV / JSON / SQL (filtered & sorted), a query result to CSV / JSON |
+| `r` | Refresh the view — re-fetch the browsed window (same page / sort / filter), or re-run the query (reads only) |
 | `n` / `p` | Next / previous page |
 | `D` | Toggle Data / DDL tab |
 

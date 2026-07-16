@@ -218,6 +218,7 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       // No `e` here — a single entry (view → edit) keeps esc a clean pop back.
       { keys: 'd', hint: 'del', desc: 'Delete the row under the cursor', match: ['d'], run: (s) => { if (s.surface === 'browse') s.beginDelete(); } },
       { keys: 'X', hint: 'export', desc: 'Export to CSV — the whole browsed table (filtered/sorted), or the query result', match: ['X'], primary: true, run: (s) => s.exportGrid() },
+      { keys: 'r', hint: 'refresh', desc: 'Re-fetch the current view — same page/sort/filter, or re-run the query', match: ['r'], run: (s) => void (s.surface === 'browse' ? s.refreshBrowse() : s.refreshQuery()) },
       { keys: 'n', hint: 'page+', desc: 'Next page (browsed table)', match: ['n'], run: (s) => { if (s.surface === 'browse') void s.pageNext(); } },
       { keys: 'p', hint: 'page-', desc: 'Previous page (browsed table)', match: ['p'], run: (s) => { if (s.surface === 'browse') void s.pagePrev(); } },
       { keys: 'D', hint: 'data/ddl', desc: 'Toggle the Data / DDL tab', match: ['D'], run: (s) => { if (s.surface === 'browse') s.toggleMainTab(); } },

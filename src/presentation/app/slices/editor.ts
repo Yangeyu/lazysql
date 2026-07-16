@@ -16,6 +16,7 @@ import {
 import { columnsOf, objectRefKey, sectionsFor } from '../../../domain/datasource/schema.ts';
 import type { ObjectRef } from '../../../domain/datasource/schema.ts';
 import type { ConnectionProfile } from '../../../domain/connection/ConnectionProfile.ts';
+import { fromError } from '../appError.ts';
 import { runQuery } from '../../../application/usecases/RunQuery.ts';
 import { generateSql } from '../../../application/usecases/GenerateSql.ts';
 import { classifyStatement, dangerKind } from '../../../domain/query/classify.ts';
@@ -70,6 +71,7 @@ export type EditorActions = Pick<
   | 'setQuery'
   | 'toggleCompletions'
   | 'executeQuery'
+  | 'refreshQuery'
   | 'historyPrev'
   | 'historyNext'
   | 'acceptCompletion'
@@ -265,6 +267,36 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
         return;
       }
       await runEditorSql(text);
+    },
+
+    refreshQuery: async () => {
+      const active = source();
+      const { surface, statement } = get();
+      if (!active || surface !== 'query' || !statement) return;
+      // Refreshing a write/DDL would re-execute its side effects (a second
+      // INSERT inserts again) — that rerun must stay a deliberate editor ⏎,
+      // where the danger guard lives.
+      if (classifyStatement(statement) !== 'read') {
+        set({ notice: 'refresh would re-run this statement — press ⏎ in the editor instead' });
+        return;
+      }
+      set({ loading: true, error: null, notice: null });
+      const r = await runQuery(active, statement);
+      // The user may have navigated away (or run new SQL) while this was in
+      // flight — a stale result must not overwrite the newer surface's grid.
+      if (get().surface !== 'query' || get().statement !== statement) return;
+      if (!r.ok) {
+        set({ loading: false, status: 'error', error: fromError(r.error) });
+        return;
+      }
+      set((s) => ({
+        loading: false,
+        result: r.value.result,
+        total: r.value.result.rows.length,
+        queryElapsedMs: r.value.elapsedMs,
+        gridRow: Math.min(s.gridRow, Math.max(0, r.value.result.rows.length - 1)),
+        gridCol: Math.min(s.gridCol, Math.max(0, r.value.result.columns.length - 1)),
+      }));
     },
 
     historyPrev: () => {

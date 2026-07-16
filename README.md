@@ -101,7 +101,7 @@ vim-style, panel-based. Grouped by context below; the full list is in-app via `?
 | Key | Action |
 |----|------|
 | `` ` `` | Switch connection (back to the picker) |
-| `:` | Open the SQL editor (expands it if collapsed) |
+| `:` | Enter and focus the SQL editor (expands it if collapsed) |
 | `^O` | Expand / collapse the SQL editor — collapsed it is a one-line echo of the SQL behind the grid |
 | `^G` | Ask in natural language (opens the SQL editor) |
 | `tab` | Toggle focus between tree ↔ results |
@@ -163,6 +163,8 @@ Failures (a refused write, a lost connection, a failed export…) pop an error d
 | `D` | Toggle Data / DDL tab |
 
 **SQL editor**
+
+Mouse clicks and drags over the SQL pane are reserved for text selection and copy: they never focus or expand it. Press `:` to enter editing.
 
 | Key | Action |
 |----|------|

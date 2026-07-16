@@ -1,8 +1,8 @@
 /**
- * Mouse integration: with native OpenTUI mouse events, each rendered row carries
- * its own onMouseDown — there is no coordinate hit-testing to drift. Driven
- * through the real App so a click resolves to the actual pane/row under it. Rows
- * are located by their rendered content (robust to layout shifts), then clicked.
+ * Mouse integration: native OpenTUI events let interactive tree/grid rows own
+ * their click behavior while passive text, including the SQL pane, remains
+ * selection-only. Driven through the real App so events resolve to the actual
+ * rendered target without coordinate hit-testing.
  */
 
 import { test, beforeAll, afterAll, expect } from 'bun:test';
@@ -122,6 +122,58 @@ test('dragging over grid text selects it and copies to the clipboard', async () 
 
   expect(h.selectedText()).toContain('gamma'); // selection formed…
   expect(copied.some((t) => t.includes('gamma'))).toBe(true); // …and was copied
+  h.cleanup();
+});
+
+test('dragging over the collapsed SQL echo copies exact text without entering the editor', async () => {
+  const copied: string[] = [];
+  const clipboard = { write: (t: string) => copied.push(t) };
+  const h = await renderTest(
+    <Root connectionService={svc} initial={profile} clipboard={clipboard} />,
+    { width: 120, height: 30 },
+  );
+  await h.until((f) => f.includes('Tables'));
+  h.enter(); // browse table t → grid focused, SQL pane still collapsed
+  await h.until((f) => f.includes('SQL> SELECT') && f.includes('alpha'));
+
+  const y = lineY(h, 'SQL> SELECT');
+  const x = h.frame().split('\n')[y]!.indexOf('SELECT');
+  await h.drag(x, y, x + 'SELECT'.length, y);
+  await h.flush();
+
+  expect(h.selectedText()).toBe('SELECT');
+  expect(copied).toContain('SELECT');
+  expect(h.frame()).toContain('DATA'); // mouse selection leaves keyboard focus on the grid
+  expect(h.frame()).not.toContain('⏎ run'); // and does not expand the echo bar
+  h.cleanup();
+});
+
+test('dragging over an expanded SQL draft copies it without stealing grid focus', async () => {
+  const copied: string[] = [];
+  const clipboard = { write: (t: string) => copied.push(t) };
+  const h = await renderTest(
+    <Root connectionService={svc} initial={profile} clipboard={clipboard} />,
+    { width: 120, height: 30 },
+  );
+  await h.until((f) => f.includes('Tables'));
+  h.enter();
+  await h.until((f) => f.includes('alpha'));
+
+  h.press(':');
+  await h.until((f) => f.includes('⏎ run'));
+  await h.type('SELECT 42 AS exact_copy');
+  h.esc();
+  await h.until((f) => f.includes('DATA') && f.includes('exact_copy'));
+
+  const y = lineY(h, 'exact_copy');
+  const x = h.frame().split('\n')[y]!.indexOf('exact_copy');
+  await h.drag(x, y, x + 'exact_copy'.length, y);
+  await h.flush();
+
+  expect(h.selectedText()).toBe('exact_copy');
+  expect(copied).toContain('exact_copy');
+  expect(h.frame()).toContain('DATA');
+  expect(h.frame()).toContain('SELECT 42 AS exact_copy');
   h.cleanup();
 });
 

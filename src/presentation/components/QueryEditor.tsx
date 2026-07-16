@@ -2,7 +2,9 @@
  * QueryEditor — the SQL editor pane (top-right of the workbench). Two gears
  * (ADR 0013): collapsed (default) it is a one-line ECHO BAR — a read-only
  * readout of the statement behind the grid, not focusable, so the grid keeps
- * the screen; expanded (`:` / ^O / click) it is the full editing pane below.
+ * the screen; expanded (`:` / ^O / ^G) it is the full editing pane below.
+ * Mouse press/drag is deliberately reserved for terminal text selection and
+ * copy: it never changes pane focus or gear. `:` is the explicit editing entry.
  *
  * Expanded: ONE bordered panel whose `✦ ask` row, divider and feedback line are
  * PINNED while the SQL editor between them is a multi-line <textarea> that
@@ -80,8 +82,6 @@ interface Props {
   height: number;
   /** Content width (panel inner width) — drives the divider. */
   innerWidth: number;
-  /** The pane was clicked — focus the editor. */
-  onPaneClick: () => void;
 }
 
 /** Collapse newlines so a value stays on a SINGLE feedback line — otherwise a
@@ -137,7 +137,6 @@ const QueryEditorImpl = ({
   error,
   height,
   innerWidth,
-  onPaneClick,
 }: Props) => {
   const ref = useRef<TextareaRenderable | null>(null);
 
@@ -178,7 +177,6 @@ const QueryEditorImpl = ({
       borderStyle="rounded"
       borderColor={borderColor}
       paddingX={1}
-      onMouseDown={onPaneClick}
     >
       {/* ── collapsed: the echo bar. The editing rows below stay MOUNTED but
           display:none (`visible`) — a remounting textarea boots a fresh cursor

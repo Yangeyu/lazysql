@@ -198,9 +198,6 @@ export type CellInspect =
       readonly rowKey: RowKey;
     };
 
-/** The clickable panes a mouse press can focus (same set as Focus). */
-export type Region = Focus;
-
 export interface AppState {
   status: Status;
   /** The last failure: a one-line `message` for the status bar plus the driver

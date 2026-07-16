@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.23](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.23) - 2026-07-16
+
+### Bug Fixes
+
+- **tui:** Keep SQL selection from focusing the editor ([7799907](https://github.com/Yangeyu/lazysql/commit/7799907d6008cbacf599dcb8d63ee0c2a3e661b6))
+
 ## [0.1.22](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.22) - 2026-07-16
 
 ### Features

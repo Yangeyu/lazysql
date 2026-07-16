@@ -86,7 +86,9 @@ test('NL is unavailable (and beginNl is a no-op) without a generator', () => {
 
   store.getState().beginNl();
   expect(store.getState().nlMode).toBe(false);
-  expect(store.getState().queryError).toContain('ANTHROPIC_API_KEY');
+  expect(store.getState().queryError).toBe(
+    'configure an LLM provider to enable AI (NL→SQL)',
+  );
 });
 
 test('exportGrid stages a y/n confirm; confirming writes and reports a notice', async () => {

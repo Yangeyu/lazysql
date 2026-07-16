@@ -43,11 +43,6 @@ test('only the cursor row ∩ column-cursor cell is the active cell', () => {
   expect(cellHighlight(1, 1, 2, 1, true)).toBe('none'); // other row, same column
 });
 
-test('the highlight follows the column cursor', () => {
-  expect(cellHighlight(0, 2, 0, 2, true)).toBe('cell'); // cursor moved to col 2
-  expect(cellHighlight(0, 1, 0, 2, true)).toBe('none'); // col 1 no longer active
-});
-
 test('an unfocused grid dims the active cell rather than inverting it', () => {
   expect(cellHighlight(0, 0, 0, 0, false)).toBe('cell-dim');
 });

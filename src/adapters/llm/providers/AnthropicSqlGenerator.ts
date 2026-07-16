@@ -4,8 +4,8 @@
  * free-form text. One of several adapters behind the SqlGenerator port; the
  * provider is chosen by createSqlGenerator. (DIP — docs/ARCHITECTURE.md §5.1)
  *
- * Model defaults to claude-opus-4-8; override with LAZYSQL_LLM_MODEL.
- * Requires ANTHROPIC_API_KEY (or an `ant auth login` profile).
+ * The provider factory injects the API key and optional model override; this
+ * adapter owns only the Claude default when no model is supplied.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -24,16 +24,9 @@ export class AnthropicSqlGenerator implements SqlGenerator {
   readonly model: string;
   private readonly client: Anthropic;
 
-  constructor(opts: { apiKey?: string; model?: string } = {}) {
-    this.client = opts.apiKey
-      ? new Anthropic({ apiKey: opts.apiKey })
-      : new Anthropic();
-    this.model = opts.model ?? process.env.LAZYSQL_LLM_MODEL ?? DEFAULT_MODEL;
-  }
-
-  /** True when an API key is available in the environment. */
-  static isConfigured(): boolean {
-    return Boolean(process.env.ANTHROPIC_API_KEY);
+  constructor(opts: { readonly apiKey: string; readonly model?: string }) {
+    this.client = new Anthropic({ apiKey: opts.apiKey });
+    this.model = opts.model ?? DEFAULT_MODEL;
   }
 
   async generate(input: GenerateInput): Promise<GeneratedSql> {

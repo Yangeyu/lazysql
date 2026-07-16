@@ -1,8 +1,8 @@
 /**
  * Outbound port: turn natural language + schema context into SQL. This IS the
- * provider abstraction — the default adapter talks to Claude, but any other
- * model is just a different adapter behind this interface. The application
- * never imports an LLM SDK. (DIP — docs/ARCHITECTURE.md §5.1)
+ * provider abstraction. Concrete provider selection and defaults belong to the
+ * adapter factory; the application never imports an LLM SDK. (DIP —
+ * docs/ARCHITECTURE.md §5.1)
  */
 
 export interface SchemaContext {

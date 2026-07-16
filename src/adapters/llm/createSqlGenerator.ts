@@ -23,8 +23,8 @@ import {
   type OpenAiCompatiblePreset,
 } from './providers/presets.ts';
 
-/** Key-presence auto-detect precedence (Qwen kept first for back-compat). The
- *  first preset whose API key is set wins; Anthropic is tried after these. */
+/** Key-presence auto-detect precedence. Qwen is the documented default; the
+ *  first preset whose API key is set wins, then Anthropic is tried. */
 const AUTO_DETECT: readonly OpenAiCompatiblePreset[] = [
   ALIBABA,
   OPENAI,

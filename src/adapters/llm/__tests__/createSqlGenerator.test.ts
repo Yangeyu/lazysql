@@ -27,6 +27,7 @@ test('auto-detect prefers Qwen (Alibaba) when DASHSCOPE_API_KEY is set', () => {
 test('auto-detect falls back to Claude when only ANTHROPIC_API_KEY is set', () => {
   const g = createSqlGenerator({ ANTHROPIC_API_KEY: 'sk-a' });
   expect(diag(g).provider).toBe('anthropic');
+  expect(diag(g).model).toBe('claude-opus-4-8');
 });
 
 test('with both keys present, Qwen wins by default', () => {
@@ -37,10 +38,12 @@ test('with both keys present, Qwen wins by default', () => {
 test('explicit LAZYSQL_LLM_PROVIDER=anthropic overrides auto-detect', () => {
   const g = createSqlGenerator({
     LAZYSQL_LLM_PROVIDER: 'anthropic',
+    LAZYSQL_LLM_MODEL: 'claude-sonnet-test',
     DASHSCOPE_API_KEY: 'sk-d',
     ANTHROPIC_API_KEY: 'sk-a',
   });
   expect(diag(g).provider).toBe('anthropic');
+  expect(diag(g).model).toBe('claude-sonnet-test');
 });
 
 test('explicit provider without its API key → null', () => {

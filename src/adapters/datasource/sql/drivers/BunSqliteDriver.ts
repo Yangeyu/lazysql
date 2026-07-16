@@ -44,7 +44,7 @@ export class BunSqliteDriver implements SqlDriver {
 
     if (returnsRows(text)) {
       const objs = stmt.all(...bind) as Array<Record<string, unknown>>;
-      const columns = columnNamesOf(stmt, objs);
+      const columns = stmt.columnNames;
       const rows = objs.map((o) => columns.map((c) => o[c] ?? null));
       return { columns, rows };
     }
@@ -80,14 +80,3 @@ export class BunSqliteDriver implements SqlDriver {
 /** Heuristic: which statements yield a result set worth reading. */
 const returnsRows = (text: string): boolean =>
   /^\s*(select|pragma|with|explain)/i.test(text);
-
-/** Prefer the prepared statement's authoritative column order; fall back to
- *  the first row's keys (insertion order matches column order in SQLite). */
-const columnNamesOf = (
-  stmt: { columnNames?: string[] },
-  objs: Array<Record<string, unknown>>,
-): string[] => {
-  const declared = stmt.columnNames;
-  if (declared && declared.length > 0) return declared;
-  return objs.length > 0 ? Object.keys(objs[0]!) : [];
-};

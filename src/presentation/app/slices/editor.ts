@@ -310,7 +310,7 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
 
     beginNl: () => {
       if (!generator) {
-        set({ queryError: 'set ANTHROPIC_API_KEY to enable AI (NL→SQL)' });
+        set({ queryError: 'configure an LLM provider to enable AI (NL→SQL)' });
         return;
       }
       set({ nlMode: true, queryError: null });

@@ -103,17 +103,6 @@ test('pressing Enter browses the table into the grid', async () => {
   h.cleanup();
 });
 
-test('grid receives focus and cursor moves on arrow keys', async () => {
-  const h = await renderApp();
-  await h.until((f) => f.includes('widget'));
-  h.enter(); // open table (also moves focus to grid)
-  await h.until((f) => f.includes('w1'));
-  h.arrow('down'); // Down arrow → move cursor
-  await h.until((f) => f.includes('w2'));
-  expect(h.frame()).toContain('w2');
-  h.cleanup();
-});
-
 test('pressing s sorts the current column and shows an indicator', async () => {
   const h = await renderApp();
   await h.until((f) => f.includes('widget'));

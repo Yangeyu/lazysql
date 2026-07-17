@@ -99,7 +99,8 @@ sidebar 的 `v` **标记/取消标记**光标处的表/视图(多选),标记以 
 2. **filter/sort 归属**:② 导「所见」(带当前 filter/sort);① 从树进无 active filter,导**原始整表**。UI 要让这点无歧义;「① 也带 filter 导」是后续。
 3. **超大表 = 分页循环，不是真 streaming**:v1 内存 O(一页)。真·streaming 等 `Streamable` 能力(`DataSource.ts:116` 已预留);届时只把 `exportTable` 的 source 换成游标,sink / formatter / 用例形状不动。
 4. **`null` / 二进制 / 编码**:CSV 里 `null`→空、`Uint8Array`→hex 预览(复用 `cellFormat` 取值口径);`null` vs 空串靠 format 约定区分(JSON 用字面 `null`)。document/keyvalue 形状的源优先导 JSON(CSV 对非 tabular 退化)。
-5. **落盘细节**:覆盖确认、默认目录 / 命名——presentation/adapter 细节,本 ADR 不锁死。原子写(temp→rename)是适配器契约(见决策 2)。
+5. **声明为 JSON 的列在 JSON 导出中内嵌为原生 JSON**(`{"a":1}` 而非转义字符串)。判据是 schema 声明(`ColumnDef.jsonKind`,经 `browsePages` 的 describe 并入 `ColumnMeta`),**绝不按内容猜**——TEXT 列里恰好长得像 JSON 的字符串保持字符串,round-trip 不改语义;解析失败(SQLite 松散类型下可能)回退字符串,文件永远合法。查询结果导出(②)无 schema 可依,不嵌套。CSV / SQL 不受影响。
+6. **落盘细节**:覆盖确认、默认目录 / 命名——presentation/adapter 细节,本 ADR 不锁死。原子写(temp→rename)是适配器契约(见决策 2)。
 
 ## 结论
 

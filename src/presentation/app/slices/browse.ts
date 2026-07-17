@@ -484,7 +484,7 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
         structure != null &&
         current != null &&
         objectRefKey(structure.ref) === objectRefKey(current) &&
-        columnsOf(structure).find((c) => c.name === column)?.jsonCanonical === true;
+        columnsOf(structure).find((c) => c.name === column)?.jsonKind === 'canonical';
       const raw = cellEditText(value);
       const seedText = jsonCanonical ? (prettyJson(raw) ?? raw) : raw;
       set({

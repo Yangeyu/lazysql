@@ -1,14 +1,16 @@
 /**
- * Pure parseColumns tests for the dialect-declared `jsonCanonical` marker:
- * only types the database normalizes on write may carry it (Postgres jsonb,
- * MySQL json) — Postgres `json` keeps its text verbatim and must not.
+ * Pure parseColumns tests for the dialect-declared `jsonKind` marker: presence
+ * = the column's declared type is JSON; 'canonical' only for types the
+ * database normalizes on write (Postgres jsonb, MySQL json) — Postgres `json`
+ * and SQLite declared JSON keep their text verbatim.
  */
 
 import { test, expect } from 'bun:test';
 import { PostgresDialect } from '../PostgresDialect.ts';
 import { MySqlDialect } from '../MySqlDialect.ts';
+import { SqliteDialect } from '../SqliteDialect.ts';
 
-test('Postgres marks jsonb columns jsonCanonical — json stays verbatim', () => {
+test('Postgres marks jsonb columns canonical — json is verbatim JSON', () => {
   const raw = {
     columns: ['column_name', 'data_type', 'is_nullable', 'is_pk'],
     rows: [
@@ -18,12 +20,12 @@ test('Postgres marks jsonb columns jsonCanonical — json stays verbatim', () =>
     ],
   };
   const cols = new PostgresDialect().parseColumns(raw);
-  expect(cols.find((c) => c.name === 'doc')?.jsonCanonical).toBe(true);
-  expect(cols.find((c) => c.name === 'doc_text')?.jsonCanonical).toBeUndefined();
-  expect(cols.find((c) => c.name === 'id')?.jsonCanonical).toBeUndefined();
+  expect(cols.find((c) => c.name === 'doc')?.jsonKind).toBe('canonical');
+  expect(cols.find((c) => c.name === 'doc_text')?.jsonKind).toBe('verbatim');
+  expect(cols.find((c) => c.name === 'id')?.jsonKind).toBeUndefined();
 });
 
-test('MySQL marks json columns jsonCanonical', () => {
+test('MySQL marks json columns canonical', () => {
   const raw = {
     columns: ['column_name', 'data_type', 'is_nullable', 'column_key'],
     rows: [
@@ -32,8 +34,24 @@ test('MySQL marks json columns jsonCanonical', () => {
     ],
   };
   const cols = new MySqlDialect().parseColumns(raw);
-  expect(cols.find((c) => c.name === 'doc')?.jsonCanonical).toBe(true);
-  expect(cols.find((c) => c.name === 'id')?.jsonCanonical).toBeUndefined();
+  expect(cols.find((c) => c.name === 'doc')?.jsonKind).toBe('canonical');
+  expect(cols.find((c) => c.name === 'id')?.jsonKind).toBeUndefined();
+});
+
+test('SQLite marks declared JSON/JSONB columns verbatim — TEXT is not JSON', () => {
+  const raw = {
+    columns: ['name', 'type', 'notnull', 'pk'],
+    rows: [
+      ['id', 'INTEGER', 1, 1],
+      ['doc', 'JSON', 0, 0],
+      ['doc_b', 'jsonb', 0, 0],
+      ['label', 'TEXT', 0, 0],
+    ],
+  };
+  const cols = new SqliteDialect().parseColumns(raw);
+  expect(cols.find((c) => c.name === 'doc')?.jsonKind).toBe('verbatim');
+  expect(cols.find((c) => c.name === 'doc_b')?.jsonKind).toBe('verbatim');
+  expect(cols.find((c) => c.name === 'label')?.jsonKind).toBeUndefined();
 });
 
 test('Postgres resolves an enum column to its type name + allowed values', () => {

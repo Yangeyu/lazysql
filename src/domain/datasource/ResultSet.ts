@@ -5,12 +5,18 @@
  * without knowing the source type. (See docs/adr/0002.)
  */
 
+import type { JsonKind } from './schema.ts';
+
 export type CellValue = string | number | boolean | null | bigint | Uint8Array;
 
 export interface ColumnMeta {
   readonly name: string;
   /** Source-declared type when known (drives formatting/alignment). */
   readonly dataType?: string;
+  /** Declared-JSON marker, carried over from the schema when known — see
+   *  `ColumnDef.jsonKind`. JSON export nests such cells as native JSON instead
+   *  of emitting their text as an escaped string. */
+  readonly jsonKind?: JsonKind;
 }
 
 /** A row is a positional array of cells aligned to `columns`. */

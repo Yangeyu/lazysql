@@ -36,6 +36,10 @@ export interface ObjectRef {
 export const objectRefKey = (ref: ObjectRef): string =>
   ref.namespace ? `${ref.namespace}.${ref.name}` : ref.name;
 
+/** How a declared-JSON column's text relates to its stored value — see
+ *  `ColumnDef.jsonKind`. */
+export type JsonKind = 'canonical' | 'verbatim';
+
 export interface ColumnDef {
   readonly name: string;
   /** Source-declared type, verbatim (e.g. "INTEGER", "varchar(255)"). */
@@ -47,12 +51,15 @@ export interface ColumnDef {
    *  MySQL `ENUM(...)`). Absent otherwise, so the structure view can show what
    *  the column may hold without a second lookup. */
   readonly enumValues?: readonly string[];
-  /** True when the store normalizes JSON text on write (e.g. Postgres `jsonb`,
-   *  MySQL `json`), so reformatting the text can NOT change the stored value —
-   *  editors may pretty-print such cells freely. Absent → text layout is data
-   *  (plain text columns, Postgres `json`, SQLite, Redis) and must be kept
-   *  verbatim. Declared by the adapter, which owns this knowledge. */
-  readonly jsonCanonical?: true;
+  /** Present when the column's DECLARED type is JSON — the value is a JSON
+   *  document, not text that happens to look like one (JSON export nests such
+   *  cells). The kind says how the store treats the TEXT: 'canonical' — JSON is
+   *  normalized on write (Postgres `jsonb`, MySQL `json`), so reformatting can
+   *  NOT change the stored value and editors may pretty-print freely;
+   *  'verbatim' — text layout is data (Postgres `json`, SQLite declared JSON)
+   *  and must be kept as-is. Absent → not a JSON column. Declared by the
+   *  adapter, which owns this knowledge. */
+  readonly jsonKind?: JsonKind;
 }
 
 /**

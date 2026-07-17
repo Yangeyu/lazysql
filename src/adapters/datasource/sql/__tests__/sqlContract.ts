@@ -2,7 +2,7 @@
  * The shared SQL adapter contract — ONE set of assertions every SQL engine must
  * pass (docs/ARCHITECTURE.md §10, adr/0002). Engine test files own probe, seed
  * and teardown, then call `runSqlContract`; engine-specific behaviours (PG
- * cascade drop / uuid columns, MySQL jsonCanonical, SQLite master
+ * cascade drop / uuid columns, MySQL jsonKind, SQLite master
  * introspection) stay in those files. This is deliberately NOT a .test.ts —
  * it only registers tests when an engine invokes it, so the three suites can
  * no longer drift apart the way hand-copied assertions did.

@@ -139,7 +139,7 @@ pgTest('dropStatement quotes a reserved-word table so it drops for real', async 
   expect(objects.find((o) => o.name === 'window')).toBeUndefined();
 });
 
-pgTest('describe marks jsonb columns jsonCanonical — json stays verbatim', async () => {
+pgTest('describe marks jsonb columns canonical — json is verbatim JSON', async () => {
   const exec = (text: string) => asQueryable(source)!.execute(sql(text));
   await exec('DROP TABLE IF EXISTS jsonshapes');
   await exec('CREATE TABLE jsonshapes (id int PRIMARY KEY, doc jsonb, doc_text json)');
@@ -147,9 +147,9 @@ pgTest('describe marks jsonb columns jsonCanonical — json stays verbatim', asy
     const cols = columnsOf(
       await asIntrospectable(source)!.describe({ namespace: 'public', name: 'jsonshapes', kind: 'table' }),
     );
-    expect(cols.find((c) => c.name === 'doc')?.jsonCanonical).toBe(true);
-    expect(cols.find((c) => c.name === 'doc_text')?.jsonCanonical).toBeUndefined();
-    expect(cols.find((c) => c.name === 'id')?.jsonCanonical).toBeUndefined();
+    expect(cols.find((c) => c.name === 'doc')?.jsonKind).toBe('canonical');
+    expect(cols.find((c) => c.name === 'doc_text')?.jsonKind).toBe('verbatim');
+    expect(cols.find((c) => c.name === 'id')?.jsonKind).toBeUndefined();
   } finally {
     await exec('DROP TABLE jsonshapes');
   }

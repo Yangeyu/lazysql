@@ -421,7 +421,7 @@ const editFixture = (payloadCanonical: boolean) => {
               dataType: payloadCanonical ? 'jsonb' : 'text',
               nullable: true,
               isPrimaryKey: false,
-              ...(payloadCanonical ? { jsonCanonical: true as const } : {}),
+              ...(payloadCanonical ? { jsonKind: 'canonical' as const } : {}),
             },
           ],
         },

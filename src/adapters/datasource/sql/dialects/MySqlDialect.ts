@@ -128,7 +128,7 @@ export class MySqlDialect implements Dialect {
         isPrimaryKey: r[iKey] === 'PRI',
         ...(enumValues && enumValues.length > 0 ? { enumValues } : {}),
         // MySQL json is stored in a normalized binary form — reformat-safe.
-        ...(dataType === 'json' ? { jsonCanonical: true as const } : {}),
+        ...(dataType === 'json' ? { jsonKind: 'canonical' as const } : {}),
       };
     });
   }

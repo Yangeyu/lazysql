@@ -172,9 +172,13 @@ export class PostgresDialect implements Dialect {
         nullable: r[iNullable] === 'YES',
         isPrimaryKey: r[iPk] === true,
         ...(enumValues ? { enumValues } : {}),
-        // jsonb is stored normalized; `json` keeps its text verbatim, so it is
-        // deliberately NOT marked.
-        ...(dataType === 'jsonb' ? { jsonCanonical: true as const } : {}),
+        // jsonb is stored normalized (reformat-safe); `json` keeps its text
+        // verbatim — still a JSON column, but its layout is data.
+        ...(dataType === 'jsonb'
+          ? { jsonKind: 'canonical' as const }
+          : dataType === 'json'
+            ? { jsonKind: 'verbatim' as const }
+            : {}),
       };
     });
   }

@@ -42,6 +42,31 @@ test('JSON: a parseable array of row objects, binary→hex, bigint→string', ()
   ]);
 });
 
+const jsonCols: ColumnMeta[] = [{ name: 'id' }, { name: 'doc', jsonKind: 'canonical' }];
+
+test('JSON: a declared-JSON column nests its document; malformed text stays a string', () => {
+  const out = render(formatterFor('json'), jsonCols, [
+    [1, '{"a":1,"b":[true,null]}'],
+    [2, 'not json'],
+    [3, null],
+  ]);
+  expect(JSON.parse(out)).toEqual([
+    { id: 1, doc: { a: 1, b: [true, null] } },
+    { id: 2, doc: 'not json' },
+    { id: 3, doc: null },
+  ]);
+});
+
+test('JSON: a plain column whose text merely looks like JSON stays a string', () => {
+  const out = render(formatterFor('json'), cols, [[1, '{"a":1}']]);
+  expect(JSON.parse(out)).toEqual([{ id: 1, label: '{"a":1}' }]);
+});
+
+test('CSV keeps a declared-JSON column as its text', () => {
+  const out = render(formatterFor('csv'), jsonCols, [[1, '{"a":1}']]);
+  expect(out).toBe('id,doc\n1,"{""a"":1}"\n');
+});
+
 test('empty result still yields a valid document', () => {
   expect(render(formatterFor('csv'), cols, [])).toBe('id,label\n');
   expect(JSON.parse(render(formatterFor('json'), cols, []))).toEqual([]);
@@ -92,6 +117,17 @@ test('jsonCombinedFormatter: one parseable object keyed by qualified table name'
     'public.users': [{ id: 1, label: 'a' }, { id: 2, label: 'b' }],
     'public.orders': [{ id: 9, label: 'z' }],
   });
+});
+
+test('jsonCombinedFormatter nests declared-JSON columns too', () => {
+  const fmt = jsonCombinedFormatter();
+  const out =
+    fmt.fileBegin() +
+    fmt.tableBegin(users, jsonCols, true) +
+    fmt.rows([[1, '{"a":1}']], jsonCols) +
+    fmt.tableEnd() +
+    fmt.fileEnd();
+  expect(JSON.parse(out)).toEqual({ 'public.users': [{ id: 1, doc: { a: 1 } }] });
 });
 
 test('jsonCombinedFormatter: an empty table is a valid empty array', () => {

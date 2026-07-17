@@ -109,7 +109,7 @@ myTest('describe yields triggers and procedures their definition', async () => {
   expect(await mySourceText({ namespace: 'lazysql', name: 'inc', kind: 'procedure' })).toMatch(/SELECT/i);
 });
 
-myTest('describe marks json columns jsonCanonical', async () => {
+myTest('describe marks json columns canonical', async () => {
   const exec = (text: string) => asQueryable(source)!.execute(sql(text));
   await exec('DROP TABLE IF EXISTS jsonshapes');
   await exec('CREATE TABLE jsonshapes (id INT PRIMARY KEY, doc JSON, plain TEXT)');
@@ -117,8 +117,8 @@ myTest('describe marks json columns jsonCanonical', async () => {
     const cols = columnsOf(
       await asIntrospectable(source)!.describe({ namespace: 'lazysql', name: 'jsonshapes', kind: 'table' }),
     );
-    expect(cols.find((c) => c.name === 'doc')?.jsonCanonical).toBe(true);
-    expect(cols.find((c) => c.name === 'plain')?.jsonCanonical).toBeUndefined();
+    expect(cols.find((c) => c.name === 'doc')?.jsonKind).toBe('canonical');
+    expect(cols.find((c) => c.name === 'plain')?.jsonKind).toBeUndefined();
   } finally {
     await exec('DROP TABLE jsonshapes');
   }

@@ -77,12 +77,26 @@ const csvFormatter = (): RowFormatter => ({
   end: () => '',
 });
 
+/** Parse a declared-JSON cell's text so it exports as a nested document rather
+ *  than an escaped string. Malformed text (possible under SQLite's loose
+ *  typing) stays a plain string, so the export file is always valid JSON. */
+const jsonDocument = (s: string): unknown => {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return s;
+  }
+};
+
 /** One row as a JSON object keyed by column name — the shared serialization for
- *  the single-table array and the combined per-table arrays. */
+ *  the single-table array and the combined per-table arrays. Only a column
+ *  DECLARED as JSON (`ColumnMeta.jsonKind`) nests; text that merely looks like
+ *  JSON stays a string, so round-trips never change data semantics. */
 const jsonObject = (row: Row, columns: readonly ColumnMeta[]): string => {
-  const obj: Record<string, string | number | boolean | null> = {};
+  const obj: Record<string, unknown> = {};
   columns.forEach((c, i) => {
-    obj[c.name] = jsonScalar(row[i] ?? null);
+    const v = row[i] ?? null;
+    obj[c.name] = c.jsonKind && typeof v === 'string' ? jsonDocument(v) : jsonScalar(v);
   });
   return JSON.stringify(obj);
 };

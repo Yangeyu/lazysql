@@ -80,12 +80,19 @@ export class SqliteDialect implements Dialect {
     const iType = col(raw, 'type');
     const iNotNull = col(raw, 'notnull');
     const iPk = col(raw, 'pk');
-    return raw.rows.map((r) => ({
-      name: String(r[iName]),
-      dataType: String(r[iType] ?? ''),
-      nullable: Number(r[iNotNull]) === 0,
-      isPrimaryKey: Number(r[iPk]) > 0,
-    }));
+    return raw.rows.map((r) => {
+      const dataType = String(r[iType] ?? '');
+      return {
+        name: String(r[iName]),
+        dataType,
+        nullable: Number(r[iNotNull]) === 0,
+        isPrimaryKey: Number(r[iPk]) > 0,
+        // SQLite's declared type is only an affinity — the column stores
+        // whatever text was inserted, so a declared JSON column is 'verbatim'
+        // (consumers must parse-validate, never trust or reformat the text).
+        ...(/^jsonb?$/i.test(dataType) ? { jsonKind: 'verbatim' as const } : {}),
+      };
+    });
   }
 
   sourceQuery(ref: ObjectRef): Query {

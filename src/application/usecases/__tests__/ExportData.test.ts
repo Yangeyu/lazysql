@@ -122,6 +122,43 @@ test('exportTable pages in primary-key order when the source can introspect', as
   expect(specs.map((s) => s.stableKey)).toEqual([['id'], ['id']]); // every page, not just the first
 });
 
+test('exportTable nests a declared-JSON column (describe → jsonKind → nested doc)', async () => {
+  const { exporter, state } = fakeExporter();
+  const source = {
+    id: 'fake',
+    connect: async () => ok(undefined),
+    disconnect: async () => {},
+    ping: async () => true,
+    capabilities: () => new CapabilitySet([]),
+    introspect: async () => ({ objects: [] }),
+    describe: async (r: ObjectRef) => ({
+      ref: r,
+      detail: [{
+        kind: 'columns',
+        columns: [
+          { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true },
+          { name: 'doc', dataType: 'jsonb', nullable: true, isPrimaryKey: false, jsonKind: 'canonical' },
+        ],
+      }],
+    }),
+    browse: async (): Promise<ResultSet> => ({
+      shape: 'tabular',
+      columns: [{ name: 'id' }, { name: 'doc' }], // browse itself carries no jsonKind
+      rows: [[1, '{"a":1}'], [2, 'not json']],
+      truncated: false,
+    }),
+    count: async () => 2,
+  } as unknown as DataSource;
+
+  const r = await exportTable(source, ref, formatterFor('json'), exporter, { path: 't.json' });
+
+  expect(r.ok).toBe(true);
+  expect(JSON.parse(state.buf)).toEqual([
+    { id: 1, doc: { a: 1 } },
+    { id: 2, doc: 'not json' }, // malformed text degrades to a string, file stays valid
+  ]);
+});
+
 test('exportTable rejects a non-browsable source without opening a file', async () => {
   const { exporter, state } = fakeExporter();
   const notBrowsable = {

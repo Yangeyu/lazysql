@@ -122,7 +122,7 @@ test('exportTable pages in primary-key order when the source can introspect', as
   expect(specs.map((s) => s.stableKey)).toEqual([['id'], ['id']]); // every page, not just the first
 });
 
-test('exportTable nests a declared-JSON column (describe → jsonKind → nested doc)', async () => {
+test('exportTable nests a declared-JSON column (adapter-typed columns → nested doc)', async () => {
   const { exporter, state } = fakeExporter();
   const source = {
     id: 'fake',
@@ -130,20 +130,10 @@ test('exportTable nests a declared-JSON column (describe → jsonKind → nested
     disconnect: async () => {},
     ping: async () => true,
     capabilities: () => new CapabilitySet([]),
-    introspect: async () => ({ objects: [] }),
-    describe: async (r: ObjectRef) => ({
-      ref: r,
-      detail: [{
-        kind: 'columns',
-        columns: [
-          { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true },
-          { name: 'doc', dataType: 'jsonb', nullable: true, isPrimaryKey: false, jsonKind: 'canonical' },
-        ],
-      }],
-    }),
     browse: async (): Promise<ResultSet> => ({
       shape: 'tabular',
-      columns: [{ name: 'id' }, { name: 'doc' }], // browse itself carries no jsonKind
+      // the adapter types every ResultSet at birth — the marker rides along
+      columns: [{ name: 'id' }, { name: 'doc', jsonKind: 'canonical' }],
       rows: [[1, '{"a":1}'], [2, 'not json']],
       truncated: false,
     }),

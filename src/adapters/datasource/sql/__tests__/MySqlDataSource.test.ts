@@ -123,3 +123,13 @@ myTest('describe marks json columns canonical', async () => {
     await exec('DROP TABLE jsonshapes');
   }
 });
+
+myTest('ad-hoc query columns carry jsonKind from the wire types', async () => {
+  const rs = await asQueryable(source)!.execute(
+    sql(`SELECT 1 AS id, CAST('{"a":1}' AS JSON) AS doc, '{"x":9}' AS txt`),
+  );
+  const kind = (name: string) => rs.columns.find((c) => c.name === name)?.jsonKind;
+  expect(kind('doc')).toBe('canonical');
+  expect(kind('id')).toBeUndefined();
+  expect(kind('txt')).toBeUndefined(); // text that looks like JSON stays untyped
+});

@@ -27,7 +27,7 @@
 |--------|------|------|
 | 语言 | **TypeScript (strict)** | LLM/补全生态一等公民；团队熟悉度高 |
 | 运行时 | **Bun**（开发&分发）/ 兼容 Node 22 | `bun build --compile` 出单二进制；保持运行时无关 |
-| 数据源驱动 | `bun:sqlite` · **Bun.SQL（PG）** · `mysql2` · `mongodb` · **Bun 内置 `RedisClient`** | 每引擎一薄驱动，藏在适配器后；SQLite/PG/Redis 走 Bun 内置，依赖极轻 |
+| 数据源驱动 | `bun:sqlite` · **postgres.js（PG）** · `mysql2` · `mongodb` · **Bun 内置 `RedisClient`** | 每引擎一薄驱动，藏在适配器后；PG 用 postgres.js 而非 Bun.SQL——后者不暴露结果列类型元数据（缘由见 `PgDriver.ts` 头注） |
 | TUI | **OpenTUI (React)** | 原生 cell-diff 渲染器，任意终端零闪烁。初版为 Ink，其短板兑现后按 `adr/0003` 预设的撤退路径切换，影响止于 `presentation/` |
 | 状态 | **Zustand** + 特性 slice | 轻量、可测、与 React 渲染解耦（export / connForm 已成独立 slice） |
 | LLM | **`SqlGenerator` 端口 + provider 适配器** | 端口即 provider 抽象；默认 **Qwen（百炼）**，可切 Claude / 任意 OpenAI 兼容 provider（见 `adr/0004`） |
@@ -301,7 +301,7 @@ src/
       sql/
         SqlDataSource.ts       # 通用 SQL 适配器（能力实现共用一套）
         dialects/              # PostgresDialect · MySqlDialect · SqliteDialect（Strategy）
-        drivers/               # BunSqliteDriver · PgDriver(Bun.SQL) · MySqlDriver(mysql2)
+        drivers/               # BunSqliteDriver · PgDriver(postgres.js) · MySqlDriver(mysql2)
         whereBuilder.ts        # 共享 WHERE/ORDER BY 构建（注入安全 + stableKey 尾键）
         dml.ts / inlineParams.ts # 参数化 DML 构建 · 预览用 value-inline
         __tests__/sqlContract.ts # 参数化共享契约套件（三引擎装配运行）
@@ -374,7 +374,7 @@ src/
 
 - **Phase 0 · 行走骨架** ✅：SQLite 适配器 + 连接 + 浏览一张表 + Ink 外壳。打通端到端纵切，验证抽象。（SQLite 零部署，联调成本最低）
 - **Phase 1 · 核心浏览** 🚧：分页/筛选/排序 + PG/MySQL 适配器 + 连接管理 + Keychain。
-  - ✅ PostgreSQL 适配器：复用 `SqlDataSource`，仅加 `PostgresDialect`(`$n` 占位/`information_schema` 内省/schema 限定名) + `PgDriver`(`pg`)，过与 SQLite 同一套契约测试。**新增引擎零改动 domain/application/presentation**（OCP 实证）。
+  - ✅ PostgreSQL 适配器：复用 `SqlDataSource`，仅加 `PostgresDialect`(`$n` 占位/`information_schema` 内省/schema 限定名) + `PgDriver`(postgres.js)，过与 SQLite 同一套契约测试。**新增引擎零改动 domain/application/presentation**（OCP 实证）。
   - ✅ 列排序：引入 `BrowseSpec`(page + sort，为 filter 预留)，两个 Dialect 各自生成 `ORDER BY`；UI 列光标 + ▲/▼ 指示。同一增量在 SQLite/PG/TUI 三处验证。
   - ✅ 列筛选：`Filter` 结构化条件挂入 `BrowseSpec`（未改 `Browsable` 签名，验证预留扩展位）；共享 `whereBuilder` 参数化生成 WHERE（`?` vs `$n`、`LIKE` vs `ILIKE`），count 同步应用 filter；TUI `/` 进入输入态，contains 筛选当前列，应用后 `esc` 一层回退到筛选前的 page/sort 与聚焦 cell。
   - ✅ MySQL/MariaDB 适配器：再次复用 `SqlDataSource`，仅加 `MySqlDialect`(反引号标识符 / `DATABASE()` 限定 / `COLUMN_KEY='PRI'` 查主键) + `MySqlDriver`(`mysql2`)。**三个 SQL 引擎(SQLite/PG/MySQL)过同一套契约测试**——方言隔离的最强证据。

@@ -13,9 +13,10 @@ export interface ColumnMeta {
   readonly name: string;
   /** Source-declared type when known (drives formatting/alignment). */
   readonly dataType?: string;
-  /** Declared-JSON marker, carried over from the schema when known — see
-   *  `ColumnDef.jsonKind`. JSON export nests such cells as native JSON instead
-   *  of emitting their text as an escaped string. */
+  /** Declared-JSON marker (see `ColumnDef.jsonKind`), set by the adapter when
+   *  it builds the ResultSet — from result metadata for ad-hoc queries, so
+   *  browse and query paths carry the same fact. JSON export nests such cells
+   *  as native JSON instead of emitting their text as an escaped string. */
   readonly jsonKind?: JsonKind;
 }
 

@@ -155,6 +155,17 @@ pgTest('describe marks jsonb columns canonical — json is verbatim JSON', async
   }
 });
 
+pgTest('ad-hoc query columns carry jsonKind from the wire types', async () => {
+  const rs = await asQueryable(source)!.execute(
+    sql(`SELECT 1 AS id, '{"a":1}'::jsonb AS doc, '[1,2]'::json AS arr, '{"x":9}'::text AS txt`),
+  );
+  const kind = (name: string) => rs.columns.find((c) => c.name === name)?.jsonKind;
+  expect(kind('doc')).toBe('canonical');
+  expect(kind('arr')).toBe('verbatim'); // top-level arrays too — OIDs, not value shapes
+  expect(kind('id')).toBeUndefined();
+  expect(kind('txt')).toBeUndefined(); // text that looks like JSON stays untyped
+});
+
 pgTest('a still-referenced delete throws a coded QueryError the dialect classifies', async () => {
   // End-to-end through the real driver: the FK error must keep its SQLSTATE +
   // detail across the transactional write path (tx.execute wraps like execute),

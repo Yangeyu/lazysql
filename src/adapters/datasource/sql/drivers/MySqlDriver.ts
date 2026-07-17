@@ -84,11 +84,21 @@ export class MySqlDriver implements SqlDriver {
   }
 }
 
+/** Wire type code → MySqlDialect type-name vocabulary. Only types a consumer
+ *  actually reads are mapped (null = unknown is the contract). */
+const MYSQL_TYPE_NAMES: Record<number, string> = {
+  245: 'json', // MYSQL_TYPE_JSON — declared JSON columns and JSON expressions
+};
+
 /** Map a mysql2 result into RawResult: SELECT → rows, write → affectedRows. */
 const toRaw = (result: unknown, fields: FieldPacket[] | undefined): RawResult => {
   if (Array.isArray(result)) {
-    const columns = ((fields ?? []) as FieldPacket[]).map((f) => f.name);
-    return { columns, rows: result as unknown[][] };
+    const packets = (fields ?? []) as FieldPacket[];
+    return {
+      columns: packets.map((f) => f.name),
+      columnTypes: packets.map((f) => MYSQL_TYPE_NAMES[f.type ?? -1] ?? null),
+      rows: result as unknown[][],
+    };
   }
   const header = result as { affectedRows?: number };
   return { columns: [], rows: [], affected: header.affectedRows };

@@ -1,21 +1,18 @@
 /**
- * PgDriver — SqlDriver backed by Bun's native Postgres client (`Bun.SQL`).
+ * PgDriver — SqlDriver backed by postgres.js (`postgres`).
  *
- * We deliberately do NOT use node-postgres (`pg`): under Bun (≤1.2.16) its
- * SCRAM-SHA-256 auth handshake spins at 100% CPU and never completes, so a
- * Postgres connection hangs forever on "Connecting…". Bun's built-in client
- * speaks the wire protocol natively (no JS SASL loop) and connects in ~30ms,
- * and it keeps the project Bun-native and dependency-light — exactly as
- * BunSqliteDriver does for SQLite. It is the only module importing the client
- * and speaks nothing but the Driver interface upward. (DIP)
- *
- * Bun.SQL returns rows as objects; we project them to the positional RawResult
- * the dialect/domain expect. The one trade-off vs `rowMode: 'array'` is that
- * duplicate column names in ad-hoc SQL collapse — acceptable for a browser, and
- * never an issue for introspection/browse which select distinct columns.
+ * Client history, so it isn't relitigated: node-postgres (`pg`) is out — under
+ * Bun (≤1.2.16) its SCRAM-SHA-256 handshake spins at 100% CPU forever. Bun's
+ * built-in `Bun.SQL` (used until v0.1.23) is out too: it exposes no result
+ * metadata (no RowDescription/OIDs — so ad-hoc query results can never be
+ * typed, oven-sh/bun#15088 has no plan) and hangs the connection on composite
+ * values (`SELECT ROW(1,'x')`). postgres.js authenticates SCRAM fine under
+ * Bun, exposes `result.columns` with type OIDs, and is the API Bun.SQL was
+ * modeled on — so swapping back later is cheap if Bun catches up. This is the
+ * only module importing the client; everything above speaks Driver. (DIP)
  */
 
-import { SQL } from 'bun';
+import postgres from 'postgres';
 import type { SqlDriver, RawResult, RunFn } from '../Driver.ts';
 import { ConnectionError } from '../../../../domain/errors/errors.ts';
 
@@ -29,24 +26,34 @@ export interface PgConnectConfig {
   readonly connectionString?: string;
 }
 
-/** A Bun.SQL result array carries `count`/`command` metadata alongside rows. */
-type SqlRows = Record<string, unknown>[] & {
-  readonly count?: number;
-  readonly command?: string;
+type Sql = ReturnType<typeof postgres>;
+
+/** OID → PostgresDialect type-name vocabulary. Only types a consumer actually
+ *  reads are mapped (null = unknown is the contract); extend as needs grow. */
+const PG_TYPE_NAMES: Record<number, string> = {
+  114: 'json',
+  3802: 'jsonb',
 };
 
-/** Project Bun.SQL's object rows into the positional RawResult. */
-const toRaw = (rows: SqlRows): RawResult => {
-  const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
+/** Positional `.values()` rows + column metadata into RawResult. `count` is
+ *  the affected-row count for writes (for SELECT it is just the row count,
+ *  which consumers ignore — same shape the previous client reported). */
+const toRaw = (result: {
+  readonly columns?: readonly { name: string; type: number }[];
+  readonly count?: number;
+  slice(): unknown[];
+}): RawResult => {
+  const cols = result.columns ?? [];
   return {
-    columns,
-    rows: rows.map((r) => columns.map((c) => r[c])),
-    affected: typeof rows.count === 'number' ? rows.count : undefined,
+    columns: cols.map((c) => c.name),
+    columnTypes: cols.map((c) => PG_TYPE_NAMES[c.type] ?? null),
+    rows: result.slice() as unknown[][],
+    affected: typeof result.count === 'number' ? result.count : undefined,
   };
 };
 
 export class PgDriver implements SqlDriver {
-  private sql: SQL | null = null;
+  private sql: Sql | null = null;
 
   constructor(private readonly config: PgConnectConfig) {}
 
@@ -54,14 +61,16 @@ export class PgDriver implements SqlDriver {
     // max: 1, not a pool: a pool scatters statements across backends, so
     // session-scoped state (TEMP tables, SET/search_path, multi-statement
     // BEGIN…COMMIT) would vanish between queries. Single-user UI ⇒ serialised.
-    const common = { adapter: 'postgres' as const, max: 1, connectionTimeout: 10 };
+    // onnotice: postgres.js logs server NOTICEs to console by default — the
+    // TUI owns the screen, so swallow them (the statement result is unaffected).
+    const common = { max: 1, connect_timeout: 10, onnotice: () => {} };
     const sql = this.config.connectionString
-      ? new SQL({ url: this.config.connectionString, ...common })
-      : new SQL({
+      ? postgres(this.config.connectionString, common)
+      : postgres({
           ...common,
-          hostname: this.config.host ?? 'localhost',
+          host: this.config.host ?? 'localhost',
           port: this.config.port ?? 5432,
-          user: this.config.user,
+          username: this.config.user,
           password: this.config.password,
           database: this.config.database,
         });
@@ -86,19 +95,18 @@ export class PgDriver implements SqlDriver {
   }
 
   async run(text: string, params: ReadonlyArray<unknown>): Promise<RawResult> {
-    const rows = (await this.require().unsafe(text, [...params])) as SqlRows;
-    return toRaw(rows);
+    return toRaw(await this.require().unsafe(text, [...params] as never[]).values());
   }
 
   async transaction<T>(fn: (run: RunFn) => Promise<T>): Promise<T> {
-    return this.require().begin(async (tx: SQL) => {
+    return this.require().begin(async (tx) => {
       const run: RunFn = async (text, params) =>
-        toRaw((await tx.unsafe(text, [...params])) as SqlRows);
+        toRaw(await tx.unsafe(text, [...params] as never[]).values());
       return fn(run);
-    });
+    }) as Promise<T>;
   }
 
-  private require(): SQL {
+  private require(): Sql {
     if (!this.sql) throw new ConnectionError('pg driver not connected');
     return this.sql;
   }

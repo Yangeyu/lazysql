@@ -46,7 +46,9 @@ export class BunSqliteDriver implements SqlDriver {
       const objs = stmt.all(...bind) as Array<Record<string, unknown>>;
       const columns = stmt.columnNames;
       const rows = objs.map((o) => columns.map((c) => o[c] ?? null));
-      return { columns, rows };
+      // declaredTypes: the CREATE TABLE type name per column (null for computed
+      // expressions) — exactly the "declared type" fact the dialect types on.
+      return { columns, columnTypes: stmt.declaredTypes, rows };
     }
 
     const res = stmt.run(...bind);

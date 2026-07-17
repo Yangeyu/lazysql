@@ -9,10 +9,10 @@
  * Pages are ordered by the table's primary key (as a tiebreaker after any user
  * sort) whenever the source can introspect one: offset paging without a
  * deterministic order can repeat or skip rows when the table is written to
- * mid-export. The same describe also carries each column's declared-JSON
- * marker into `columns` (`ColumnMeta.jsonKind`), so the JSON formatter can
- * nest those cells. Both are best effort — a source without introspection (or
- * a failing describe) loses ordering and JSON nesting, never the export.
+ * mid-export. Best effort — a source without introspection (or a failing
+ * describe) loses ordering, never the export. Column typing (e.g. the
+ * declared-JSON marker) is NOT this module's job: the adapter types every
+ * ResultSet at birth, so `columns` arrives already marked.
  */
 
 import {
@@ -20,7 +20,7 @@ import {
   type Browsable,
   type DataSource,
 } from '../../domain/datasource/DataSource.ts';
-import type { ObjectRef, JsonKind } from '../../domain/datasource/schema.ts';
+import type { ObjectRef } from '../../domain/datasource/schema.ts';
 import { columnsOf } from '../../domain/datasource/schema.ts';
 import type { ColumnMeta, Row } from '../../domain/datasource/ResultSet.ts';
 import type { Sort, Filter } from '../../domain/query/Query.ts';
@@ -32,26 +32,19 @@ export interface TablePages {
   chunks(): AsyncIterable<readonly Row[]>;
 }
 
-interface SchemaFacts {
-  readonly stableKey?: readonly string[];
-  readonly jsonKinds?: ReadonlyMap<string, JsonKind>;
-}
-
-const schemaFactsOf = async (source: DataSource, ref: ObjectRef): Promise<SchemaFacts> => {
+const stableKeyOf = async (
+  source: DataSource,
+  ref: ObjectRef,
+): Promise<readonly string[] | undefined> => {
   const introspectable = asIntrospectable(source);
-  if (!introspectable) return {};
+  if (!introspectable) return undefined;
   try {
-    const columns = columnsOf(await introspectable.describe(ref));
-    const pk = columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
-    const jsonKinds = new Map(
-      columns.flatMap((c) => (c.jsonKind ? [[c.name, c.jsonKind] as const] : [])),
-    );
-    return {
-      stableKey: pk.length > 0 ? pk : undefined,
-      jsonKinds: jsonKinds.size > 0 ? jsonKinds : undefined,
-    };
+    const pk = columnsOf(await introspectable.describe(ref))
+      .filter((c) => c.isPrimaryKey)
+      .map((c) => c.name);
+    return pk.length > 0 ? pk : undefined;
   } catch {
-    return {}; // introspection is an enrichment, never a gate
+    return undefined; // introspection is an enrichment, never a gate
   }
 };
 
@@ -62,7 +55,7 @@ export const browsePages = async (
   signal?: AbortSignal,
 ): Promise<TablePages> => {
   const { sort, filter, pageSize: limit } = opts;
-  const { stableKey, jsonKinds } = await schemaFactsOf(table, ref);
+  const stableKey = await stableKeyOf(table, ref);
   const first = await table.browse(
     ref,
     { page: { offset: 0, limit }, sort, filter, stableKey },
@@ -83,11 +76,5 @@ export const browsePages = async (
       );
     }
   }
-  const columns = jsonKinds
-    ? first.columns.map((c) => {
-        const jsonKind = jsonKinds.get(c.name);
-        return jsonKind ? { ...c, jsonKind } : c;
-      })
-    : first.columns;
-  return { columns, chunks };
+  return { columns: first.columns, chunks };
 };

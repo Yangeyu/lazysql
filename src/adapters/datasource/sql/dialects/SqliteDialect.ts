@@ -16,6 +16,7 @@ import type {
   ObjectRef,
   ColumnDef,
   ObjectKind,
+  JsonKind,
 } from '../../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
 import type { CascadeDrop, WriteRefusal } from '../../../../domain/datasource/DataSource.ts';
@@ -82,17 +83,22 @@ export class SqliteDialect implements Dialect {
     const iPk = col(raw, 'pk');
     return raw.rows.map((r) => {
       const dataType = String(r[iType] ?? '');
+      const jsonKind = this.jsonKindOfType(dataType);
       return {
         name: String(r[iName]),
         dataType,
         nullable: Number(r[iNotNull]) === 0,
         isPrimaryKey: Number(r[iPk]) > 0,
-        // SQLite's declared type is only an affinity — the column stores
-        // whatever text was inserted, so a declared JSON column is 'verbatim'
-        // (consumers must parse-validate, never trust or reformat the text).
-        ...(/^jsonb?$/i.test(dataType) ? { jsonKind: 'verbatim' as const } : {}),
+        ...(jsonKind ? { jsonKind } : {}),
       };
     });
+  }
+
+  jsonKindOfType(dataType: string): JsonKind | undefined {
+    // SQLite's declared type is only an affinity — the column stores whatever
+    // text was inserted, so a declared JSON column is 'verbatim' (consumers
+    // must parse-validate, never trust or reformat the text).
+    return /^jsonb?$/i.test(dataType) ? 'verbatim' : undefined;
   }
 
   sourceQuery(ref: ObjectRef): Query {

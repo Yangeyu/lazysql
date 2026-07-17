@@ -18,6 +18,7 @@ import type {
   ObjectRef,
   ColumnDef,
   ObjectKind,
+  JsonKind,
 } from '../../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
 import type { CascadeDrop, WriteRefusal } from '../../../../domain/datasource/DataSource.ts';
@@ -166,21 +167,24 @@ export class PostgresDialect implements Dialect {
         Array.isArray(rawEnum) && rawEnum.length > 0
           ? rawEnum.map(String)
           : undefined;
+      const jsonKind = this.jsonKindOfType(dataType);
       return {
         name: String(r[iName]),
         dataType,
         nullable: r[iNullable] === 'YES',
         isPrimaryKey: r[iPk] === true,
         ...(enumValues ? { enumValues } : {}),
-        // jsonb is stored normalized (reformat-safe); `json` keeps its text
-        // verbatim — still a JSON column, but its layout is data.
-        ...(dataType === 'jsonb'
-          ? { jsonKind: 'canonical' as const }
-          : dataType === 'json'
-            ? { jsonKind: 'verbatim' as const }
-            : {}),
+        ...(jsonKind ? { jsonKind } : {}),
       };
     });
+  }
+
+  jsonKindOfType(dataType: string): JsonKind | undefined {
+    // jsonb is stored normalized (reformat-safe); `json` keeps its text
+    // verbatim — still a JSON column, but its layout is data.
+    if (dataType === 'jsonb') return 'canonical';
+    if (dataType === 'json') return 'verbatim';
+    return undefined;
   }
 
   sourceQuery(ref: ObjectRef): Query {

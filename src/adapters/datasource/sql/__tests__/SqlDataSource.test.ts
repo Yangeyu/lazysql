@@ -123,6 +123,23 @@ test('edit previews echo the dialect statement with values quoted', () => {
   );
 });
 
+test('ad-hoc query columns carry jsonKind from declared column types', async () => {
+  const q = asQueryable(source)!;
+  await q.execute(sql(`CREATE TABLE jsondecl (id INTEGER PRIMARY KEY, meta JSON)`));
+  try {
+    await q.execute(sql(`INSERT INTO jsondecl VALUES (1, '{"a":1}')`));
+    const rs = await q.execute(
+      sql(`SELECT id, meta, json_extract(meta, '$.a') AS a FROM jsondecl`),
+    );
+    const kind = (name: string) => rs.columns.find((c) => c.name === name)?.jsonKind;
+    expect(kind('meta')).toBe('verbatim'); // declared type survives pass-through
+    expect(kind('id')).toBeUndefined();
+    expect(kind('a')).toBeUndefined(); // computed expression has no declared type
+  } finally {
+    await q.execute(sql('DROP TABLE jsondecl'));
+  }
+});
+
 test('a failed query surfaces the driver reason, not the echoed SQL', async () => {
   // The failure must carry the DB's own message (SQLite: `no such table: …`,
   // spaced) — the pre-fix message only restated the SQL (`…no_such_table`).

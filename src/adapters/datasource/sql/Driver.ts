@@ -7,6 +7,11 @@
 export interface RawResult {
   /** Ordered column names. */
   readonly columns: string[];
+  /** Declared/wire type name per column, aligned to `columns`, in the paired
+   *  dialect's type vocabulary (e.g. 'jsonb', 'json'); null = unknown for that
+   *  column. Best-effort: a client that exposes no result metadata omits the
+   *  field entirely, and consumers must degrade gracefully. */
+  readonly columnTypes?: readonly (string | null)[];
   /** Positional rows aligned to `columns`. */
   readonly rows: unknown[][];
   /** Rows affected by a write, when applicable. */

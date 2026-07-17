@@ -10,6 +10,7 @@ import type { Query, BrowseSpec, Filter } from '../../../domain/query/Query.ts';
 import type {
   ObjectRef,
   ColumnDef,
+  JsonKind,
 } from '../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../domain/datasource/edit.ts';
 import type { CascadeDrop, WriteRefusal } from '../../../domain/datasource/DataSource.ts';
@@ -28,6 +29,12 @@ export interface Dialect {
   describeQuery(ref: ObjectRef): Query;
   /** Parse the raw result of `describeQuery` into column definitions. */
   parseColumns(raw: RawResult): ColumnDef[];
+
+  /** The declared-JSON marker for a type name of this dialect's database, or
+   *  undefined when the type is not JSON. The single authority on "which types
+   *  are JSON" — consumed by `parseColumns` (schema path) and by result-set
+   *  typing over `RawResult.columnTypes` (query path). */
+  jsonKindOfType(dataType: string): JsonKind | undefined;
 
   /** Query yielding one object's verbatim source/DDL as a single text cell
    *  (view's SELECT, index/trigger/routine definition). Called only for kinds

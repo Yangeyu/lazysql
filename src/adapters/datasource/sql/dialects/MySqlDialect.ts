@@ -19,6 +19,7 @@ import type {
   ObjectRef,
   ColumnDef,
   ObjectKind,
+  JsonKind,
 } from '../../../../domain/datasource/schema.ts';
 import type { RowKey, RowPatch } from '../../../../domain/datasource/edit.ts';
 import type { CascadeDrop, WriteRefusal } from '../../../../domain/datasource/DataSource.ts';
@@ -121,16 +122,21 @@ export class MySqlDialect implements Dialect {
         dataType === 'enum' && iColType >= 0
           ? parseEnumValues(String(r[iColType] ?? ''))
           : undefined;
+      const jsonKind = this.jsonKindOfType(dataType);
       return {
         name: String(r[iName]),
         dataType,
         nullable: r[iNullable] === 'YES',
         isPrimaryKey: r[iKey] === 'PRI',
         ...(enumValues && enumValues.length > 0 ? { enumValues } : {}),
-        // MySQL json is stored in a normalized binary form — reformat-safe.
-        ...(dataType === 'json' ? { jsonKind: 'canonical' as const } : {}),
+        ...(jsonKind ? { jsonKind } : {}),
       };
     });
+  }
+
+  jsonKindOfType(dataType: string): JsonKind | undefined {
+    // MySQL json is stored in a normalized binary form — reformat-safe.
+    return dataType === 'json' ? 'canonical' : undefined;
   }
 
   sourceQuery(ref: ObjectRef): Query {

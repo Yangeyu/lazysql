@@ -118,7 +118,7 @@ export class SqlDataSource
   async execute(query: Query, signal?: AbortSignal): Promise<ResultSet> {
     throwIfAborted(signal);
     const raw = await this.runQuery(query);
-    return toResultSet(raw);
+    return toResultSet(raw, this.dialect);
   }
 
   // ── SchemaIntrospectable ────────────────────────────────────────────────
@@ -152,7 +152,7 @@ export class SqlDataSource
   ): Promise<ResultSet> {
     throwIfAborted(signal);
     const raw = await this.runQuery(this.dialect.browseQuery(ref, spec));
-    const rs = toResultSet(raw);
+    const rs = toResultSet(raw, this.dialect);
     // A full page implies there may be more rows beyond this window.
     return { ...rs, truncated: rs.rows.length >= spec.page.limit };
   }
@@ -217,7 +217,7 @@ export class SqlDataSource
         // losing the code/detail the dialects classify on.
         execute: async (query) => {
           try {
-            return toResultSet(await run(query.text, query.params ?? []));
+            return toResultSet(await run(query.text, query.params ?? []), this.dialect);
           } catch (cause) {
             throw asQueryError(cause);
           }
@@ -313,9 +313,17 @@ const throwIfAborted = (signal?: AbortSignal): void => {
   if (signal?.aborted) throw new QueryError('operation aborted');
 };
 
-const toResultSet = (raw: RawResult): ResultSet => ({
+/** The single place a SQL ResultSet is born: positional rows normalize to
+ *  CellValue, and — when the driver reports column types — each column gets its
+ *  declared-JSON marker via the dialect. Every consumer (browse, ad-hoc query,
+ *  export, grid) sees the same typed columns; none re-derives the fact. */
+const toResultSet = (raw: RawResult, dialect: Dialect): ResultSet => ({
   shape: 'tabular',
-  columns: raw.columns.map((name) => ({ name })),
+  columns: raw.columns.map((name, i) => {
+    const dataType = raw.columnTypes?.[i];
+    const jsonKind = dataType ? dialect.jsonKindOfType(dataType) : undefined;
+    return jsonKind ? { name, jsonKind } : { name };
+  }),
   rows: raw.rows.map((r) => r.map(normalizeCell)),
   affected: raw.affected,
   truncated: false,

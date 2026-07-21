@@ -47,9 +47,9 @@ export const buildSystemPrompt = (dialect: string): string =>
 natural language, produce a single correct, runnable ${dialect} SQL statement.
 Rules:
 - Use only tables and columns present in the provided schema.
-- Copy each identifier exactly as it appears in the schema, including any quote
-  characters — a quoted name is case-sensitive and fails if its quotes or case
-  are dropped. Quote any reserved word used as an identifier.
+- Copy each identifier exactly as it appears in the schema, including its schema
+  qualifier and any quote characters — a quoted name is case-sensitive and fails
+  if its quotes or case are dropped. Quote any reserved word used as an identifier.
 - Prefer a read-only SELECT unless the request clearly asks to modify data.
 - Do not wrap the SQL in markdown fences.
 - Keep the explanation to one or two sentences.`;
@@ -59,7 +59,7 @@ const renderSchema = (
   quote: Quote,
 ): string =>
   tables
-    .map((t) => `${quote(t.name)}(${t.columns.map(quote).join(', ')})`)
+    .map((t) => `${quotePath(quote, t.name)}(${t.columns.map(quote).join(', ')})`)
     .join('\n') || '(no tables)';
 
 export const buildUserPrompt = (input: GenerateInput): string => {

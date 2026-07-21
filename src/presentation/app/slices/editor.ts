@@ -27,6 +27,7 @@ import type {
 } from '../../../application/ports/SqlGenerator.ts';
 import type { QueryHistoryStore } from '../../../application/ports/QueryHistoryStore.ts';
 import { complete } from '../../completion/sqlCompleter.ts';
+import type { SchemaCatalog } from '../../completion/sqlCompleter.ts';
 import { dialectLabel } from '../../tree/tree.ts';
 
 /** How many recent statements the SQL editor history keeps, per connection. */
@@ -36,6 +37,30 @@ export const HISTORY_LIMIT = 100;
  *  cost a describe each, so they are capped. Beyond this, table/schema completion
  *  still works; per-table column completion is the on-demand future step. */
 const CATALOG_DESCRIBE_LIMIT = 200;
+
+/** Map the completion catalog into NL→SQL schema tables: a namespaced table
+ *  carries its schema (`mastra.mastra_messages`) so the model qualifies FROM the
+ *  same way the schema lists it; sources without namespaces stay bare. */
+const schemaContextTables = (cat: SchemaCatalog): SchemaContext['tables'] => {
+  const namespaced = new Set<string>();
+  const out: { name: string; columns: string[] }[] = [];
+  for (const [ns, names] of Object.entries(cat.tablesBySchema)) {
+    for (const n of names) {
+      namespaced.add(n);
+      const key = `${ns}.${n}`;
+      out.push({
+        name: key,
+        columns: cat.columnsByTable[key] ?? cat.columnsByTable[n] ?? [],
+      });
+    }
+  }
+  for (const n of cat.tables) {
+    if (!namespaced.has(n)) {
+      out.push({ name: n, columns: cat.columnsByTable[n] ?? [] });
+    }
+  }
+  return out;
+};
 
 /** Presentation wording for a structured danger kind — the dialog headline. */
 const dangerHeadline = (kind: DangerKind, sql: string): string => {
@@ -222,7 +247,9 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
     setQuery: (value, caret) => {
       const c = caret ?? value.length;
       // A real edit changes the text; only then reset the history cursor (you're
-      // back on a fresh draft). A SAME-text write is the <textarea> echoing a
+      // back on a fresh draft) and drop the last run's error — it described the
+      // OLD text, so keeping it would outrank (and hide) the completions this
+      // keystroke just produced. A SAME-text write is the <textarea> echoing a
       // programmatic setText (history/NL/clear) back through onContentChange —
       // keep historyIndex so ↓ (historyNext) can still step forward. Completions
       // track the caret; suppressed while the toggle is off.
@@ -230,7 +257,7 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
       set({
         queryText: value,
         editorCaret: c,
-        ...(changed ? { historyIndex: null } : {}),
+        ...(changed ? { historyIndex: null, queryError: null } : {}),
         completions: get().completionsOn ? completionsFor(value, c) : [],
       });
     },
@@ -359,12 +386,7 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
       }
       set({ nlMode: false, generating: true, queryError: null });
       const schema: SchemaContext = {
-        tables: catalog
-          ? catalog.tables.map((t) => ({
-              name: t,
-              columns: catalog.columnsByTable[t] ?? [],
-            }))
-          : [],
+        tables: catalog ? schemaContextTables(catalog) : [],
       };
       const focus = current ? objectRefKey(current) : undefined;
       const profile = activeProfile();

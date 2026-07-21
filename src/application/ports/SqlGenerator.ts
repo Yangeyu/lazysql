@@ -7,6 +7,9 @@
 
 export interface SchemaContext {
   readonly tables: ReadonlyArray<{
+    /** Schema-qualified when a namespace is known (e.g. "mastra.mastra_messages"),
+     *  bare for schemaless sources — so a generator can emit a runnable, qualified
+     *  reference instead of guessing the namespace. */
     readonly name: string;
     readonly columns: string[];
   }>;

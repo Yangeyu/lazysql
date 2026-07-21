@@ -91,6 +91,25 @@ test('NL is unavailable (and beginNl is a no-op) without a generator', () => {
   );
 });
 
+test('a genuine edit clears the last run error so it stops hiding completions', () => {
+  const profile: ConnectionProfile = { id: 'x', name: 'X', driver: 'sqlite', options: {} };
+  const store = createAppStore({ connectionService: serviceFor(profile) });
+
+  // Seed a queryError without a DB: asking for AI with no provider sets one.
+  store.getState().beginNl();
+  expect(store.getState().queryError).not.toBeNull();
+
+  // Typing new text invalidates the previous error (it described the old text).
+  store.getState().setQuery('select 1');
+  expect(store.getState().queryError).toBeNull();
+
+  // A same-text echo (programmatic setText round-trip) is not a real edit and
+  // must NOT clear — the `changed` gate stays the sole trigger.
+  store.getState().beginNl();
+  store.getState().setQuery('select 1');
+  expect(store.getState().queryError).not.toBeNull();
+});
+
 test('exportGrid stages a y/n confirm; confirming writes and reports a notice', async () => {
   const state = { buf: '', closed: false };
   const exporter: Exporter = {

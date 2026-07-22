@@ -33,6 +33,7 @@ test('renders the bound query text in the SQL editor', async () => {
       error={null}
       height={8}
       innerWidth={80}
+      onPaneClick={() => {}}
     />,
     { width: 90, height: 10 },
   );
@@ -73,6 +74,7 @@ test('typing after non-ASCII text recomputes completions at the middle caret', a
         error={null}
         height={8}
         innerWidth={80}
+        onPaneClick={() => {}}
       />
     );
   };
@@ -146,6 +148,7 @@ test('collapsed, it echoes the statement behind the grid and flags a kept draft'
       error={null}
       height={3}
       innerWidth={80}
+      onPaneClick={() => {}}
     />,
     { width: 90, height: 6 },
   );

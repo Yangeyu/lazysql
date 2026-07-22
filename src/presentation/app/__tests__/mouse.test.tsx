@@ -1,8 +1,7 @@
 /**
- * Mouse integration: native OpenTUI events let interactive tree/grid rows own
- * their click behavior while passive text, including the SQL pane, remains
- * selection-only. Driven through the real App so events resolve to the actual
- * rendered target without coordinate hit-testing.
+ * Mouse integration: native OpenTUI events let interactive panes own their
+ * click behavior while text selection stays native. Driven through the real App
+ * so events resolve to the actual rendered target without coordinate hit-testing.
  */
 
 import { test, beforeAll, afterAll, expect } from 'bun:test';
@@ -29,6 +28,9 @@ const svc: ConnectionService = {
 /** Screen row (0-based) of the first frame line containing `needle`, or -1. */
 const lineY = (h: TestHandle, needle: string): number =>
   h.frame().split('\n').findIndex((l) => l.includes(needle));
+
+const hasContext = (frame: string, label: string): boolean =>
+  frame.split('\n').some((line) => line.trimStart().startsWith(`${label} `));
 
 beforeAll(() => {
   const db = new Database(DB, { create: true });
@@ -148,7 +150,32 @@ test('dragging over the collapsed SQL echo copies exact text without entering th
   h.cleanup();
 });
 
-test('dragging over an expanded SQL draft copies it without stealing grid focus', async () => {
+test('clicking the expanded SQL pane focuses the editor and accepts typing', async () => {
+  const h = await renderTest(<Root connectionService={svc} initial={profile} />, {
+    width: 120,
+    height: 30,
+  });
+  await h.until((f) => f.includes('Tables'));
+  h.enter();
+  await h.until((f) => f.includes('alpha'));
+
+  h.press(':');
+  await h.until((f) => f.includes('⏎ run'));
+  await h.type('SELECT 42');
+  h.esc();
+  await h.until((f) => hasContext(f, 'DATA') && f.includes('SELECT 42'));
+
+  const y = lineY(h, 'SELECT 42');
+  const x = h.frame().split('\n')[y]!.indexOf('SELECT 42') + 'SELECT 42'.length;
+  await h.click(x, y);
+  await h.until((f) => hasContext(f, 'SQL'));
+
+  await h.type('Z');
+  await h.until((f) => f.includes('SELECT 42Z'));
+  h.cleanup();
+});
+
+test('dragging over an expanded SQL draft focuses it while preserving copy', async () => {
   const copied: string[] = [];
   const clipboard = { write: (t: string) => copied.push(t) };
   const h = await renderTest(
@@ -172,7 +199,7 @@ test('dragging over an expanded SQL draft copies it without stealing grid focus'
 
   expect(h.selectedText()).toBe('exact_copy');
   expect(copied).toContain('exact_copy');
-  expect(h.frame()).toContain('DATA');
+  expect(hasContext(h.frame(), 'SQL')).toBe(true);
   expect(h.frame()).toContain('SELECT 42 AS exact_copy');
   h.cleanup();
 });

@@ -3,8 +3,8 @@
  * (ADR 0013): collapsed (default) it is a one-line ECHO BAR — a read-only
  * readout of the statement behind the grid, not focusable, so the grid keeps
  * the screen; expanded (`:` / ^O / ^G) it is the full editing pane below.
- * Mouse press/drag is deliberately reserved for terminal text selection and
- * copy: it never changes pane focus or gear. `:` is the explicit editing entry.
+ * Mouse press focuses the expanded pane while native drag selection and copy
+ * keep working; the collapsed echo bar remains selection-only and never expands.
  *
  * Expanded: ONE bordered panel whose `✦ ask` row, divider and feedback line are
  * PINNED while the SQL editor between them is a multi-line <textarea> that
@@ -82,6 +82,8 @@ interface Props {
   height: number;
   /** Content width (panel inner width) — drives the divider. */
   innerWidth: number;
+  /** The expanded pane was pressed — focus its editing surface. */
+  onPaneClick: () => void;
 }
 
 /** Collapse newlines so a value stays on a SINGLE feedback line — otherwise a
@@ -137,6 +139,7 @@ const QueryEditorImpl = ({
   error,
   height,
   innerWidth,
+  onPaneClick,
 }: Props) => {
   const ref = useRef<TextareaRenderable | null>(null);
 
@@ -177,6 +180,7 @@ const QueryEditorImpl = ({
       borderStyle="rounded"
       borderColor={borderColor}
       paddingX={1}
+      onMouseDown={expanded ? onPaneClick : undefined}
     >
       {/* ── collapsed: the echo bar. The editing rows below stay MOUNTED but
           display:none (`visible`) — a remounting textarea boots a fresh cursor

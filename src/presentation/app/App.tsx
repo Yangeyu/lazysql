@@ -224,6 +224,7 @@ export const App = ({ clipboard }: AppProps) => {
             error={queryError}
             height={editorRows}
             innerWidth={viewportCols}
+            onPaneClick={() => store.getState().focusPane('editor')}
           />
         ) : null}
         <ResultsPanel

@@ -164,7 +164,7 @@ Failures (a refused write, a lost connection, a failed export…) pop an error d
 
 **SQL editor**
 
-Mouse clicks and drags over the SQL pane are reserved for text selection and copy: they never focus or expand it. Press `:` to enter editing.
+The collapsed SQL echo bar keeps mouse gestures selection-only and never focuses or expands. Once expanded, clicking the pane focuses the editor; dragging still selects and copies text without changing the gear.
 
 | Key | Action |
 |----|------|

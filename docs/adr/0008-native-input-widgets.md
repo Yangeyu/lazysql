@@ -31,7 +31,11 @@ ADR 0007 把可编辑文本建模成自绘的 `TextField { value, cursor }`：st
 - **过滤 / 编辑**：input 由「该列已有过滤值 / 当前单元格值」**种子**（在视图里派生），`onSubmit(value)`
   → `commitFilter(value)` / `submitEdit(value)`；store 不持草稿。
 - **NL ask**：`mode: 'nl'` 时 native input 的 `onSubmit(prompt)` → `generateFromNl(prompt)`；提交后进入
-  `mode: 'generating'`，输入由 keymap 的生成上下文接管，`esc` 取消 provider 请求并回到编辑器。
+  `mode: 'generating'`，输入由 keymap 的生成上下文接管，`esc` 取消 provider 请求并回到编辑器。已提交
+  prompt 只在 presentation 按当前连接保留最近 50 条，input 本地持有 `↑/↓` 浏览位置与未提交草稿；
+  切换/断开连接即清空，不进入 `QueryHistoryStore`。`beginNl` 同时聚焦并展开 editor；SQL/sidebar/grid
+  的显式聚焦统一经 `focusPane` 退出未提交 prompt，Ask input 则截断鼠标冒泡、继续拥有 `mode:'nl'`。
+  因此点击同面板的 SQL 区会切回普通 SQL focus，而点击 Ask input 本身不会误退出。
 - **SQL 编辑器**：受控——`value={queryText}`，`onInput` → `setQuery`（重算补全），`onSubmit` →
   `executeQuery`；历史 / 补全 / NL 都经同一个 `value` prop 驱动；空时把 browse 语句作为 `placeholder` 回显。
 
@@ -39,7 +43,8 @@ ADR 0007 把可编辑文本建模成自绘的 `TextField { value, cursor }`：st
 
 聚焦的 widget 自己吃文本键、光标键、Enter（提交）；全局 `dispatchKey` 仍收到这些键但**对它们不作为**。
 所以这些上下文里只保留 widget **不消费**的应用级键：`Esc`（离开 / 取消）、`^G`（问 AI）、`Tab`（补全 / 切面板）、
-`^C`（退出）。widget 自管的键（打字、`⏎` 提交）从 keymap 删除其行为，`⏎` 留作 footer/help 的**纯展示行**
+`^C`（退出）。widget 自管的键（打字、`⏎` 提交，以及 NL input 的 `↑/↓` prompt 召回）从 keymap 删除其行为，
+`⏎` / `↑/↓` 留作 footer/help 的**纯展示行**
 （`KeyBinding.match/run` 因此变可选）。
 
 ### 3. 删除自绘栈

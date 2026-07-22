@@ -327,6 +327,8 @@ export interface AppState {
 
   // ── NL→SQL ──
   nlAvailable: boolean;
+  /** Submitted prompts for the active connection, memory-only and bounded. */
+  nlHistory: string[];
   nlExplanation: string | null;
   nlKind: StatementKind | null;
 
@@ -431,7 +433,7 @@ export interface AppState {
   connFormTest: () => Promise<void>;
   connFormCancel: () => void;
   /** Move focus to a pane (`:`/Esc/click); gates the editor on `queryable`.
-   *  Focusing the editor also expands it — you can't compose in the echo bar. */
+   *  Any explicit pane focus leaves Ask AI; focusing SQL also expands it. */
   focusPane: (target: Focus) => void;
   /** ^O: toggle the editor between the echo bar and the full editing pane.
    *  Collapsing moves focus off the editor (the bar is not focusable). */
@@ -676,6 +678,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         history: [],
         historyIndex: null,
         catalog: null,
+        nlHistory: [],
       });
       // Restore this connection's persisted history (best-effort, async); guard
       // against a fast switch landing it on a different connection.
@@ -748,6 +751,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       completionsOn: true,
 
       nlAvailable: false,
+      nlHistory: [],
       nlExplanation: null,
       nlKind: null,
 
@@ -818,6 +822,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           status: 'ready',
           queryable: false,
           nlAvailable: false,
+          nlHistory: [],
           mode: 'normal',
           notice: null,
           objects: [],
@@ -870,10 +875,18 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
             return;
           }
           if (!get().catalog) void editor.buildCatalog();
-          set({ focus: 'editor', editorExpanded: true, error: null });
+          set((s) => ({
+            focus: 'editor',
+            editorExpanded: true,
+            error: null,
+            ...(s.mode === 'nl' ? { mode: 'normal' as const } : {}),
+          }));
           return;
         }
-        set({ focus: target });
+        set((s) => ({
+          focus: target,
+          ...(s.mode === 'nl' ? { mode: 'normal' as const } : {}),
+        }));
       },
 
       toggleEditorExpanded: () => {
@@ -891,11 +904,12 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         }));
       },
 
-      cycleFocus: () =>
+      cycleFocus: () => {
         // Tab toggles only the two persistent panes, tree ↔ results. The editor
         // is reached deliberately (`:`) and left with Esc, so it stays off the
         // cycle — Tab never lands you mid-compose.
-        set((s) => ({ focus: s.focus === 'sidebar' ? 'grid' : 'sidebar' })),
+        get().focusPane(get().focus === 'sidebar' ? 'grid' : 'sidebar');
+      },
 
       // Export actions live in exportSlice.ts (ADR 0012 owns the flow).
       ...xport.actions,

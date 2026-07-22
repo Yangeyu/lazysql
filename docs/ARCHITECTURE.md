@@ -182,6 +182,11 @@ interface SqlGenerator {
   默认 **Qwen（百炼）**（配 `DASHSCOPE_API_KEY`），可切 **Claude** 或任意 OpenAI 兼容 provider
   （DeepSeek / Moonshot / 本地 Ollama）—— 新增只动 `adapters/llm/`，见 `adr/0004`。
 - **只读优先**：默认生成 `SELECT`，写/DDL 需显式开启 + 二次确认。
+- **Prompt 历史不落盘**：presentation 只保留当前连接最近 50 条已提交 prompt（连续重复去重）；
+  `↑/↓` 的浏览位置与未提交草稿归原生 input，切换/断开连接即清空，不经 `QueryHistoryStore`。
+- **Prompt 拥有 editor 焦点**：`beginNl` 原子进入 `mode:'nl'` + `focus:'editor'` 并展开编辑器；
+  `focusPane` 是 SQL/sidebar/grid 的统一入口并退出未提交 prompt。Ask input 自己消费鼠标事件，点击它
+  保持 `mode:'nl'`；点击同面板的 SQL 区则进入普通 editor focus，避免 pane focus 与子模式互相覆盖。
 - **取消不报错**：presentation 持有本次请求的 `AbortController`，signal 经 use case / port 传到 provider；
   `esc` 立即回到编辑器并保留原草稿。取消或被新请求取代的迟到响应没有写回权。
 
@@ -244,10 +249,11 @@ footer、帮助、真实行为永不漂移。`deriveContext(state)` 是「在哪
 文本输入用 OpenTUI **原生 widget**（过滤 / 单元格编辑 / NL ask 用 `<input>`，SQL 编辑器用多行
 `<textarea>`，详见 ADR 0008/0010）：widget 自己持有文本 + 光标（光标是终端的，不跳），编辑经事件报告、
 `onSubmit` 提交。store 只留**已提交值**（SQL 编辑器为 widget→store 的文本 + 光标镜像，ADR 0010；
-编辑器面板默认收起为一行回显条，`^O`/`:` 展开，ADR 0013）。聚焦的 widget 自吃文本键与 `⏎`，`dispatchKey`
-只处理它不消费的应用级键（`Esc`/`^G`/`Tab`/`^C`）；这些 widget 自管的键在表里留作展示行
+编辑器面板默认收起为一行回显条，`^O`/`:` 展开，ADR 0013）。聚焦的 widget 自吃文本键与 `⏎`，NL input 额外自管
+`↑/↓` prompt 历史；`dispatchKey` 只处理它不消费的应用级键（`Esc`/`^G`/`Tab`/`^C`）；这些 widget 自管的键在表里留作展示行
 （`KeyBinding.match/run` 可选）。SQL 面板的鼠标边界跟随档位：收起回显条只参与文本选择与复制，不改变 pane
-focus 或档位；展开态 `onMouseDown` 聚焦 editor，拖拽仍可选择/复制，且不改变档位。连接表单仍用 append-only 渲染。
+focus 或档位；展开态点击 SQL 区聚焦 editor（并退出 Ask input），Ask input 自己持有其鼠标事件；拖拽仍可
+选择/复制，且不改变展开档位。连接表单仍用 append-only 渲染。
 
 收益：① footer/帮助自动生成且永不漂移；② 派发是纯逻辑、脱离终端可测；③ 光标 / 编辑（undo、词操作、选区）
 由经验证的原生内核提供，不自造轮子。

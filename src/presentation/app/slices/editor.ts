@@ -32,6 +32,8 @@ import { dialectLabel } from '../../tree/tree.ts';
 
 /** How many recent statements the SQL editor history keeps, per connection. */
 export const HISTORY_LIMIT = 100;
+/** In-memory submitted prompts available to the active Ask AI input. */
+const NL_HISTORY_LIMIT = 50;
 /** Tables whose columns are eagerly described for completion. Schema + table
  *  names are unbounded (they need no per-table round-trip); only column lookups
  *  cost a describe each, so they are capped. Beyond this, table/schema completion
@@ -375,7 +377,14 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
         set({ queryError: 'configure an LLM provider to enable AI (NL→SQL)' });
         return;
       }
-      set({ mode: 'nl', queryError: null });
+      if (!get().catalog) void buildCatalog();
+      set({
+        mode: 'nl',
+        focus: 'editor',
+        editorExpanded: true,
+        error: null,
+        queryError: null,
+      });
     },
 
     cancelNl: () => {
@@ -392,7 +401,7 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
     },
 
     generateFromNl: async (prompt) => {
-      const { catalog, current } = get();
+      const { catalog, current, nlHistory } = get();
       const nl = prompt.trim();
       if (!generator || !nl) {
         set({ mode: 'normal' });
@@ -401,7 +410,15 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
       generationAbort?.abort();
       const controller = new AbortController();
       generationAbort = controller;
-      set({ mode: 'generating', queryError: null, notice: null });
+      const nextNlHistory = (
+        nlHistory[nlHistory.length - 1] === nl ? nlHistory : [...nlHistory, nl]
+      ).slice(-NL_HISTORY_LIMIT);
+      set({
+        mode: 'generating',
+        queryError: null,
+        notice: null,
+        nlHistory: nextNlHistory,
+      });
       const schema: SchemaContext = {
         tables: catalog ? schemaContextTables(catalog) : [],
       };

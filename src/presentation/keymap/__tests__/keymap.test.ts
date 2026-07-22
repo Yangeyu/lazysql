@@ -65,6 +65,7 @@ test('footerHints pins q quit · ? help at the end of a nav context', () => {
   // A short, no-primary context falls back to showing its own keys (unchanged).
   expect(footerHints('exporting', flags)).toContain('cancel');
   expect(footerHints('generating', flags)).toContain('cancel');
+  expect(footerHints('nl', flags)).toContain('history');
 });
 
 test('footerHints leads with the action that reopens dismissed error details', () => {

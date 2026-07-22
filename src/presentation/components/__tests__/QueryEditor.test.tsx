@@ -24,6 +24,7 @@ test('renders the bound query text in the SQL editor', async () => {
       completions={[]}
       completionsOn
       asking={false}
+      nlHistory={[]}
       onNlSubmit={() => {}}
       onEditorChange={() => {}}
       onQuerySubmit={() => {}}
@@ -56,6 +57,7 @@ test('a running AI generation advertises its escape cancel action', async () => 
       completions={[]}
       completionsOn
       asking={false}
+      nlHistory={[]}
       onNlSubmit={() => {}}
       onEditorChange={() => {}}
       onQuerySubmit={() => {}}
@@ -92,6 +94,7 @@ test('typing after non-ASCII text recomputes completions at the middle caret', a
         completions={candidates}
         completionsOn
         asking={false}
+        nlHistory={[]}
         onNlSubmit={() => {}}
         onEditorChange={(text, nextCaret) => {
           setQuery(text);
@@ -169,6 +172,7 @@ test('collapsed, it echoes the statement behind the grid and flags a kept draft'
       completions={[]}
       completionsOn
       asking={false}
+      nlHistory={[]}
       onNlSubmit={() => {}}
       onEditorChange={() => {}}
       onQuerySubmit={() => {}}
@@ -189,5 +193,47 @@ test('collapsed, it echoes the statement behind the grid and flags a kept draft'
   expect(frame).toContain('(draft)');
   expect(frame).not.toContain('half-written'); // the draft itself stays hidden
   expect(frame).not.toContain('✦ ask'); // no ask row in the echo bar
+  h.cleanup();
+});
+
+test('Ask AI arrows recall submitted prompts and then restore the current draft', async () => {
+  const submitted: string[] = [];
+  const h = await renderTest(
+    <QueryEditor
+      expanded
+      queryText=""
+      editorCaret={0}
+      statement={null}
+      focused
+      completions={[]}
+      completionsOn
+      asking
+      nlHistory={['first prompt', 'second prompt']}
+      onNlSubmit={(prompt) => submitted.push(prompt)}
+      onEditorChange={() => {}}
+      onQuerySubmit={() => {}}
+      generating={false}
+      nlExplanation={null}
+      nlKind={null}
+      error={null}
+      height={8}
+      innerWidth={80}
+      onPaneClick={() => {}}
+    />,
+    { width: 90, height: 10 },
+  );
+
+  await h.type('current draft');
+  h.arrow('up');
+  await h.until((frame) => frame.includes('second prompt'));
+  h.arrow('up');
+  await h.until((frame) => frame.includes('first prompt'));
+  h.arrow('down');
+  await h.until((frame) => frame.includes('second prompt'));
+  h.arrow('down');
+  await h.until((frame) => frame.includes('current draft'));
+
+  h.enter();
+  expect(submitted).toEqual(['current draft']);
   h.cleanup();
 });

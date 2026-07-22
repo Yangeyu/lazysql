@@ -174,5 +174,10 @@ test('NL→SQL fills the editor with generated SQL for review (never auto-runs)'
   // the NL→SQL flow ran end to end.
   await h.until((f) => f.includes('counts the gadgets'));
   expect(h.frame()).toContain('counts the gadgets');
+
+  h.ctrl('g');
+  await h.flush();
+  h.arrow('up');
+  await h.until((f) => f.includes('how many gadgets'));
   h.cleanup();
 });

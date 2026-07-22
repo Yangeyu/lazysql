@@ -14,6 +14,7 @@ import { Root } from '../Root.tsx';
 import { createDataSource } from '../../../adapters/datasource/registry.ts';
 import { openConnection } from '../../../application/usecases/OpenConnection.ts';
 import type { ConnectionService } from '../../../application/ports/ConnectionService.ts';
+import type { SqlGenerator } from '../../../application/ports/SqlGenerator.ts';
 
 const DB = join(tmpdir(), `lazysql-mouse-${process.pid}.db`);
 const noSecrets = { get: async () => null, set: async () => {}, delete: async () => {} } as any;
@@ -56,6 +57,58 @@ test('clicking the main pane focuses the grid; clicking the sidebar refocuses it
   await h.click(50, lineY(h, 'alpha')); // a grid data row
   await h.until((f) => f.includes('DATA')); // grid context badge
   expect(h.frame()).toContain('DATA');
+  h.cleanup();
+});
+
+test('clicking another pane exits the active Ask AI prompt', async () => {
+  const generator: SqlGenerator = {
+    generate: async () => ({ sql: 'SELECT 1', explanation: 'one' }),
+  };
+  const h = await renderTest(
+    <Root connectionService={svc} initial={profile} generator={generator} />,
+    { width: 120, height: 30 },
+  );
+  await h.until((f) => f.includes('Tables'));
+  h.enter();
+  await h.until((f) => f.includes('alpha'));
+
+  h.ctrl('g');
+  await h.until((f) => hasContext(f, 'AI') && f.includes('↑/↓ history'));
+  await h.click(50, lineY(h, 'alpha'));
+  await h.until((f) => hasContext(f, 'DATA') && !f.includes('↑/↓ history'));
+
+  h.ctrl('g');
+  await h.until((f) => hasContext(f, 'AI'));
+  await h.click(5, lineY(h, '[SQLite]'));
+  await h.until((f) => hasContext(f, 'TREE') && !f.includes('↑/↓ history'));
+  h.cleanup();
+});
+
+test('clicking the SQL editor leaves Ask AI and focuses SQL', async () => {
+  const generator: SqlGenerator = {
+    generate: async () => ({ sql: 'SELECT 1', explanation: 'one' }),
+  };
+  const h = await renderTest(
+    <Root connectionService={svc} initial={profile} generator={generator} />,
+    { width: 120, height: 30 },
+  );
+  await h.until((f) => f.includes('Tables'));
+  h.enter();
+  await h.until((f) => f.includes('alpha'));
+
+  h.ctrl('g');
+  await h.until((f) => hasContext(f, 'AI'));
+
+  const askY = lineY(h, '✦ ask');
+  const askX = h.frame().split('\n')[askY]!.indexOf('✦ ask') + 2;
+  await h.click(askX, askY);
+  await h.flush();
+  expect(hasContext(h.frame(), 'AI')).toBe(true);
+
+  const y = lineY(h, 'SQL>');
+  const x = h.frame().split('\n')[y]!.indexOf('SQL>') + 5;
+  await h.click(x, y);
+  await h.until((f) => hasContext(f, 'SQL'));
   h.cleanup();
 });
 

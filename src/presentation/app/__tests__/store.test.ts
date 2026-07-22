@@ -72,6 +72,54 @@ test('generateFromNl fills the editor and classifies, never executing', async ()
   expect(s.mode).toBe('normal');
   expect(s.result).toBeNull(); // generation does NOT run the query (no result)
   expect(s.surface).toBe('browse'); // …and never flips the grid to a query surface
+  expect(s.nlHistory).toEqual(['deactivate user 5']);
+});
+
+test('NL prompt history is bounded, de-duplicated, and cleared with the connection', async () => {
+  const generator: SqlGenerator = {
+    generate: async () => ({ sql: 'SELECT 1', explanation: 'one' }),
+  };
+  const profile: ConnectionProfile = {
+    id: 'x',
+    name: 'X',
+    driver: 'sqlite',
+    options: {},
+  };
+  let persisted = 0;
+  const store = createAppStore({
+    connectionService: serviceFor(profile),
+    generator,
+    initial: profile,
+    historyStore: {
+      load: async () => [],
+      save: async () => { persisted += 1; },
+    },
+  });
+  await store.getState().init();
+  store.setState({
+    nlHistory: Array.from({ length: 50 }, (_, i) => `prompt ${i}`),
+  });
+
+  await store.getState().generateFromNl('  prompt 50  ');
+  await store.getState().generateFromNl('prompt 50');
+
+  expect(store.getState().nlHistory).toHaveLength(50);
+  expect(store.getState().nlHistory[0]).toBe('prompt 1');
+  expect(store.getState().nlHistory.at(-1)).toBe('prompt 50');
+  expect(persisted).toBe(0);
+
+  await store.getState().connectProfile({
+    id: 'y',
+    name: 'Y',
+    driver: 'sqlite',
+    options: {},
+  });
+  expect(store.getState().nlHistory).toEqual([]);
+
+  await store.getState().generateFromNl('new connection prompt');
+  expect(store.getState().nlHistory).toEqual(['new connection prompt']);
+  store.getState().disconnect();
+  expect(store.getState().nlHistory).toEqual([]);
 });
 
 test('NL is unavailable (and beginNl is a no-op) without a generator', () => {
@@ -89,6 +137,49 @@ test('NL is unavailable (and beginNl is a no-op) without a generator', () => {
   expect(store.getState().queryError).toBe(
     'configure an LLM provider to enable AI (NL→SQL)',
   );
+});
+
+test('Ask AI owns editor focus, and focusing another pane exits its prompt', () => {
+  const profile: ConnectionProfile = {
+    id: 'x',
+    name: 'X',
+    driver: 'sqlite',
+    options: {},
+  };
+  const generator: SqlGenerator = {
+    generate: async () => ({ sql: 'SELECT 1', explanation: 'one' }),
+  };
+  const store = createAppStore({ connectionService: serviceFor(profile), generator });
+  store.setState({ queryable: true, focus: 'grid', editorExpanded: false });
+
+  store.getState().beginNl();
+  expect(store.getState().mode).toBe('nl');
+  expect(store.getState().focus).toBe('editor');
+  expect(store.getState().editorExpanded).toBe(true);
+
+  store.getState().focusPane('sidebar');
+  expect(store.getState().mode).toBe('normal');
+  expect(store.getState().focus).toBe('sidebar');
+});
+
+test('focusing the SQL editor exits the Ask AI prompt', () => {
+  const profile: ConnectionProfile = {
+    id: 'x',
+    name: 'X',
+    driver: 'sqlite',
+    options: {},
+  };
+  const generator: SqlGenerator = {
+    generate: async () => ({ sql: 'SELECT 1', explanation: 'one' }),
+  };
+  const store = createAppStore({ connectionService: serviceFor(profile), generator });
+  store.setState({ queryable: true });
+
+  store.getState().beginNl();
+  store.getState().focusPane('editor');
+
+  expect(store.getState().mode).toBe('normal');
+  expect(store.getState().focus).toBe('editor');
 });
 
 test('cancelling NL generation aborts the request and ignores a late result', async () => {
@@ -114,6 +205,7 @@ test('cancelling NL generation aborts the request and ignores a late result', as
 
   const pending = store.getState().generateFromNl('replace the draft');
   expect(store.getState().mode).toBe('generating');
+  expect(store.getState().nlHistory).toEqual(['replace the draft']);
 
   store.getState().cancelNl();
   expect(requestSignal?.aborted).toBe(true);

@@ -99,6 +99,7 @@ export const App = ({ clipboard }: AppProps) => {
   const completions = useApp((s) => s.completions);
   const completionsOn = useApp((s) => s.completionsOn);
   const nlAvailable = useApp((s) => s.nlAvailable);
+  const nlHistory = useApp((s) => s.nlHistory);
   const asking = mode === 'nl';
   const generating = mode === 'generating';
   const nlExplanation = useApp((s) => s.nlExplanation);
@@ -213,6 +214,7 @@ export const App = ({ clipboard }: AppProps) => {
             statement={statement}
             focused={focus === 'editor'}
             asking={asking}
+            nlHistory={nlHistory}
             completionsOn={completionsOn}
             onNlSubmit={(p) => void store.getState().generateFromNl(p)}
             onEditorChange={(t, c) => store.getState().setQuery(t, c)}

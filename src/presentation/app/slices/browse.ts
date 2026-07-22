@@ -254,12 +254,13 @@ export const createBrowseSlice = (ctx: BrowseSliceCtx): BrowseSlice => {
     key.map((k) => `${k.column}=${String(k.value)}`).join(' AND ');
 
   const actions: BrowseActions = {
-    clickGrid: (row, col) =>
+    clickGrid: (row, col) => {
+      get().focusPane('grid');
       set((s) => ({
-        focus: 'grid',
         gridRow: row != null ? row : s.gridRow,
         gridCol: col != null ? col : s.gridCol,
-      })),
+      }));
+    },
 
     openCell: () => {
       const { result, gridRow, gridCol } = get();

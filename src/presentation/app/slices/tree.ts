@@ -51,11 +51,10 @@ export type TreeActions = Pick<
 export const createTreeSlice = (ctx: TreeSliceCtx): TreeActions => {
   const { set, get, source, rowsNow, clampTree, openObject, loadStructure } = ctx;
   return {
-    clickTree: (row) =>
-      set((s) => ({
-        focus: 'sidebar',
-        treeIndex: row != null ? row : s.treeIndex,
-      })),
+    clickTree: (row) => {
+      get().focusPane('sidebar');
+      set((s) => ({ treeIndex: row != null ? row : s.treeIndex }));
+    },
 
     treeRows: () => rowsNow(),
 

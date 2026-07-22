@@ -146,7 +146,7 @@ const GLOBAL: readonly KeyBinding[] = [
   { keys: '`', hint: 'conn', desc: 'Switch connection (back to picker)', match: ['`'], run: (s) => s.disconnect() },
   { keys: ':', hint: 'sql', desc: 'Open the SQL query editor', match: [':'], enabled: (f) => f.queryable, primary: true, run: (s) => s.focusPane('editor') },
   { keys: '^O', hint: 'sql pane', desc: 'Expand / collapse the SQL editor (collapsed: a one-line echo of the current SQL)', match: ['^o'], enabled: (f) => f.queryable, run: (s) => s.toggleEditorExpanded() },
-  { keys: '^G', hint: 'ask AI', desc: 'Ask in natural language (opens the SQL editor)', match: ['^g'], enabled: (f) => f.queryable && f.nlAvailable, run: (s) => { s.focusPane('editor'); s.beginNl(); } },
+  { keys: '^G', hint: 'ask AI', desc: 'Ask in natural language (opens the SQL editor)', match: ['^g'], enabled: (f) => f.queryable && f.nlAvailable, run: (s) => s.beginNl() },
   { keys: 'tab', hint: 'pane', desc: 'Toggle focus: tree ↔ results', match: ['tab'], run: (s) => s.cycleFocus() },
   // Direct pane jumps (vim-style). ^H needs the kitty keyboard protocol — legacy
   // terminals send it as backspace; degrades silently there (ADR 0007).
@@ -327,7 +327,8 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
   nl: {
     title: 'Ask AI',
     bindings: [
-      // ⏎ is owned by the native <input> (onSubmit) — documentation-only here.
+      // Prompt history and ⏎ are owned by the native <input> — documentation-only here.
+      { keys: '↑/↓', hint: 'history', desc: 'Recall previous / next submitted prompt' },
       { keys: '⏎', hint: 'generate', desc: 'Generate SQL (always reviewed before running)' },
       { keys: 'esc', hint: 'cancel', desc: 'Cancel', match: ['escape'], run: (s) => s.cancelNl() },
     ],

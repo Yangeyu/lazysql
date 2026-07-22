@@ -29,7 +29,12 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import type { TextareaOptions, TextareaRenderable } from '@opentui/core';
+import type {
+  InputRenderable,
+  KeyEvent,
+  TextareaOptions,
+  TextareaRenderable,
+} from '@opentui/core';
 import {
   isDestructive,
   type StatementKind,
@@ -64,6 +69,8 @@ interface Props {
   focused: boolean;
   /** The ask row is active (capturing the NL prompt). */
   asking: boolean;
+  /** Submitted prompts for this connection, oldest first. Kept in memory only. */
+  nlHistory: readonly string[];
   /** Whether schema completion is on — gates whether completions are advertised. */
   completionsOn: boolean;
   /** The NL prompt was submitted (Enter) — generate SQL from it. */
@@ -82,7 +89,7 @@ interface Props {
   height: number;
   /** Content width (panel inner width) — drives the divider. */
   innerWidth: number;
-  /** The expanded pane was pressed — focus its editing surface. */
+  /** The expanded SQL surface was pressed — leave Ask AI and focus SQL. */
   onPaneClick: () => void;
 }
 
@@ -121,6 +128,74 @@ const toWidgetCaret = (
   return low;
 };
 
+interface NlPromptInputProps {
+  history: readonly string[];
+  onSubmit: (prompt: string) => void;
+}
+
+/** The mounted prompt owns its transient history cursor and unsent draft. */
+const NlPromptInput = ({ history, onSubmit }: NlPromptInputProps) => {
+  const ref = useRef<InputRenderable | null>(null);
+  const index = useRef<number | null>(null);
+  const draft = useRef('');
+
+  const replaceText = (value: string): void => {
+    const input = ref.current;
+    if (!input) return;
+    input.setText(value);
+    input.cursorOffset = toWidgetCaret(input, value, value.length);
+  };
+
+  const navigateHistory = (event: KeyEvent): void => {
+    if (
+      history.length === 0
+      || event.ctrl
+      || event.meta
+      || event.option
+      || event.shift
+      || (event.name !== 'up' && event.name !== 'down')
+    ) return;
+
+    const input = ref.current;
+    if (!input) return;
+
+    if (event.name === 'up') {
+      if (index.current === null) {
+        draft.current = input.value;
+        index.current = history.length - 1;
+      } else {
+        index.current = Math.max(0, index.current - 1);
+      }
+      replaceText(history[index.current] ?? '');
+      event.preventDefault();
+      return;
+    }
+
+    if (index.current === null) return;
+    if (index.current === history.length - 1) {
+      index.current = null;
+      replaceText(draft.current);
+    } else {
+      index.current += 1;
+      replaceText(history[index.current] ?? '');
+    }
+    event.preventDefault();
+  };
+
+  return (
+    <input
+      ref={ref}
+      focused
+      onKeyDown={navigateHistory}
+      onSubmit={onSubmit as never}
+      flexGrow={1}
+      textColor={theme.cyan}
+      cursorStyle={INPUT_CURSOR}
+      cursorColor={theme.accent}
+    />
+  );
+};
+
 const QueryEditorImpl = ({
   expanded,
   queryText,
@@ -128,6 +203,7 @@ const QueryEditorImpl = ({
   statement,
   focused,
   asking,
+  nlHistory,
   completionsOn,
   onNlSubmit,
   onEditorChange,
@@ -199,18 +275,15 @@ const QueryEditorImpl = ({
 
       {/* ── ask row (NL→SQL): a native input while asking, else the hint/echo ── */}
       {!expanded ? null : asking ? (
-        <box flexDirection="row" flexShrink={0}>
+        <box
+          flexDirection="row"
+          flexShrink={0}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
           <text wrapMode="none">
             <b fg={theme.magenta}>✦ ask </b>
           </text>
-          <input
-            focused
-            onSubmit={onNlSubmit as never}
-            flexGrow={1}
-            textColor={theme.cyan}
-            cursorStyle={INPUT_CURSOR}
-            cursorColor={theme.accent}
-          />
+          <NlPromptInput history={nlHistory} onSubmit={onNlSubmit} />
         </box>
       ) : (
         <text wrapMode="none" selectable flexShrink={0}>
@@ -281,7 +354,7 @@ const QueryEditorImpl = ({
       ) : (
         <text fg={theme.border} wrapMode="none" flexShrink={0}>
           {asking
-            ? '⏎ generate SQL (review before running) · esc cancel'
+            ? '⏎ generate SQL · ↑/↓ history · esc cancel'
             : focused
               ? `⏎ run · ⇧⏎ newline · ^P/^N hist · ^T compl:${completionsOn ? 'on' : 'off'} · ^G ask · ^O hide · esc grid`
               : ': focus editor · ⏎ run · ^O hide'}

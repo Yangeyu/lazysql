@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.24](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.24) - 2026-07-22
+
+### Features
+
+- **export:** Nest declared-JSON columns in JSON export ([1a041a8](https://github.com/Yangeyu/lazysql/commit/1a041a80b205042d31549cc133028cfc2198c386))
+- **datasource:** Type result-set columns from wire metadata ([134f88e](https://github.com/Yangeyu/lazysql/commit/134f88eaf9e0a02b4ab8b0cd9d945bc9a8e4a5da))
+- **llm:** Quote identifiers in prompts to preserve case sensitivity ([e48fec3](https://github.com/Yangeyu/lazysql/commit/e48fec3e92fb69ddb2f9645f9e0ed50bb5c91cc4))
+- **llm:** Qualify schema-qualified table names in prompts and clear error on edit ([88e8d8f](https://github.com/Yangeyu/lazysql/commit/88e8d8f2a599c7b06f4ddf44d69315ccce6ce46b))
+- **tui:** Focus expanded SQL editor on click while keeping collapsed bar selection-only ([8299e70](https://github.com/Yangeyu/lazysql/commit/8299e708023981de95f279a551fb4f2d52c3c8a8))
+
 ## [0.1.23](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.23) - 2026-07-16
 
 ### Bug Fixes

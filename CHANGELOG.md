@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org/) by [git-cliff](https://git-cliff.org/).
 
 
+## [0.1.25](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.25) - 2026-07-22
+
+### Features
+
+- **llm:** Support cancelling NL→SQL generation with esc ([f02fd00](https://github.com/Yangeyu/lazysql/commit/f02fd00bdbae35e2c5656db551134fcd67e164c5))
+- **llm:** Add prompt history and unify ask focus ([fcbd088](https://github.com/Yangeyu/lazysql/commit/fcbd0887a839a9e6cafa255a04b390e11be25505))
+
 ## [0.1.24](https://github.com/Yangeyu/lazysql/releases/tag/v0.1.24) - 2026-07-22
 
 ### Features

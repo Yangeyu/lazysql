@@ -58,6 +58,9 @@ const contextBadge = (context: KeyContext): { label: string; bg: string } => {
       return { label: 'DATA', bg: theme.cyan };
     case 'editor':
       return { label: 'SQL', bg: theme.magenta };
+    case 'nl':
+    case 'generating':
+      return { label: 'AI', bg: theme.magenta };
     case 'cell':
       return { label: 'CELL', bg: theme.cyan };
     case 'cellEdit':

@@ -24,9 +24,10 @@ export interface GeneratedQuery {
 export const generateSql = async (
   generator: SqlGenerator,
   input: GenerateInput,
+  signal?: AbortSignal,
 ): Promise<Result<GeneratedQuery, Error>> => {
   try {
-    const out = await generator.generate(input);
+    const out = await generator.generate(input, signal);
     return ok({
       sql: out.sql.trim(),
       explanation: out.explanation,

@@ -30,7 +30,8 @@ ADR 0007 把可编辑文本建模成自绘的 `TextField { value, cursor }`：st
 
 - **过滤 / 编辑**：input 由「该列已有过滤值 / 当前单元格值」**种子**（在视图里派生），`onSubmit(value)`
   → `commitFilter(value)` / `submitEdit(value)`；store 不持草稿。
-- **NL ask**：`onSubmit(prompt)` → `generateFromNl(prompt)`。
+- **NL ask**：`mode: 'nl'` 时 native input 的 `onSubmit(prompt)` → `generateFromNl(prompt)`；提交后进入
+  `mode: 'generating'`，输入由 keymap 的生成上下文接管，`esc` 取消 provider 请求并回到编辑器。
 - **SQL 编辑器**：受控——`value={queryText}`，`onInput` → `setQuery`（重算补全），`onSubmit` →
   `executeQuery`；历史 / 补全 / NL 都经同一个 `value` prop 驱动；空时把 browse 语句作为 `placeholder` 回显。
 

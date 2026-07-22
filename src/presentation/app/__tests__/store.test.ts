@@ -69,7 +69,7 @@ test('generateFromNl fills the editor and classifies, never executing', async ()
   expect(s.queryText).toBe('UPDATE users SET active = 0 WHERE id = 5');
   expect(s.nlExplanation).toBe('deactivates user 5');
   expect(s.nlKind).toBe('write'); // flagged destructive
-  expect(s.nlMode).toBe(false);
+  expect(s.mode).toBe('normal');
   expect(s.result).toBeNull(); // generation does NOT run the query (no result)
   expect(s.surface).toBe('browse'); // …and never flips the grid to a query surface
 });
@@ -85,10 +85,47 @@ test('NL is unavailable (and beginNl is a no-op) without a generator', () => {
   expect(store.getState().nlAvailable).toBe(false);
 
   store.getState().beginNl();
-  expect(store.getState().nlMode).toBe(false);
+  expect(store.getState().mode).toBe('normal');
   expect(store.getState().queryError).toBe(
     'configure an LLM provider to enable AI (NL→SQL)',
   );
+});
+
+test('cancelling NL generation aborts the request and ignores a late result', async () => {
+  let requestSignal: AbortSignal | undefined;
+  let resolveGeneration: (value: { sql: string; explanation: string }) => void = () => {};
+  const response = new Promise<{ sql: string; explanation: string }>((resolve) => {
+    resolveGeneration = resolve;
+  });
+  const generator: SqlGenerator = {
+    generate: async (_input, signal?: AbortSignal) => {
+      requestSignal = signal;
+      return response;
+    },
+  };
+  const profile: ConnectionProfile = {
+    id: 'x',
+    name: 'X',
+    driver: 'sqlite',
+    options: {},
+  };
+  const store = createAppStore({ connectionService: serviceFor(profile), generator });
+  store.getState().setQuery('SELECT keep_this_draft');
+
+  const pending = store.getState().generateFromNl('replace the draft');
+  expect(store.getState().mode).toBe('generating');
+
+  store.getState().cancelNl();
+  expect(requestSignal?.aborted).toBe(true);
+  expect(store.getState().mode).toBe('normal');
+  expect(store.getState().notice).toBe('AI generation cancelled');
+
+  resolveGeneration({ sql: 'SELECT stale_result', explanation: 'too late' });
+  await pending;
+
+  expect(store.getState().queryText).toBe('SELECT keep_this_draft');
+  expect(store.getState().nlExplanation).toBeNull();
+  expect(store.getState().queryError).toBeNull();
 });
 
 test('a genuine edit clears the last run error so it stops hiding completions', () => {

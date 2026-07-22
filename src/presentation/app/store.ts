@@ -59,11 +59,20 @@ export type Focus = 'sidebar' | 'editor' | 'grid';
 export type Status = 'connecting' | 'ready' | 'error';
 // Cell editing is no longer a top-level mode — it lives in the cell inspector
 // overlay (`CellInspect.mode`), so it isn't listed here (ADR 0011).
-// `exporting`: a long export is running; input is captured so `esc` can cancel it
-// and the status bar shows the live row count (ADR 0012).
+// Long-running modes (`exporting` / `generating`) capture input so `esc` can
+// cancel them. `nl` is the native Ask AI input. Keeping all three here avoids
+// parallel booleans that could describe impossible combinations.
 // `filter` captures the grid's per-column filter input; `treeFilter` the sidebar's
 // object-name filter — distinct input surfaces on distinct panes.
-export type Mode = 'normal' | 'filter' | 'treeFilter' | 'confirm' | 'connform' | 'exporting';
+export type Mode =
+  | 'normal'
+  | 'filter'
+  | 'treeFilter'
+  | 'confirm'
+  | 'connform'
+  | 'exporting'
+  | 'nl'
+  | 'generating';
 
 /** One editable field in the new-connection form. */
 export interface ConnFormField {
@@ -318,8 +327,6 @@ export interface AppState {
 
   // ── NL→SQL ──
   nlAvailable: boolean;
-  nlMode: boolean;
-  generating: boolean;
   nlExplanation: string | null;
   nlKind: StatementKind | null;
 
@@ -495,6 +502,7 @@ export interface AppState {
   historyNext: () => void;
   acceptCompletion: () => void;
   beginNl: () => void;
+  /** Leave the Ask AI prompt or abort its in-flight provider request. */
   cancelNl: () => void;
   /** Generate SQL from the natural-language prompt typed in the native input. */
   generateFromNl: (prompt: string) => Promise<void>;
@@ -640,6 +648,8 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         error: null,
         queryable: canQuery,
         nlAvailable: generator !== null && canQuery,
+        mode: 'normal',
+        notice: null,
         // everything below is scoped to one connection — reset on switch
         objects: [],
         rootExpanded: true,
@@ -738,8 +748,6 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       completionsOn: true,
 
       nlAvailable: false,
-      nlMode: false,
-      generating: false,
       nlExplanation: null,
       nlKind: null,
 
@@ -788,6 +796,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       },
 
       connectProfile: async (profile) => {
+        get().cancelNl();
         set({ status: 'connecting', error: null });
         const r = await connectionService.open(profile);
         if (!r.ok) {
@@ -801,6 +810,7 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
       },
 
       disconnect: () => {
+        get().cancelNl();
         if (active) void active.disconnect();
         active = null;
         set({
@@ -808,6 +818,8 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
           status: 'ready',
           queryable: false,
           nlAvailable: false,
+          mode: 'normal',
+          notice: null,
           objects: [],
           current: null,
           surface: 'browse',
@@ -871,7 +883,10 @@ export const createAppStore = (deps: AppStoreDeps): AppStore =>
         set((s) => ({
           editorExpanded: !s.editorExpanded,
           ...(s.editorExpanded
-            ? { nlMode: false, ...(s.focus === 'editor' ? { focus: 'grid' as const } : {}) }
+            ? {
+                ...(s.mode === 'nl' ? { mode: 'normal' as const } : {}),
+                ...(s.focus === 'editor' ? { focus: 'grid' as const } : {}),
+              }
             : {}),
         }));
       },

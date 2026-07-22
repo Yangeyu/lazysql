@@ -23,7 +23,7 @@ test('renders the bound query text in the SQL editor', async () => {
       focused
       completions={[]}
       completionsOn
-      nlMode={false}
+      asking={false}
       onNlSubmit={() => {}}
       onEditorChange={() => {}}
       onQuerySubmit={() => {}}
@@ -45,6 +45,36 @@ test('renders the bound query text in the SQL editor', async () => {
   h.cleanup();
 });
 
+test('a running AI generation advertises its escape cancel action', async () => {
+  const h = await renderTest(
+    <QueryEditor
+      expanded
+      queryText="SELECT keep_this_draft"
+      editorCaret={22}
+      statement={null}
+      focused
+      completions={[]}
+      completionsOn
+      asking={false}
+      onNlSubmit={() => {}}
+      onEditorChange={() => {}}
+      onQuerySubmit={() => {}}
+      generating
+      nlExplanation={null}
+      nlKind={null}
+      error={null}
+      height={8}
+      innerWidth={80}
+      onPaneClick={() => {}}
+    />,
+    { width: 90, height: 10 },
+  );
+  await h.flush();
+  await h.flush();
+  expect(h.frame()).toContain('Generating SQL… · esc cancel');
+  h.cleanup();
+});
+
 test('typing after non-ASCII text recomputes completions at the middle caret', async () => {
   const initial = "SELECT '中文' *  users";
 
@@ -61,7 +91,7 @@ test('typing after non-ASCII text recomputes completions at the middle caret', a
         focused
         completions={candidates}
         completionsOn
-        nlMode={false}
+        asking={false}
         onNlSubmit={() => {}}
         onEditorChange={(text, nextCaret) => {
           setQuery(text);
@@ -138,7 +168,7 @@ test('collapsed, it echoes the statement behind the grid and flags a kept draft'
       focused={false}
       completions={[]}
       completionsOn
-      nlMode={false}
+      asking={false}
       onNlSubmit={() => {}}
       onEditorChange={() => {}}
       onQuerySubmit={() => {}}

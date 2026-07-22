@@ -29,7 +29,7 @@ export class AnthropicSqlGenerator implements SqlGenerator {
     this.model = opts.model ?? DEFAULT_MODEL;
   }
 
-  async generate(input: GenerateInput): Promise<GeneratedSql> {
+  async generate(input: GenerateInput, signal?: AbortSignal): Promise<GeneratedSql> {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 2000,
@@ -55,7 +55,7 @@ export class AnthropicSqlGenerator implements SqlGenerator {
       ],
       tool_choice: { type: 'tool', name: 'emit_sql' },
       messages: [{ role: 'user', content: buildUserPrompt(input) }],
-    });
+    }, { signal });
 
     const block = response.content.find((b) => b.type === 'tool_use');
     if (!block || block.type !== 'tool_use') {

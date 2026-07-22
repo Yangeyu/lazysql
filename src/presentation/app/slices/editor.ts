@@ -113,6 +113,9 @@ export interface EditorSlice {
 
 export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
   const { set, get, source, generator, historyStore, reloadObjects, activeProfile } = ctx;
+  // Request ownership stays at the presentation boundary that starts/cancels it.
+  // The signal crosses the port; the controller itself never leaks into state.
+  let generationAbort: AbortController | null = null;
 
   /** Run the editor's SQL and take over the shared grid with the result. The
    *  execution proper, shared by the direct run and the guarded (confirmed)
@@ -372,34 +375,56 @@ export const createEditorSlice = (ctx: EditorSliceCtx): EditorSlice => {
         set({ queryError: 'configure an LLM provider to enable AI (NL→SQL)' });
         return;
       }
-      set({ nlMode: true, queryError: null });
+      set({ mode: 'nl', queryError: null });
     },
 
-    cancelNl: () => set({ nlMode: false }),
+    cancelNl: () => {
+      const activeGeneration = generationAbort;
+      generationAbort = null;
+      activeGeneration?.abort();
+      const { mode } = get();
+      if (mode === 'nl' || mode === 'generating') {
+        set({
+          mode: 'normal',
+          ...(activeGeneration ? { notice: 'AI generation cancelled' } : {}),
+        });
+      }
+    },
 
     generateFromNl: async (prompt) => {
       const { catalog, current } = get();
       const nl = prompt.trim();
       if (!generator || !nl) {
-        set({ nlMode: false });
+        set({ mode: 'normal' });
         return;
       }
-      set({ nlMode: false, generating: true, queryError: null });
+      generationAbort?.abort();
+      const controller = new AbortController();
+      generationAbort = controller;
+      set({ mode: 'generating', queryError: null, notice: null });
       const schema: SchemaContext = {
         tables: catalog ? schemaContextTables(catalog) : [],
       };
       const focus = current ? objectRefKey(current) : undefined;
       const profile = activeProfile();
       const dialect = profile ? dialectLabel(profile.driver) : 'SQL';
-      const r = await generateSql(generator, { nl, schema, dialect, focus });
+      const r = await generateSql(
+        generator,
+        { nl, schema, dialect, focus },
+        controller.signal,
+      );
+      // Cancellation or a replacement request revokes this run's ownership.
+      // Some providers may still settle after abort; such a result is stale.
+      if (generationAbort !== controller) return;
+      generationAbort = null;
       if (!r.ok) {
-        set({ generating: false, queryError: r.error.message });
+        set({ mode: 'normal', queryError: r.error.message });
         return;
       }
       // Fill the editor for review — NEVER auto-execute (§5.2). Reviewing needs
       // the full pane, so expand it even if the user collapsed it mid-generation.
       set({
-        generating: false,
+        mode: 'normal',
         queryText: r.value.sql,
         editorCaret: r.value.sql.length,
         nlExplanation: r.value.explanation,

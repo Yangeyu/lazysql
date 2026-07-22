@@ -60,10 +60,10 @@ interface Props {
    *  executed query), shown as the input's dim placeholder while it is empty so
    *  the panel always reflects how the result was produced. */
   statement: string | null;
-  /** Editor pane focused; the SQL textarea is active when not in `nlMode`. */
+  /** Editor pane focused; the SQL textarea is active when Ask AI is idle. */
   focused: boolean;
   /** The ask row is active (capturing the NL prompt). */
-  nlMode: boolean;
+  asking: boolean;
   /** Whether schema completion is on — gates whether completions are advertised. */
   completionsOn: boolean;
   /** The NL prompt was submitted (Enter) — generate SQL from it. */
@@ -127,7 +127,7 @@ const QueryEditorImpl = ({
   editorCaret,
   statement,
   focused,
-  nlMode,
+  asking,
   completionsOn,
   onNlSubmit,
   onEditorChange,
@@ -164,7 +164,7 @@ const QueryEditorImpl = ({
     }
   };
 
-  const borderColor = nlMode
+  const borderColor = asking || generating
     ? theme.magenta
     : focused
       ? theme.borderFocus
@@ -198,7 +198,7 @@ const QueryEditorImpl = ({
       ) : null}
 
       {/* ── ask row (NL→SQL): a native input while asking, else the hint/echo ── */}
-      {!expanded ? null : nlMode ? (
+      {!expanded ? null : asking ? (
         <box flexDirection="row" flexShrink={0}>
           <text wrapMode="none">
             <b fg={theme.magenta}>✦ ask </b>
@@ -247,7 +247,7 @@ const QueryEditorImpl = ({
         ref={ref}
         visible={expanded}
         initialValue={queryText}
-        focused={expanded && focused && !nlMode}
+        focused={expanded && focused && !asking && !generating}
         keyBindings={SQL_KEYBINDINGS}
         wrapMode="word"
         onContentChange={sync}
@@ -267,10 +267,10 @@ const QueryEditorImpl = ({
           error: {oneLine(error)}
         </text>
       ) : generating ? (
-        <text fg={theme.magenta} flexShrink={0}>
-          ✦ Generating SQL…
+        <text fg={theme.magenta} wrapMode="none" flexShrink={0}>
+          ✦ Generating SQL… · esc cancel
         </text>
-      ) : focused && !nlMode && completionsOn && completions.length > 0 ? (
+      ) : focused && !asking && completionsOn && completions.length > 0 ? (
         <text wrapMode="none" flexShrink={0}>
           <span fg={theme.border}>⇥ </span>
           <b fg={theme.cyan}>{completions[0]}</b>
@@ -280,7 +280,7 @@ const QueryEditorImpl = ({
         </text>
       ) : (
         <text fg={theme.border} wrapMode="none" flexShrink={0}>
-          {nlMode
+          {asking
             ? '⏎ generate SQL (review before running) · esc cancel'
             : focused
               ? `⏎ run · ⇧⏎ newline · ^P/^N hist · ^T compl:${completionsOn ? 'on' : 'off'} · ^G ask · ^O hide · esc grid`

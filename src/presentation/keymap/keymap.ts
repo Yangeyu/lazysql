@@ -32,6 +32,7 @@ export type KeyContext =
   | 'cell'
   | 'cellEdit'
   | 'exporting'
+  | 'generating'
   | 'nl';
 
 /** Runtime flags that gate context-dependent bindings (capability-driven). */
@@ -61,7 +62,6 @@ export interface ContextInput {
    *  (`cellEdit`). Structurally typed so the store's `CellInspect` fits. */
   readonly cellView: { readonly mode?: 'view' | 'edit' } | null;
   readonly mode: Mode;
-  readonly nlMode: boolean;
   readonly focus: Focus;
   readonly surface: SurfaceKind;
   readonly mainTab: MainTab;
@@ -69,20 +69,21 @@ export interface ContextInput {
 
 /**
  * Which context's keys are active, as one linear precedence (highest first): an
- * open cell inspector owns input, then the input-capturing modes, then the NL
- * prompt, then pane focus — and a browsed object showing its DDL is its own
+ * running cancellable work owns input, then an open cell inspector, input modes,
+ * and pane focus — and a browsed object showing its DDL is its own
  * static context (only the tab toggle + globals apply). Pure: the single
  * definition of "where are we", shared by the dispatcher and the footer/help.
  */
 export const deriveContext = (s: ContextInput): KeyContext => {
   // One linear precedence, highest first — read top to bottom.
   if (s.mode === 'exporting') return 'exporting'; // a running export owns input (esc cancels)
+  if (s.mode === 'generating') return 'generating';
   if (s.cellView) return s.cellView.mode === 'edit' ? 'cellEdit' : 'cell';
   if (s.mode === 'connform') return 'connform';
   if (s.mode === 'filter') return 'filter';
   if (s.mode === 'treeFilter') return 'treeFilter';
   if (s.mode === 'confirm') return 'confirm';
-  if (s.nlMode) return 'nl';
+  if (s.mode === 'nl') return 'nl';
   if (s.focus === 'editor') return 'editor';
   if (s.focus === 'sidebar') return 'sidebar';
   if (s.surface === 'browse' && s.mainTab === 'ddl') return 'ddl';
@@ -317,6 +318,12 @@ const GROUPS: Record<KeyContext, KeyGroup> = {
       { keys: 'esc', hint: 'cancel', desc: 'Cancel the export (discards the partial file)', match: ['escape'], run: (s) => s.cancelExport() },
     ],
   },
+  generating: {
+    title: 'Ask AI — generating',
+    bindings: [
+      { keys: 'esc', hint: 'cancel', desc: 'Cancel SQL generation', match: ['escape'], run: (s) => s.cancelNl() },
+    ],
+  },
   nl: {
     title: 'Ask AI',
     bindings: [
@@ -420,7 +427,7 @@ export const helpGroups = (context: KeyContext, flags: KeyFlags): KeyGroup[] => 
 /**
  * Route one key press to its action. The single dispatcher the App's keyboard
  * handler delegates to. Precedence: ⌃C always quits; an open help overlay and an
- * in-flight generation own input; then the active context's documented bindings,
+ * cancellable work uses its own context; then the active context's documented bindings,
  * the global keys (navigational contexts only), and finally free-text entry.
  */
 export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void => {
@@ -453,8 +460,6 @@ export const dispatchKey = (s: AppState, key: KeyEvent, env: DispatchEnv): void 
     else if (key.name === 'up' || ch === 'k') s.scrollHelp(-1);
     return;
   }
-  if (s.generating) return; // ignore input while the model works
-
   const flags: KeyFlags = {
     queryable: s.queryable,
     nlAvailable: s.nlAvailable,

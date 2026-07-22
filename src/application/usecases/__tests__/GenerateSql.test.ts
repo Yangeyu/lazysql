@@ -30,3 +30,18 @@ test('a generator failure becomes an err Result, not a throw', async () => {
   const r = await generateSql(boom, input);
   expect(r.ok).toBe(false);
 });
+
+test('forwards the caller cancellation signal to the generator port', async () => {
+  let received: AbortSignal | undefined;
+  const generator: SqlGenerator = {
+    generate: async (_input, signal?: AbortSignal) => {
+      received = signal;
+      return { sql: 'SELECT 1', explanation: '' };
+    },
+  };
+  const controller = new AbortController();
+
+  await generateSql(generator, input, controller.signal);
+
+  expect(received).toBe(controller.signal);
+});

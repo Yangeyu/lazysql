@@ -21,7 +21,7 @@ Work with databases in your terminal the way lazygit works with git: connect, br
 - 🧬 **Schema introspection**: tables / views / indexes / sequences / triggers / stored procedures / Postgres enums; inspect an object's columns (enum columns show their allowed values) and DDL definition
 - 🛡️ **Destructive-operation guard**: a `WHERE`-less `UPDATE/DELETE`, `DROP`, or `TRUNCATE` always pops a **centered confirmation dialog** echoing the full SQL to be run; when a Postgres `DROP` fails due to dependents, it offers a `CASCADE` retry and **names the objects that would be dropped along with it**
 - 🌳 **Object tree**: filter objects by name with `/` or `f` (live-narrows as you type) · auto-refreshes after a successful DDL (`CREATE/DROP/ALTER/…`)
-- 🤖 **NL→SQL**: press `^G`, type natural language, and the LLM generates SQL **placed into the editor for review** (never auto-executed); destructive statements are flagged with a red ⚠
+- 🤖 **NL→SQL**: press `^G`, type natural language, and the LLM generates SQL **placed into the editor for review** (never auto-executed); `esc` cancels the prompt or in-flight request, and destructive statements are flagged with a red ⚠
 - 🗂️ **Connection management**: multi-connection config · create / edit / test connections in-TUI · passwords stored separately from config (optional OS Keychain) · **SSH tunnel** to databases behind a bastion (key/agent auth, `~/.ssh/config` aliases work)
 - 🖱️ **Modern terminal UX**: mouse / scroll wheel · system-clipboard copy · full-cell inspector (long text wraps by display width, no CJK truncation)
 
@@ -173,7 +173,7 @@ The collapsed SQL echo bar keeps mouse gestures selection-only and never focuses
 | `tab` | Accept completion, otherwise move to the next panel |
 | `^P` / `^N` | Previous / next history entry |
 | `^T` | Toggle schema-aware completion |
-| `^G` | Generate SQL from natural language |
+| `^G` | Generate SQL from natural language (`esc` cancels the prompt or in-flight request) |
 | `^C` | Clear the draft |
 | `^O` | Collapse the editor to its one-line echo bar (the draft is kept, flagged `(draft)`) |
 | `esc` | Back to the results grid (the editor stays open) |
@@ -252,7 +252,7 @@ A tunneled MongoDB connection is pinned with `directConnection=true` — replica
 
 ### NL→SQL (LLM)
 
-The provider is isolated behind the `SqlGenerator` port; **without an API key, `^G` is silently disabled**. Pin it in `config.yml`, or override temporarily with environment variables (env wins). **The API key is read only from the environment, never written to config.yml.**
+The provider is isolated behind the `SqlGenerator` port; **without an API key, `^G` is silently disabled**. While generation is running, `esc` aborts the provider request, keeps the current SQL draft untouched, and ignores any late response. Pin the provider in `config.yml`, or override temporarily with environment variables (env wins). **The API key is read only from the environment, never written to config.yml.**
 
 `config.yml`:
 

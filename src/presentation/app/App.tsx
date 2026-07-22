@@ -99,8 +99,8 @@ export const App = ({ clipboard }: AppProps) => {
   const completions = useApp((s) => s.completions);
   const completionsOn = useApp((s) => s.completionsOn);
   const nlAvailable = useApp((s) => s.nlAvailable);
-  const nlMode = useApp((s) => s.nlMode);
-  const generating = useApp((s) => s.generating);
+  const asking = mode === 'nl';
+  const generating = mode === 'generating';
   const nlExplanation = useApp((s) => s.nlExplanation);
   const nlKind = useApp((s) => s.nlKind);
 
@@ -167,7 +167,7 @@ export const App = ({ clipboard }: AppProps) => {
     errorAvailable: error !== null,
     filterReturnAvailable,
   };
-  const context = deriveContext({ cellView, mode, nlMode, focus, surface, mainTab });
+  const context = deriveContext({ cellView, mode, focus, surface, mainTab });
 
   const rowsInPage = result?.rows.length ?? 0;
   const from = total === 0 ? 0 : page.offset + 1;
@@ -212,7 +212,7 @@ export const App = ({ clipboard }: AppProps) => {
             editorCaret={editorCaret}
             statement={statement}
             focused={focus === 'editor'}
-            nlMode={nlMode}
+            asking={asking}
             completionsOn={completionsOn}
             onNlSubmit={(p) => void store.getState().generateFromNl(p)}
             onEditorChange={(t, c) => store.getState().setQuery(t, c)}

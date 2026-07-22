@@ -6,14 +6,13 @@ import type { AppState } from '../../app/store.ts';
 const base: ContextInput = {
   cellView: null,
   mode: 'normal',
-  nlMode: false,
   focus: 'grid',
   surface: 'browse',
   mainTab: 'data',
 };
 
-test('deriveContext follows a strict precedence: cell inspector wins over everything', () => {
-  expect(deriveContext({ ...base, cellView: { mode: 'view' }, mode: 'filter', nlMode: true })).toBe('cell');
+test('deriveContext follows a strict precedence: cell inspector wins over input modes', () => {
+  expect(deriveContext({ ...base, cellView: { mode: 'view' }, mode: 'filter' })).toBe('cell');
 });
 
 test('the cell inspector splits view from edit by its own mode', () => {
@@ -21,11 +20,12 @@ test('the cell inspector splits view from edit by its own mode', () => {
   expect(deriveContext({ ...base, cellView: { mode: 'edit' } })).toBe('cellEdit');
 });
 
-test('deriveContext ranks the input modes above the NL prompt and pane focus', () => {
+test('deriveContext ranks the input modes above pane focus', () => {
   expect(deriveContext({ ...base, mode: 'connform' })).toBe('connform');
   expect(deriveContext({ ...base, mode: 'filter' })).toBe('filter');
   expect(deriveContext({ ...base, mode: 'confirm' })).toBe('confirm');
-  expect(deriveContext({ ...base, nlMode: true, focus: 'editor' })).toBe('nl');
+  expect(deriveContext({ ...base, mode: 'nl', focus: 'editor' })).toBe('nl');
+  expect(deriveContext({ ...base, mode: 'generating', focus: 'editor' })).toBe('generating');
 });
 
 test('deriveContext falls back to plain pane focus', () => {
@@ -64,6 +64,7 @@ test('footerHints pins q quit · ? help at the end of a nav context', () => {
   expect(bar.trimEnd().endsWith('? help')).toBe(true);
   // A short, no-primary context falls back to showing its own keys (unchanged).
   expect(footerHints('exporting', flags)).toContain('cancel');
+  expect(footerHints('generating', flags)).toContain('cancel');
 });
 
 test('footerHints leads with the action that reopens dismissed error details', () => {
@@ -80,14 +81,12 @@ const key = (over: Record<string, unknown> = {}) =>
 const stub = (over: Partial<AppState> = {}): AppState =>
   ({
     helpOpen: false,
-    generating: false,
     queryable: true,
     nlAvailable: true,
     error: null,
     errorDismissed: null,
     cellView: null,
     mode: 'normal',
-    nlMode: false,
     focus: 'grid',
     surface: 'browse',
     mainTab: 'data',
@@ -330,6 +329,12 @@ test('dispatchKey: esc cancels a running export (exporting context)', () => {
   const cancelExport = mock(() => {});
   dispatchKey(stub({ mode: 'exporting', cancelExport } as Partial<AppState>), key({ name: 'escape' }), env());
   expect(cancelExport).toHaveBeenCalledTimes(1);
+});
+
+test('dispatchKey: esc cancels an in-flight AI generation', () => {
+  const cancelNl = mock(() => {});
+  dispatchKey(stub({ mode: 'generating', cancelNl } as Partial<AppState>), key({ name: 'escape' }), env());
+  expect(cancelNl).toHaveBeenCalledTimes(1);
 });
 
 test('dispatchKey: g/G jump the tree to its first / last row', () => {

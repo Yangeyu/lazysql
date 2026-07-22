@@ -79,9 +79,10 @@ export class OpenAiCompatibleSqlGenerator implements SqlGenerator {
     this.apiKey = cfg.apiKey;
   }
 
-  async generate(input: GenerateInput): Promise<GeneratedSql> {
+  async generate(input: GenerateInput, signal?: AbortSignal): Promise<GeneratedSql> {
     const res = await fetch(`${this.baseURL}/chat/completions`, {
       method: 'POST',
+      signal,
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${this.apiKey}`,

@@ -161,7 +161,7 @@ interface SqlGenerator {
     nl: string                  // 用户自然语言
     schemaContext: SchemaContext // 压缩后的 schema（表/列/类型/关系）
     dialect: DialectId
-  }): Promise<GeneratedSql>      // { sql, explanation, confidence, isDestructive }
+  }, signal?: AbortSignal): Promise<GeneratedSql> // cooperative provider cancellation
 }
 ```
 
@@ -171,7 +171,7 @@ interface SqlGenerator {
 用户输入自然语言
    │
    ▼ ① 收集相关 schema（按表名/关键词裁剪，控制 token）
-   ▼ ② SqlGenerator.generate() —— 经 provider 适配器（默认 Qwen/百炼，可切 Claude）
+   ▼ ② SqlGenerator.generate(signal) —— 经 provider 适配器（默认 Qwen/百炼，可切 Claude；esc 可取消）
    ▼ ③ 静态分析生成的 SQL（node-sql-parser）：判定读/写/DDL、标记破坏性
    ▼ ④ 【强制】在编辑器中展示 SQL + 解释，等待用户确认
    ▼ ⑤ 写操作 → 先 EXPLAIN/dry-run，二次确认
@@ -182,6 +182,8 @@ interface SqlGenerator {
   默认 **Qwen（百炼）**（配 `DASHSCOPE_API_KEY`），可切 **Claude** 或任意 OpenAI 兼容 provider
   （DeepSeek / Moonshot / 本地 Ollama）—— 新增只动 `adapters/llm/`，见 `adr/0004`。
 - **只读优先**：默认生成 `SELECT`，写/DDL 需显式开启 + 二次确认。
+- **取消不报错**：presentation 持有本次请求的 `AbortController`，signal 经 use case / port 传到 provider；
+  `esc` 立即回到编辑器并保留原草稿。取消或被新请求取代的迟到响应没有写回权。
 
 ### 5.3 语法补全（与 LLM 解耦，独立引擎）
 
@@ -259,7 +261,8 @@ focus 或档位；展开态 `onMouseDown` 聚焦 editor，拖拽仍可选择/复
 ```
 
 文本录入是同一条链路的特例：`dispatchKey` → `editX(op)` → 对 `TextField` 应用纯操作 → store。
-异步 DB/LLM 操作通过 store 的 `loading/error` 状态驱动 UI，**用 `AbortController` 贯穿取消**（长查询可中断）。
+异步 DB/LLM 操作通过 store 的 `mode/loading/error` 状态驱动 UI，**用 `AbortController` 贯穿取消**；
+controller 由发起操作的 presentation slice 持有，跨层只传 `AbortSignal`，取消后的迟到结果不得写回。
 
 ### 6.4 渲染性能纪律（OpenTUI）
 
@@ -347,7 +350,7 @@ src/
 ## 9. 横切关注点
 
 - **错误处理**：边界返回 `Result<T,E>`，领域错误带类型；TUI 统一错误展示层。
-- **取消**：`AbortController` 贯穿查询/LLM 调用；长操作可中断。
+- **取消**：`AbortController` 由操作发起边界持有，`AbortSignal` 贯穿查询/LLM 调用；长操作可中断，迟到结果按请求身份丢弃。
 - **日志**：结构化日志写文件（`~/.local/state/lazysql/`），含查询耗时；调试面板可视。
 - **密钥**：连接密码进 OS Keychain；配置文件只存引用（`secret://` 或 env 占位）。
 - **配置**：`~/.config/lazysql/config.yml`（连接、偏好、键位）；schema 可校验。
@@ -384,7 +387,7 @@ src/
 - **Phase 2 · 数据编辑** ✅：启用 `RowEditable`/`Transactional` 能力。参数化 DML（`dml.ts`，**拒绝无 WHERE 的写**）；每次写入跑在真事务里，`affected≠1 → 回滚`（防误改多行）；TUI 在 cell inspector 内用 `e` 编辑单元格、网格用 `d` 删除行，均经**二次确认**展示精确语句后执行。三引擎适配器测试覆盖写入与回滚守卫。Insert 已在适配器层（无 UI 表单，留作后续）。
 - **Phase 3 · 查询编辑器** ✅：第二个主视图(`view: browse | query`)。经 `Queryable` 执行自由 SQL、复用 `DataGrid` 渲染结果、会话内历史(`↑/↓`)。**schema 感知补全**——纯 tokenizer 引擎(`sqlCompleter.ts`，无解析器、对半成品 SQL 鲁棒):按前置关键字给 表名/列名(按 FROM 子句作用域)/关键字,`Tab` 接受。`:` 进入、`esc` 返回。
 - **Phase 4 · Schema 管理** ⬜：内省视图 + DDL。
-- **Phase 5 · NL→SQL (LLM)** ✅：`SqlGenerator` 出站端口（**端口即 provider 抽象**）。`GenerateSql` 用例：生成→`classify`(read/write/ddl)→`Result`；**绝不执行**。TUI `^G` 进入 NL 提示，生成的 SQL **填入编辑器供审查**，破坏性语句红色 ⚠ 警告，用户自行回车运行。store 级测试验证"填入而不执行"。
+- **Phase 5 · NL→SQL (LLM)** ✅：`SqlGenerator` 出站端口（**端口即 provider 抽象**）。`GenerateSql` 用例：生成→`classify`(read/write/ddl)→`Result`；**绝不执行**。TUI `^G` 进入 NL 提示，生成中 `esc` 经 `AbortSignal` 取消且保留既有 SQL；生成的 SQL **填入编辑器供审查**，破坏性语句红色 ⚠ 警告，用户自行回车运行。store 级测试验证"填入而不执行"及"取消/迟到响应不写回"。
   - **多 provider（ADR-0004）** ✅：`createSqlGenerator` 工厂按 env 选 provider。默认 **Qwen（百炼）**——`OpenAiCompatibleSqlGenerator`（一个适配器服务一类 OpenAI 兼容 provider，forced function-calling 出 `{sql, explanation}`，原生 `fetch`，`DASHSCOPE_API_KEY` + `qwen3.7-plus`）；可切 **Claude**（官方 `@anthropic-ai/sdk` strict tool use，`ANTHROPIC_API_KEY` + `claude-opus-4-8`）。`LAZYSQL_LLM_PROVIDER` 显式指定、否则按密钥自动探测；`LAZYSQL_LLM_MODEL`/`LAZYSQL_LLM_BASE_URL` 覆盖。**新增 provider 只动 `adapters/llm/`**——四度兑现 OCP/DIP，且证明端口对两种异构 SDK/线格式都成立。
 - **Phase 6 · NoSQL** ✅：**MongoDB（文档）+ Redis（键值）适配器——能力模型的试金石（adr/0005）**。
   两源均声明 `SchemaIntrospect`+`Browse`+`RowEdit`，刻意**省略 `Query`（非 SQL）与 `Transaction`（无回滚）**；

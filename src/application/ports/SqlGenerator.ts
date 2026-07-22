@@ -35,5 +35,7 @@ export interface GeneratedSql {
 }
 
 export interface SqlGenerator {
-  generate(input: GenerateInput): Promise<GeneratedSql>;
+  /** Generate one reviewed SQL draft. `signal` cancels the provider request;
+   *  implementations must not turn cancellation into a successful result. */
+  generate(input: GenerateInput, signal?: AbortSignal): Promise<GeneratedSql>;
 }
